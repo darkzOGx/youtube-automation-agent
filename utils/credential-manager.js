@@ -378,23 +378,22 @@ class CredentialManager {
       // Files might not exist yet
     }
 
-    const requiredCredentials = ['youtube', 'openai'];
-    const missing = [];
+    const hasYouTube = !!this.credentials.youtube;
+    const hasAI = !!(this.credentials.openai || this.credentials.gemini);
 
-    for (const service of requiredCredentials) {
-      if (!this.credentials[service]) {
-        missing.push(service);
-      }
+    if (!hasYouTube) {
+      console.log(chalk.yellow('\n⚠️  Missing YouTube API credentials in config/credentials.json'));
+      return false;
     }
 
-    if (missing.length > 0) {
-      console.log(chalk.yellow(`\n⚠️  Missing credentials for: ${missing.join(', ')}`));
+    if (!hasAI) {
+      console.log(chalk.yellow('\n⚠️  Missing AI API credentials (neither OpenAI nor Gemini found)'));
       return false;
     }
 
     // Validate YouTube tokens
     if (!this.tokens.youtube) {
-      console.log(chalk.yellow('\n⚠️  YouTube authentication required'));
+      console.log(chalk.yellow('\n⚠️  YouTube authentication required. Please run: npm run credentials:setup'));
       return false;
     }
 
@@ -407,6 +406,7 @@ class CredentialManager {
     const results = {
       youtube: false,
       openai: false,
+      gemini: false,
       azureSpeech: false
     };
 
@@ -425,7 +425,7 @@ class CredentialManager {
     }
 
     // Test OpenAI API
-    if (this.credentials.openai) {
+    if (this.credentials.openai && this.credentials.openai.apiKey && !this.credentials.openai.apiKey.includes('YOUR_OPENAI_API_KEY')) {
       try {
         const { Configuration, OpenAIApi } = require('openai');
         const configuration = new Configuration({
@@ -439,6 +439,21 @@ class CredentialManager {
       } catch (error) {
         console.log(chalk.red('❌ OpenAI API connection failed'));
         this.logger.error('OpenAI API test failed:', error);
+      }
+    }
+
+    // Test Gemini API
+    if (this.credentials.gemini && this.credentials.gemini.apiKey) {
+      try {
+        const { GoogleGenerativeAI } = require('@google/generative-ai');
+        const genAI = new GoogleGenerativeAI(this.credentials.gemini.apiKey);
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+        await model.generateContent('ping');
+        results.gemini = true;
+        console.log(chalk.green('✅ Google Gemini API connection successful'));
+      } catch (error) {
+        console.log(chalk.red('❌ Google Gemini API connection failed'));
+        this.logger.error('Gemini API test failed:', error);
       }
     }
 

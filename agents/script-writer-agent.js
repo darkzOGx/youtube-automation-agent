@@ -1,4 +1,5 @@
 const { Logger } = require('../utils/logger');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 class ScriptWriterAgent {
   constructor(db, credentials) {
@@ -6,6 +7,21 @@ class ScriptWriterAgent {
     this.credentials = credentials;
     this.logger = new Logger('ScriptWriter');
     this.templates = this.loadTemplates();
+    
+    // Support either raw credentials JSON or the CredentialManager instance
+    const rawCredentials = credentials.credentials || credentials;
+    
+    // Initialize Gemini AI
+    const geminiKey = rawCredentials.gemini?.apiKey || process.env.GEMINI_API_KEY;
+    if (geminiKey) {
+      try {
+        const genAI = new GoogleGenerativeAI(geminiKey);
+        this.gemini = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+        this.logger.info('Google Gemini service initialized for ScriptWriter');
+      } catch (error) {
+        this.logger.error('Failed to initialize Google Gemini for ScriptWriter:', error);
+      }
+    }
   }
 
   async initialize() {
@@ -49,16 +65,121 @@ class ScriptWriterAgent {
       
       const template = this.templates[strategy.contentType.toLowerCase()] || this.templates.explainer;
       
-      // Generate script components
-      const hook = await this.generateHook(strategy);
-      const introduction = await this.generateIntroduction(strategy);
-      const mainContent = await this.generateMainContent(strategy, template);
-      const conclusion = await this.generateConclusion(strategy);
-      const cta = await this.generateCTA(strategy);
+      let hook, introduction, mainContent, conclusion, cta, title;
+      let generatedViaGemini = false;
+
+      if (this.gemini) {
+        try {
+          this.logger.info('Invoking Google Gemini for script generation...');
+          const prompt = `You are an expert children's fairy tale writer and educator. Create a complete, highly engaging children's story script in Indonesian based on the following topic/angle:
+Topic: "${strategy.topic}"
+Angle: "${strategy.angle}"
+Target Audience: "${strategy.targetAudience}"
+
+Provide the output in valid, raw JSON format matching this exact schema (do not wrap in markdown or any text besides the JSON itself, do not include markdown code block characters):
+{
+  "title": "A beautiful story title in Indonesian",
+  "hook": {
+    "text": "A brief opening question or statement to hook the kids in Indonesian"
+  },
+  "introduction": {
+    "greeting": "A warm greeting to the kids in Indonesian",
+    "topicIntro": "Introduction of the characters or story world in Indonesian",
+    "valueProposition": "A tease of what moral lesson or magic they will discover in Indonesian",
+    "credibility": "A friendly storyteller statement in Indonesian"
+  },
+  "sections": [
+    {
+      "title": "Chapter 1: Title in Indonesian",
+      "content": "A beautiful story paragraph of 3-4 sentences in Indonesian.",
+      "duration": 45
+    },
+    {
+      "title": "Chapter 2: Title in Indonesian",
+      "content": "A beautiful story paragraph of 3-4 sentences in Indonesian.",
+      "duration": 45
+    },
+    {
+      "title": "Chapter 3: Title in Indonesian",
+      "content": "A beautiful story paragraph of 3-4 sentences in Indonesian.",
+      "duration": 45
+    }
+  ],
+  "conclusion": {
+    "recap": [
+      "Summary of the moral lesson or story wrap-up in Indonesian"
+    ],
+    "finalThought": "A lovely final sweet dream or moral lesson statement in Indonesian"
+  },
+  "cta": {
+    "subscribe": "Subscribe text in Indonesian",
+    "like": "Like text in Indonesian",
+    "comment": "Interactive question to ask the kids in the comments in Indonesian"
+  }
+}`;
+          const result = await this.gemini.generateContent(prompt);
+          let responseText = result.response.text().trim();
+          
+          // Strip any markdown code fence wrappers if present
+          if (responseText.startsWith('```')) {
+            responseText = responseText.replace(/^```json\s*/, '').replace(/^```\s*/, '').replace(/\s*```$/, '');
+          }
+
+          const parsed = JSON.parse(responseText);
+          
+          title = parsed.title;
+          hook = {
+            type: 'statement',
+            text: parsed.hook.text,
+            duration: '0:00-0:05'
+          };
+          introduction = {
+            greeting: parsed.introduction.greeting,
+            topicIntro: parsed.introduction.topicIntro,
+            valueProposition: parsed.introduction.valueProposition,
+            credibility: parsed.introduction.credibility,
+            duration: '0:05-0:20'
+          };
+          mainContent = {
+            sections: parsed.sections,
+            totalDuration: parsed.sections.reduce((t, s) => t + (s.duration || 45), 0)
+          };
+          conclusion = {
+            type: 'conclusion',
+            title: 'Wrapping Up',
+            recap: parsed.conclusion.recap,
+            finalThought: parsed.conclusion.finalThought,
+            duration: '30 seconds'
+          };
+          cta = {
+            type: 'call_to_action',
+            subscribe: parsed.cta.subscribe,
+            like: parsed.cta.like,
+            comment: parsed.cta.comment,
+            nextVideo: 'Tonton video dongeng seru lainnya ya!',
+            duration: '15 seconds'
+          };
+
+          generatedViaGemini = true;
+          this.logger.info('Gemini script generation and parsing successful');
+        } catch (err) {
+          this.logger.error('Gemini script generation failed, falling back to static templates:', err);
+        }
+      }
+
+      if (!generatedViaGemini) {
+        // Fallback to static templates
+        title = await this.generateTitle(strategy);
+        hook = await this.generateHook(strategy);
+        introduction = await this.generateIntroduction(strategy);
+        mainContent = await this.generateMainContent(strategy, template);
+        conclusion = await this.generateConclusion(strategy);
+        cta = await this.generateCTA(strategy);
+      }
 
       // Assemble complete script
       const script = {
-        title: await this.generateTitle(strategy),
+        title,
         hook,
         introduction,
         mainContent,
@@ -71,7 +192,8 @@ class ScriptWriterAgent {
         metadata: {
           strategy: strategy,
           generatedAt: new Date().toISOString(),
-          version: '1.0'
+          version: '1.0',
+          aiGenerated: generatedViaGemini
         }
       };
 

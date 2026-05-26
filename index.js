@@ -21,6 +21,22 @@ class YouTubeAutomationAgent {
     this.agents = {};
     this.app = express();
     this.isInitialized = false;
+    this.generationStatus = {
+      status: 'idle',
+      currentStep: 'Idle',
+      error: null,
+      title: null,
+      contentId: null,
+      timestamp: new Date().toISOString(),
+      steps: {
+        strategy: 'pending',
+        script: 'pending',
+        thumbnail: 'pending',
+        seo: 'pending',
+        production: 'pending'
+      },
+      estimatedSecondsRemaining: 0
+    };
   }
 
   async initialize() {
@@ -99,16 +115,31 @@ class YouTubeAutomationAgent {
         status: 'healthy',
         initialized: this.isInitialized,
         agents: Object.keys(this.agents),
+        uptime: process.uptime(),
         timestamp: new Date().toISOString()
       });
     });
 
+    // Get background generation status
+    this.app.get('/generation-status', (req, res) => {
+      res.json(this.generationStatus);
+    });
+    
     // Manual content generation
     this.app.post('/generate', async (req, res) => {
       try {
+        if (this.generationStatus && this.generationStatus.status === 'generating') {
+          return res.status(400).json({ success: false, error: 'A content generation task is already running.' });
+        }
+        
         const { topic, style, length } = req.body;
-        const result = await this.generateContent(topic, style, length);
-        res.json({ success: true, result });
+        
+        // Start background content generation
+        this.runBackgroundGeneration(topic, style, length).catch(err => {
+          this.logger.error('Background generation process crashed:', err);
+        });
+        
+        res.json({ success: true, message: 'Content generation pipeline started successfully in the background.' });
       } catch (error) {
         res.status(500).json({ success: false, error: error.message });
       }
@@ -185,6 +216,96 @@ class YouTubeAutomationAgent {
     };
   }
 
+  async runBackgroundGeneration(topic = null, style = null, length = 'medium') {
+    this.generationStatus = {
+      status: 'generating',
+      currentStep: 'Initializing content generation...',
+      error: null,
+      title: null,
+      contentId: null,
+      timestamp: new Date().toISOString(),
+      steps: {
+        strategy: 'processing',
+        script: 'pending',
+        thumbnail: 'pending',
+        seo: 'pending',
+        production: 'pending'
+      },
+      estimatedSecondsRemaining: 180
+    };
+    
+    try {
+      this.logger.info('Starting background content generation pipeline...');
+      
+      // Step 1: Strategy
+      this.generationStatus.currentStep = 'Analyzing Content Strategy...';
+      const strategy = await this.agents.strategy.generateContentStrategy(topic);
+      this.logger.info(`Strategy generated: ${strategy.topic}`);
+      
+      // Step 2: Script Writing
+      this.generationStatus.steps.strategy = 'completed';
+      this.generationStatus.steps.script = 'processing';
+      this.generationStatus.estimatedSecondsRemaining = 160;
+      this.generationStatus.currentStep = 'Generating Story Script via Google Gemini...';
+      const script = await this.agents.scriptWriter.generateScript(strategy);
+      this.generationStatus.title = script.title;
+      this.logger.info(`Script generated: ${script.title}`);
+      
+      // Step 3: Thumbnail Design
+      this.generationStatus.steps.script = 'completed';
+      this.generationStatus.steps.thumbnail = 'processing';
+      this.generationStatus.estimatedSecondsRemaining = 145;
+      this.generationStatus.currentStep = 'Designing custom thumbnail & enhanced prompts...';
+      const thumbnail = await this.agents.thumbnailDesigner.generateThumbnail(script);
+      this.logger.info('Thumbnail generated');
+      
+      // Step 4: SEO Optimization
+      this.generationStatus.steps.thumbnail = 'completed';
+      this.generationStatus.steps.seo = 'processing';
+      this.generationStatus.estimatedSecondsRemaining = 130;
+      this.generationStatus.currentStep = 'Optimizing SEO keywords and tags...';
+      const seoData = await this.agents.seoOptimizer.optimize(script, strategy);
+      this.logger.info('SEO optimization complete');
+      
+      // Step 5: Production Management (Vivid fairytale assets + Free Google TTS + Slideshow compilation)
+      this.generationStatus.steps.seo = 'completed';
+      this.generationStatus.steps.production = 'processing';
+      this.generationStatus.estimatedSecondsRemaining = 115;
+      this.generationStatus.currentStep = 'Generating visual illustrations and synthesizing audio narration...';
+      const productionData = await this.agents.production.processContent({
+        strategy,
+        script,
+        thumbnail,
+        seo: seoData
+      });
+      this.logger.info('Production processing complete');
+      
+      // Step 6: Save to database
+      this.generationStatus.steps.production = 'completed';
+      this.generationStatus.estimatedSecondsRemaining = 0;
+      this.generationStatus.currentStep = 'Saving final video details to database...';
+      const contentId = await this.db.saveProductionData(productionData);
+      this.logger.info(`Content saved with ID: ${contentId}`);
+      
+      this.generationStatus.status = 'completed';
+      this.generationStatus.currentStep = 'Content generated successfully!';
+      this.generationStatus.contentId = contentId;
+      this.generationStatus.timestamp = new Date().toISOString();
+    } catch (error) {
+      this.logger.error('Background generation failed:', error);
+      this.generationStatus.status = 'failed';
+      this.generationStatus.currentStep = 'Failed during: ' + this.generationStatus.currentStep;
+      for (const [key, val] of Object.entries(this.generationStatus.steps)) {
+        if (val === 'processing') {
+          this.generationStatus.steps[key] = 'failed';
+        }
+      }
+      this.generationStatus.error = error.message || 'Unknown error occurred.';
+      this.generationStatus.timestamp = new Date().toISOString();
+      this.generationStatus.estimatedSecondsRemaining = 0;
+    }
+  }
+  
   async start() {
     const initialized = await this.initialize();
     

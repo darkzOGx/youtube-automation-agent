@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ethereal Dreamscript - YouTube Automation Dashboard</title>
+    <!-- Google Fonts Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         * {
             margin: 0;
@@ -12,166 +16,490 @@
         }
         
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: #333;
+            font-family: 'Outfit', sans-serif;
+            background: linear-gradient(135deg, #09090e 0%, #0d0d18 40%, #180927 100%);
+            color: #f1f5f9;
             min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Glassmorphism Background Gradients */
+        body::before {
+            content: "";
+            position: absolute;
+            top: -20%;
+            left: -10%;
+            width: 50%;
+            height: 60%;
+            background: radial-gradient(circle, rgba(118, 75, 162, 0.25) 0%, rgba(0,0,0,0) 70%);
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        body::after {
+            content: "";
+            position: absolute;
+            bottom: -10%;
+            right: -10%;
+            width: 60%;
+            height: 60%;
+            background: radial-gradient(circle, rgba(102, 126, 234, 0.2) 0%, rgba(0,0,0,0) 70%);
+            z-index: -1;
+            pointer-events: none;
         }
         
         .container {
-            max-width: 1200px;
+            max-width: 1250px;
             margin: 0 auto;
-            padding: 20px;
+            padding: 40px 20px;
         }
         
         .header {
             text-align: center;
-            color: white;
-            margin-bottom: 30px;
+            margin-bottom: 40px;
+            animation: fadeInDown 0.8s ease-out;
         }
         
         .header h1 {
-            font-size: 2.5em;
-            margin-bottom: 10px;
+            font-size: 3em;
+            font-weight: 700;
+            background: linear-gradient(45deg, #a78bfa 0%, #f472b6 50%, #60a5fa 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 8px;
+            letter-spacing: -0.03em;
+            filter: drop-shadow(0 2px 10px rgba(167, 139, 250, 0.2));
         }
         
         .header p {
-            font-size: 1.2em;
-            opacity: 0.9;
+            font-size: 1.15em;
+            color: #94a3b8;
+            font-weight: 300;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
         }
         
+        /* Glassmorphic Cards & Panels */
+        .glass-panel {
+            background: rgba(17, 17, 28, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 20px;
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+            padding: 25px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .glass-panel:hover {
+            border-color: rgba(255, 255, 255, 0.15);
+            box-shadow: 0 12px 50px rgba(0, 0, 0, 0.5);
+            transform: translateY(-2px);
+        }
+
         .status-bar {
-            background: rgba(255, 255, 255, 0.95);
-            padding: 20px;
-            border-radius: 15px;
-            margin-bottom: 30px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            margin-bottom: 40px;
+            animation: fadeInUp 0.8s ease-out 0.2s both;
         }
         
         .status-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
             gap: 20px;
-            margin-bottom: 20px;
+            margin-bottom: 25px;
         }
         
         .status-card {
             text-align: center;
-            padding: 15px;
-            background: linear-gradient(45deg, #f093fb 0%, #f5576c 100%);
-            border-radius: 10px;
-            color: white;
+            padding: 20px;
+            background: rgba(30, 27, 75, 0.4);
+            border: 1px solid rgba(139, 92, 246, 0.15);
+            border-radius: 16px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .status-card::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(90deg, #8b5cf6, #ec4899);
+            opacity: 0.7;
         }
         
         .status-card h3 {
-            font-size: 2em;
-            margin-bottom: 5px;
+            font-size: 2.2em;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 4px;
+            text-shadow: 0 0 15px rgba(255, 255, 255, 0.2);
         }
         
         .status-card p {
-            opacity: 0.9;
+            font-size: 0.9em;
+            color: #94a3b8;
+            font-weight: 400;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .status-card #system-status {
+            font-size: 1.8em;
         }
         
         .dashboard-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-            gap: 20px;
+            grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+            gap: 25px;
+            animation: fadeInUp 0.8s ease-out 0.4s both;
         }
         
         .dashboard-card {
-            background: rgba(255, 255, 255, 0.95);
-            padding: 25px;
-            border-radius: 15px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            min-height: 280px;
+            display: flex;
+            flex-direction: column;
         }
         
         .dashboard-card h2 {
-            color: #667eea;
-            margin-bottom: 15px;
+            font-size: 1.4em;
+            font-weight: 600;
+            color: #a78bfa;
+            margin-bottom: 20px;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            padding-bottom: 12px;
+        }
+
+        .dashboard-card h2 span.icon {
+            font-size: 1.2em;
         }
         
         .card-content {
+            font-size: 0.95em;
             line-height: 1.6;
+            color: #cbd5e1;
+            flex-grow: 1;
         }
         
         .loading {
-            text-align: center;
-            color: #666;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            height: 120px;
+            color: #64748b;
             font-style: italic;
         }
+
+        .loading::before {
+            content: "🔄";
+            font-style: normal;
+            font-size: 1.8em;
+            animation: spin 1.5s linear infinite;
+        }
         
+        /* Interactive Buttons */
         .btn {
-            background: linear-gradient(45deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #d946ef 100%);
             color: white;
-            padding: 10px 20px;
+            font-family: 'Outfit', sans-serif;
+            font-weight: 600;
+            font-size: 1em;
+            padding: 12px 28px;
             border: none;
-            border-radius: 5px;
+            border-radius: 12px;
             cursor: pointer;
-            margin: 5px;
-            transition: transform 0.2s;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 20px rgba(99, 102, 241, 0.3);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
         }
         
         .btn:hover {
             transform: translateY(-2px);
+            box-shadow: 0 6px 25px rgba(99, 102, 241, 0.5);
+            filter: brightness(1.1);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 1px solid rgba(139, 92, 246, 0.4);
+            color: #cbd5e1;
+            box-shadow: none;
+        }
+
+        .btn-outline:hover {
+            background: rgba(139, 92, 246, 0.1);
+            border-color: #8b5cf6;
+            color: white;
+            box-shadow: 0 4px 15px rgba(139, 92, 246, 0.15);
         }
         
         .schedule-item {
-            background: #f8f9ff;
-            padding: 10px;
-            margin: 10px 0;
-            border-radius: 5px;
-            border-left: 4px solid #667eea;
+            background: rgba(30, 41, 59, 0.3);
+            padding: 14px;
+            margin: 12px 0;
+            border-radius: 12px;
+            border-left: 4px solid #8b5cf6;
+            transition: all 0.2s ease;
+        }
+
+        .schedule-item:hover {
+            background: rgba(30, 41, 59, 0.5);
+            transform: scale(1.01);
         }
         
         .log-entry {
             font-family: 'Courier New', monospace;
-            font-size: 0.9em;
-            padding: 5px;
-            margin: 2px 0;
-            background: #f5f5f5;
-            border-radius: 3px;
+            font-size: 0.85em;
+            padding: 8px 12px;
+            margin: 6px 0;
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.03);
         }
         
-        .success { color: #28a745; }
-        .warning { color: #ffc107; }
-        .error { color: #dc3545; }
-        .info { color: #17a2b8; }
+        .success { color: #34d399; }
+        .warning { color: #fbbf24; }
+        .error { color: #f87171; }
+        .info { color: #60a5fa; }
         
+        /* Floating Refresh Button */
         .refresh-btn {
             position: fixed;
-            bottom: 20px;
-            right: 20px;
-            width: 60px;
-            height: 60px;
+            bottom: 30px;
+            right: 30px;
+            width: 56px;
+            height: 56px;
             border-radius: 50%;
-            background: linear-gradient(45deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%);
             color: white;
             border: none;
-            font-size: 1.5em;
+            font-size: 1.4em;
             cursor: pointer;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-            transition: transform 0.2s;
+            box-shadow: 0 4px 20px rgba(139, 92, 246, 0.4);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
         }
         
         .refresh-btn:hover {
-            transform: scale(1.1);
+            transform: scale(1.1) rotate(180deg);
+            box-shadow: 0 6px 25px rgba(139, 92, 246, 0.6);
+        }
+
+        /* Real-Time Generator Widget styling */
+        .generator-card {
+            grid-column: 1 / -1;
+            background: linear-gradient(135deg, rgba(20, 20, 35, 0.8) 0%, rgba(30, 20, 50, 0.8) 100%);
+            border: 1px solid rgba(139, 92, 246, 0.25);
+            box-shadow: 0 8px 32px 0 rgba(139, 92, 246, 0.15);
+            animation: fadeInUp 0.8s ease-out both;
+        }
+
+        .generator-content {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .generator-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .generator-info-box {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .spinner-container {
+            width: 48px;
+            height: 48px;
+            position: relative;
+        }
+
+        .spinner {
+            width: 100%;
+            height: 100%;
+            border: 4px solid rgba(139, 92, 246, 0.1);
+            border-top: 4px solid #c084fc;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            border-radius: 50px;
+            font-size: 0.85em;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .badge-idle {
+            background: rgba(100, 116, 139, 0.15);
+            color: #94a3b8;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+        }
+
+        .badge-generating {
+            background: rgba(168, 85, 247, 0.15);
+            color: #c084fc;
+            border: 1px solid rgba(168, 85, 247, 0.3);
+            animation: pulse 2s infinite;
+        }
+
+        .badge-completed {
+            background: rgba(52, 211, 153, 0.15);
+            color: #34d399;
+            border: 1px solid rgba(52, 211, 153, 0.3);
+        }
+
+        .badge-failed {
+            background: rgba(248, 113, 113, 0.15);
+            color: #f87171;
+            border: 1px solid rgba(248, 113, 113, 0.3);
+        }
+
+        .progress-bar-container {
+            width: 100%;
+            height: 10px;
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: 50px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            position: relative;
+        }
+
+        .progress-bar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #6366f1, #a855f7, #ec4899);
+            border-radius: 50px;
+            transition: width 0.5s ease;
+            box-shadow: 0 0 10px rgba(168, 85, 247, 0.5);
+        }
+
+        .step-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 10px;
+        }
+
+        .step-item {
+            background: rgba(15, 23, 42, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            border-radius: 10px;
+            padding: 12px;
+            font-size: 0.85em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #94a3b8;
+            transition: all 0.3s ease;
+        }
+
+        .step-item.active {
+            border-color: rgba(168, 85, 247, 0.4);
+            background: rgba(168, 85, 247, 0.05);
+            color: #f1f5f9;
+            box-shadow: 0 0 15px rgba(168, 85, 247, 0.1);
+        }
+
+        .step-item.done {
+            border-color: rgba(52, 211, 153, 0.2);
+            background: rgba(52, 211, 153, 0.03);
+            color: #34d399;
+        }
+
+        .step-icon {
+            font-size: 1.2em;
+        }
+
+        /* Animations */
+        @keyframes spin {
+            100% { transform: rotate(360deg); }
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px 10px;
+            }
+            .header h1 {
+                font-size: 2.2em;
+            }
+            .generator-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
+        <!-- Dashboard Header -->
         <div class="header">
             <h1>🎬 Ethereal Dreamscript</h1>
-            <p>YouTube Automation Dashboard</p>
+            <p>YouTube Automation Center</p>
         </div>
         
-        <div class="status-bar">
+        <!-- Status Bar Panel -->
+        <div class="status-bar glass-panel">
             <div class="status-grid">
                 <div class="status-card">
-                    <h3 id="system-status">🟢</h3>
+                    <h3 id="system-status">🔄</h3>
                     <p>System Status</p>
                 </div>
                 <div class="status-card">
@@ -187,57 +515,121 @@
                     <p>Next Generation</p>
                 </div>
             </div>
-            <div style="text-align: center;">
-                <button class="btn" onclick="generateContent()">🎬 Generate Content Now</button>
-                <button class="btn" onclick="viewAnalytics()">📊 View Analytics</button>
-                <button class="btn" onclick="viewSchedule()">📅 View Schedule</button>
+            <div style="text-align: center; display: flex; justify-content: center; gap: 15px; flex-wrap: wrap;">
+                <button class="btn" onclick="triggerContentGeneration()">🎬 Generate Content Now</button>
+                <button class="btn btn-outline" onclick="viewAnalytics()">📊 View Analytics</button>
+                <button class="btn btn-outline" onclick="viewSchedule()">📅 View Schedule</button>
             </div>
         </div>
         
+        <!-- Dashboard Core Grid -->
         <div class="dashboard-grid">
-            <div class="dashboard-card">
-                <h2>📈 System Overview</h2>
+            
+            <!-- Real-time Asynchronous Content Generator Panel -->
+            <div class="dashboard-card glass-panel generator-card">
+                <h2><span class="icon">🤖</span> Content Generation Hub</h2>
+                <div class="card-content generator-content">
+                    
+                    <div class="generator-header">
+                        <div class="generator-info-box">
+                            <div class="spinner-container" id="generator-spinner" style="display: none;">
+                                <div class="spinner"></div>
+                            </div>
+                            <div>
+                                <h3 id="generator-title" style="font-size: 1.25em; font-weight: 600; margin-bottom: 4px;">System is Ready</h3>
+                                <p id="generator-subtitle" style="color: #94a3b8; font-size: 0.9em;">Ready to run story generation pipeline.</p>
+                                <p id="generator-eta" style="color: #c084fc; font-size: 0.85em; font-weight: 500; margin-top: 6px; display: none;"></p>
+                            </div>
+                        </div>
+                        <div>
+                            <span class="status-badge badge-idle" id="generator-badge">Idle</span>
+                        </div>
+                    </div>
+
+                    <!-- Progress Bar -->
+                    <div class="progress-bar-container" id="generator-progress-container" style="display: none;">
+                        <div class="progress-bar" id="generator-progress-bar"></div>
+                    </div>
+
+                    <!-- Pipeline Steps -->
+                    <div class="step-list" id="generator-steps" style="display: none;">
+                        <div class="step-item" id="step-strategy">
+                            <span class="step-icon">💡</span>
+                            <span>Content Strategy</span>
+                        </div>
+                        <div class="step-item" id="step-script">
+                            <span class="step-icon">✍️</span>
+                            <span>Gemini Storytelling Script</span>
+                        </div>
+                        <div class="step-item" id="step-thumbnail">
+                            <span class="step-icon">🎨</span>
+                            <span>Thumbnail Concept Design</span>
+                        </div>
+                        <div class="step-item" id="step-seo">
+                            <span class="step-icon">🏷️</span>
+                            <span>SEO Metadata & Keywords</span>
+                        </div>
+                        <div class="step-item" id="step-production">
+                            <span class="step-icon">🎬</span>
+                            <span>Slideshow, Visuals & TTS Concatenation</span>
+                        </div>
+                    </div>
+
+                    <!-- Error Alert -->
+                    <div id="generator-error-box" class="log-entry error" style="display: none;"></div>
+                </div>
+            </div>
+
+            <!-- System Overview Card -->
+            <div class="dashboard-card glass-panel">
+                <h2><span class="icon">📈</span> System Overview</h2>
                 <div class="card-content">
                     <div id="system-overview" class="loading">Loading system status...</div>
                 </div>
             </div>
             
-            <div class="dashboard-card">
-                <h2>📅 Upcoming Schedule</h2>
+            <!-- Upcoming Schedule Card -->
+            <div class="dashboard-card glass-panel">
+                <h2><span class="icon">📅</span> Upcoming Schedule</h2>
                 <div class="card-content">
                     <div id="upcoming-schedule" class="loading">Loading schedule...</div>
                 </div>
             </div>
             
-            <div class="dashboard-card">
-                <h2>🎯 Content Strategy</h2>
+            <!-- Content Strategy Card -->
+            <div class="dashboard-card glass-panel">
+                <h2><span class="icon">🎯</span> Content Strategy</h2>
                 <div class="card-content">
-                    <div id="content-strategy">
-                        <p><strong>Current Focus:</strong> Animated Storytelling</p>
-                        <p><strong>Target Audience:</strong> Creative individuals interested in storytelling and imagination</p>
-                        <p><strong>Content Types:</strong> Story-driven content, Explainers, Tutorials</p>
+                    <div id="content-strategy" style="display: flex; flex-direction: column; gap: 10px;">
+                        <p><strong>Current Channel Name:</strong> Ceritaku Singkat</p>
+                        <p><strong>Current Focus:</strong> Children's Animated Stories</p>
+                        <p><strong>Target Audience:</strong> Kids & Toddlers (Bedtime stories, fairy tales, moral lessons in Indonesian)</p>
+                        <p><strong>Content Types:</strong> Story-driven content, Fairytales, Fables</p>
                         <p><strong>Posting Frequency:</strong> Daily</p>
                         <p><strong>Optimal Time:</strong> 2:00 PM</p>
                     </div>
                 </div>
             </div>
             
-            <div class="dashboard-card">
-                <h2>📊 Recent Activity</h2>
+            <!-- Recent Activity Card -->
+            <div class="dashboard-card glass-panel">
+                <h2><span class="icon">📊</span> Recent Activity</h2>
                 <div class="card-content">
                     <div id="recent-activity" class="loading">Loading activity...</div>
                 </div>
             </div>
             
-            <div class="dashboard-card">
-                <h2>🤖 Agent Status</h2>
+            <!-- Agent Status Card -->
+            <div class="dashboard-card glass-panel">
+                <h2><span class="icon">🤖</span> Agent Status</h2>
                 <div class="card-content">
                     <div id="agent-status" class="loading">Loading agent status...</div>
                 </div>
             </div>
             
-            <div class="dashboard-card">
-                <h2>📈 Performance Metrics</h2>
+            <!-- Performance Metrics Card -->
+            <div class="dashboard-card glass-panel">
+                <h2><span class="icon">📈</span> Performance Metrics</h2>
                 <div class="card-content">
                     <div id="performance-metrics" class="loading">Loading metrics...</div>
                 </div>
@@ -245,11 +637,14 @@
         </div>
     </div>
     
+    <!-- Refresh Button -->
     <button class="refresh-btn" onclick="refreshDashboard()" title="Refresh Dashboard">
         🔄
     </button>
     
     <script>
+        let pollingInterval = null;
+
         // Dashboard functionality
         async function loadDashboard() {
             try {
@@ -271,6 +666,9 @@
                 } catch (error) {
                     console.log('Analytics not available yet');
                 }
+
+                // Check generation status
+                checkGenerationStatus();
                 
             } catch (error) {
                 console.error('Dashboard load error:', error);
@@ -282,29 +680,34 @@
             document.getElementById('system-status').textContent = data.status === 'healthy' ? '🟢' : '🔴';
             
             const overview = document.getElementById('system-overview');
+            overview.classList.remove('loading');
             overview.innerHTML = `
-                <p><strong>Status:</strong> ${data.initialized ? 'Initialized' : 'Initializing'}</p>
-                <p><strong>Agents Active:</strong> ${data.agents ? data.agents.length : 0}/7</p>
-                <p><strong>Uptime:</strong> ${formatUptime(process?.uptime?.() || 0)}</p>
-                <p><strong>Last Updated:</strong> ${new Date().toLocaleTimeString()}</p>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <p><strong>Status:</strong> <span class="success" style="font-weight: 600;">${data.initialized ? 'Initialized & Active' : 'Initializing'}</span></p>
+                    <p><strong>Agents Active:</strong> ${data.agents ? data.agents.length : 0} / 7</p>
+                    <p><strong>Server Uptime:</strong> ${formatUptime(data.uptime || 0)}</p>
+                    <p><strong>Last Updated:</strong> ${new Date().toLocaleTimeString()}</p>
+                </div>
             `;
             
             const agentStatus = document.getElementById('agent-status');
+            agentStatus.classList.remove('loading');
             if (data.agents) {
                 agentStatus.innerHTML = data.agents.map(agent => 
-                    `<div class="schedule-item">✅ ${agent} Agent</div>`
+                    `<div class="schedule-item" style="border-left-color: #34d399; margin: 6px 0; padding: 10px 14px;">✅ <strong style="text-transform: capitalize;">${agent}</strong> Agent Active</div>`
                 ).join('');
             }
         }
         
         function updateSchedule(data) {
             const schedule = document.getElementById('upcoming-schedule');
+            schedule.classList.remove('loading');
             
             if (data && data.length > 0) {
                 schedule.innerHTML = data.slice(0, 3).map(item => `
                     <div class="schedule-item">
                         <strong>${item.title || 'Content Generation'}</strong><br>
-                        <small>${new Date(item.publishTime || item.scheduledTime).toLocaleString()}</small>
+                        <small style="color: #94a3b8;">${new Date(item.publishTime || item.scheduledTime).toLocaleString()}</small>
                     </div>
                 `).join('');
                 
@@ -314,22 +717,22 @@
                     const nextTime = new Date(nextItem.publishTime || nextItem.scheduledTime);
                     document.getElementById('next-generation').textContent = 
                         nextTime.toLocaleDateString() === new Date().toLocaleDateString() 
-                            ? nextTime.toLocaleTimeString() 
+                            ? nextTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
                             : 'Tomorrow';
                 }
             } else {
                 schedule.innerHTML = `
                     <div class="schedule-item">
-                        <strong>📅 Daily Content Generation</strong><br>
-                        <small>Scheduled for 6:00 AM daily</small>
+                        <strong>📅 Daily Kid Story Generation</strong><br>
+                        <small style="color: #94a3b8;">Scheduled for 6:00 AM daily</small>
                     </div>
                     <div class="schedule-item">
-                        <strong>📊 Analytics Collection</strong><br>
-                        <small>Scheduled for 9:00 AM daily</small>
+                        <strong>📊 YouTube Analytics Collection</strong><br>
+                        <small style="color: #94a3b8;">Scheduled for 9:00 AM daily</small>
                     </div>
                     <div class="schedule-item">
                         <strong>🔧 Optimization Tasks</strong><br>
-                        <small>Scheduled for 10:00 PM daily</small>
+                        <small style="color: #94a3b8;">Scheduled for 10:00 PM daily</small>
                     </div>
                 `;
                 document.getElementById('next-generation').textContent = '6:00 AM';
@@ -338,30 +741,37 @@
         
         function updateMetrics(data) {
             const metrics = document.getElementById('performance-metrics');
+            metrics.classList.remove('loading');
             if (data && data.totalVideos !== undefined) {
                 document.getElementById('content-count').textContent = data.totalVideos || '0';
                 document.getElementById('published-count').textContent = data.totalVideos || '0';
                 
                 metrics.innerHTML = `
-                    <p><strong>Average Performance:</strong> ${data.averagePerformanceScore || 'N/A'}</p>
-                    <p><strong>Total Content:</strong> ${data.totalVideos || 0}</p>
-                    <p><strong>System Health:</strong> Excellent</p>
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <p><strong>Average Performance Score:</strong> <span class="success" style="font-weight:600;">${data.averagePerformanceScore || 'N/A'}/100</span></p>
+                        <p><strong>Total Content Generated:</strong> ${data.totalVideos || 0}</p>
+                        <p><strong>Channel Category:</strong> Children Stories</p>
+                        <p><strong>System Health:</strong> Excellent</p>
+                    </div>
                 `;
             } else {
                 metrics.innerHTML = `
-                    <p><strong>Status:</strong> System just started</p>
-                    <p><strong>First Content:</strong> Will generate within 24 hours</p>
-                    <p><strong>Automation:</strong> Active and ready</p>
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <p><strong>Status:</strong> Automation active and waiting</p>
+                        <p><strong>First Video Generation:</strong> Ready now</p>
+                        <p><strong>Channel Locale:</strong> ID (Indonesia)</p>
+                    </div>
                 `;
             }
             
             // Update activity log
             const activity = document.getElementById('recent-activity');
+            activity.classList.remove('loading');
             activity.innerHTML = `
                 <div class="log-entry success">✅ System initialized successfully</div>
-                <div class="log-entry info">ℹ️ All 7 agents are active</div>
-                <div class="log-entry info">ℹ️ Content strategy loaded</div>
-                <div class="log-entry info">ℹ️ Automation scheduler started</div>
+                <div class="log-entry info">ℹ️ All 7 agents (Strategy, Script, Thumbnail, SEO, Production, Publishing, Analytics) are active</div>
+                <div class="log-entry info">ℹ️ Kids target audience set: @ceritaku.singkat</div>
+                <div class="log-entry info">ℹ️ Free Google Translate TTS & Pollinations enabled</div>
                 <div class="log-entry success">✅ Ready for content generation</div>
             `;
         }
@@ -371,9 +781,251 @@
             const minutes = Math.floor((seconds % 3600) / 60);
             return `${hours}h ${minutes}m`;
         }
+
+        async function checkGenerationStatus() {
+            try {
+                const response = await fetch('/generation-status');
+                const status = await response.json();
+                updateGeneratorWidget(status);
+            } catch (err) {
+                console.error('Failed to poll generation status:', err);
+            }
+        }
+
+        let localSecondsRemaining = 0;
+        let countdownInterval = null;
+
+        function formatRemainingTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return `${mins}m ${secs.toString().padStart(2, '0')}s`;
+        }
+
+        function updateStepStatus(elementId, status) {
+            const el = document.getElementById(elementId);
+            if (!el) return;
+            
+            // Clear existing classes
+            el.className = 'step-item';
+            
+            // Find or create label span
+            let label = el.querySelector('.step-status-badge');
+            if (!label) {
+                label = document.createElement('span');
+                label.className = 'step-status-badge';
+                label.style.marginLeft = 'auto';
+                label.style.fontSize = '0.75em';
+                label.style.fontWeight = '600';
+                label.style.padding = '3px 8px';
+                label.style.borderRadius = '20px';
+                el.appendChild(label);
+            }
+            
+            if (status === 'pending') {
+                el.classList.add('pending');
+                label.textContent = 'Queue';
+                label.style.background = 'rgba(255,255,255,0.05)';
+                label.style.color = '#64748b';
+                label.style.border = '1px solid rgba(255,255,255,0.05)';
+            } else if (status === 'processing') {
+                el.classList.add('active');
+                label.textContent = 'In Progress';
+                label.style.background = 'rgba(168, 85, 247, 0.15)';
+                label.style.color = '#c084fc';
+                label.style.border = '1px solid rgba(168, 85, 247, 0.3)';
+                label.style.animation = 'pulse 1.5s infinite';
+            } else if (status === 'completed') {
+                el.classList.add('done');
+                label.textContent = 'Finished';
+                label.style.background = 'rgba(52, 211, 153, 0.15)';
+                label.style.color = '#34d399';
+                label.style.border = '1px solid rgba(52, 211, 153, 0.3)';
+            } else if (status === 'failed') {
+                el.className = 'step-item';
+                el.style.borderColor = 'rgba(248, 113, 113, 0.4)';
+                el.style.background = 'rgba(248, 113, 113, 0.05)';
+                el.style.color = '#f87171';
+                label.textContent = 'Failed';
+                label.style.background = 'rgba(248, 113, 113, 0.15)';
+                label.style.color = '#f87171';
+                label.style.border = '1px solid rgba(248, 113, 113, 0.3)';
+            }
+        }
+
+        function updateGeneratorWidget(data) {
+            const badge = document.getElementById('generator-badge');
+            const title = document.getElementById('generator-title');
+            const subtitle = document.getElementById('generator-subtitle');
+            const etaBox = document.getElementById('generator-eta');
+            const spinner = document.getElementById('generator-spinner');
+            const progressContainer = document.getElementById('generator-progress-container');
+            const progressBar = document.getElementById('generator-progress-bar');
+            const stepsContainer = document.getElementById('generator-steps');
+            const errorBox = document.getElementById('generator-error-box');
+
+            // Reset states
+            badge.className = 'status-badge';
+            errorBox.style.display = 'none';
+
+            if (data.status === 'idle') {
+                badge.classList.add('badge-idle');
+                badge.textContent = 'Idle';
+                title.textContent = 'Generator is Ready';
+                subtitle.textContent = 'Click "Generate Content Now" to trigger the automated kids story generation pipeline.';
+                etaBox.style.display = 'none';
+                spinner.style.display = 'none';
+                progressContainer.style.display = 'none';
+                stepsContainer.style.display = 'none';
+
+                if (pollingInterval) {
+                    clearInterval(pollingInterval);
+                    pollingInterval = null;
+                }
+                if (countdownInterval) {
+                    clearInterval(countdownInterval);
+                    countdownInterval = null;
+                }
+            } else if (data.status === 'generating') {
+                badge.classList.add('badge-generating');
+                badge.textContent = 'Generating';
+                title.textContent = data.title ? `Generating: ${data.title}` : 'Generating Video Content...';
+                subtitle.textContent = data.currentStep || 'Running task...';
+                spinner.style.display = 'block';
+                progressContainer.style.display = 'block';
+                stepsContainer.style.display = 'grid';
+
+                // Display dynamic ETA countdown
+                if (data.estimatedSecondsRemaining !== undefined && data.estimatedSecondsRemaining > 0) {
+                    etaBox.style.display = 'block';
+                    etaBox.innerHTML = `⏳ <strong>Estimated Remaining:</strong> ${formatRemainingTime(data.estimatedSecondsRemaining)}`;
+                    localSecondsRemaining = data.estimatedSecondsRemaining;
+                    
+                    if (!countdownInterval) {
+                        countdownInterval = setInterval(() => {
+                            if (localSecondsRemaining > 5) {
+                                localSecondsRemaining--;
+                                etaBox.innerHTML = `⏳ <strong>Estimated Remaining:</strong> ${formatRemainingTime(localSecondsRemaining)}`;
+                            }
+                        }, 1000);
+                    }
+                } else {
+                    etaBox.style.display = 'none';
+                }
+
+                // Calculate progress bar width based on active step
+                let percent = 5;
+                const currentStep = data.currentStep.toLowerCase();
+                
+                if (data.steps) {
+                    updateStepStatus('step-strategy', data.steps.strategy);
+                    updateStepStatus('step-script', data.steps.script);
+                    updateStepStatus('step-thumbnail', data.steps.thumbnail);
+                    updateStepStatus('step-seo', data.steps.seo);
+                    updateStepStatus('step-production', data.steps.production);
+
+                    // Compute progress percent based on steps
+                    let completedSteps = 0;
+                    if (data.steps.strategy === 'completed') completedSteps++;
+                    if (data.steps.script === 'completed') completedSteps++;
+                    if (data.steps.thumbnail === 'completed') completedSteps++;
+                    if (data.steps.seo === 'completed') completedSteps++;
+                    if (data.steps.production === 'completed') completedSteps++;
+
+                    percent = Math.max(5, Math.min(95, completedSteps * 20));
+                    if (currentStep.includes('illustrations') || currentStep.includes('tts') || currentStep.includes('narration') || currentStep.includes('video')) {
+                        percent = 90;
+                    }
+                } else {
+                    // Fallback heuristics
+                    document.querySelectorAll('.step-item').forEach(el => el.className = 'step-item');
+                    if (currentStep.includes('analyzing')) {
+                        percent = 15;
+                        document.getElementById('step-strategy').classList.add('active');
+                    } else if (currentStep.includes('script') || currentStep.includes('gemini')) {
+                        percent = 35;
+                        document.getElementById('step-strategy').classList.add('done');
+                        document.getElementById('step-script').classList.add('active');
+                    } else if (currentStep.includes('thumbnail') || currentStep.includes('designing')) {
+                        percent = 55;
+                        document.getElementById('step-strategy').classList.add('done');
+                        document.getElementById('step-script').classList.add('done');
+                        document.getElementById('step-thumbnail').classList.add('active');
+                    } else if (currentStep.includes('seo') || currentStep.includes('optimizing')) {
+                        percent = 75;
+                        document.getElementById('step-strategy').classList.add('done');
+                        document.getElementById('step-script').classList.add('done');
+                        document.getElementById('step-thumbnail').classList.add('done');
+                        document.getElementById('step-seo').classList.add('active');
+                    } else {
+                        percent = 90;
+                        document.getElementById('step-strategy').classList.add('done');
+                        document.getElementById('step-script').classList.add('done');
+                        document.getElementById('step-thumbnail').classList.add('done');
+                        document.getElementById('step-seo').classList.add('done');
+                        document.getElementById('step-production').classList.add('active');
+                    }
+                }
+
+                progressBar.style.width = `${percent}%`;
+
+                // Start polling if not already running
+                if (!pollingInterval) {
+                    pollingInterval = setInterval(checkGenerationStatus, 2000);
+                }
+            } else if (data.status === 'completed') {
+                badge.classList.add('badge-completed');
+                badge.textContent = 'Completed';
+                title.textContent = `Completed: ${data.title || 'New Story'}`;
+                subtitle.textContent = 'Content created successfully and scheduled for publication!';
+                etaBox.style.display = 'none';
+                spinner.style.display = 'none';
+                progressContainer.style.display = 'block';
+                progressBar.style.width = '100%';
+                stepsContainer.style.display = 'grid';
+                
+                updateStepStatus('step-strategy', 'completed');
+                updateStepStatus('step-script', 'completed');
+                updateStepStatus('step-thumbnail', 'completed');
+                updateStepStatus('step-seo', 'completed');
+                updateStepStatus('step-production', 'completed');
+
+                if (pollingInterval) {
+                    clearInterval(pollingInterval);
+                    pollingInterval = null;
+                }
+                if (countdownInterval) {
+                    clearInterval(countdownInterval);
+                    countdownInterval = null;
+                }
+                
+                // Refresh main stats
+                setTimeout(loadDashboard, 3000);
+            } else if (data.status === 'failed') {
+                badge.classList.add('badge-failed');
+                badge.textContent = 'Failed';
+                title.textContent = 'Generation Failed';
+                subtitle.textContent = 'The pipeline encountered an error.';
+                etaBox.style.display = 'none';
+                spinner.style.display = 'none';
+                progressContainer.style.display = 'none';
+                stepsContainer.style.display = 'none';
+                
+                errorBox.style.display = 'block';
+                errorBox.innerHTML = `<strong>Error details:</strong> ${data.error || 'Unknown pipeline failure.'}`;
+
+                if (pollingInterval) {
+                    clearInterval(pollingInterval);
+                    pollingInterval = null;
+                }
+                if (countdownInterval) {
+                    clearInterval(countdownInterval);
+                    countdownInterval = null;
+                }
+            }
+        }
         
-        async function generateContent() {
-            if (confirm('Generate content now? This will create a new video for your channel.')) {
+        async function triggerContentGeneration() {
+            if (confirm('Generate content now? This will launch the background generation pipeline to compile a new story video.')) {
                 try {
                     const response = await fetch('/generate', {
                         method: 'POST',
@@ -381,10 +1033,15 @@
                         body: JSON.stringify({ topic: null, style: 'story' })
                     });
                     const result = await response.json();
-                    alert(`Content generation started! Title: ${result.result?.title || 'New Content'}`);
-                    refreshDashboard();
+                    
+                    if (result.success) {
+                        alert('Background content generation pipeline started successfully!');
+                        checkGenerationStatus();
+                    } else {
+                        alert('Failed to start generation: ' + result.error);
+                    }
                 } catch (error) {
-                    alert('Content generation failed. Please try again.');
+                    alert('Request failed. Please check if your server is running.');
                 }
             }
         }
@@ -401,7 +1058,7 @@
             loadDashboard();
         }
         
-        // Auto-refresh every 30 seconds
+        // Auto-refresh stats every 30 seconds
         setInterval(refreshDashboard, 30000);
         
         // Load dashboard on page load

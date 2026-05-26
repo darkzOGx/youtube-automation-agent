@@ -19,10 +19,8 @@ config/*.pem
 *.cert
 *.crt
 
-# Database
-data/*.db
-data/*.sqlite
-data/*.db-journal
+# Database & Generated Assets
+data/
 *.db-shm
 *.db-wal
 
