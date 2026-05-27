@@ -71,14 +71,23 @@ class ScriptWriterAgent {
       if (this.gemini) {
         try {
           this.logger.info('Invoking Google Gemini for script generation...');
-          const prompt = `You are an expert children's fairy tale writer and educator. Create a complete, highly engaging children's story script in Indonesian based on the following topic/angle:
+          const prompt = `You are an expert Indonesian children's fairy tale writer. Create a complete, highly engaging children's story script in Indonesian (Bahasa Indonesia) based on this topic and angle:
 Topic: "${strategy.topic}"
 Angle: "${strategy.angle}"
-Target Audience: "${strategy.targetAudience}"
+Target Audience: Anak-anak Indonesia usia 3-8 tahun (balita dan anak SD)
 
-Provide the output in valid, raw JSON format matching this exact schema (do not wrap in markdown or any text besides the JSON itself, do not include markdown code block characters):
+IMPORTANT TITLE RULES:
+- The title MUST be in natural Bahasa Indonesia
+- It MUST sound like a real Indonesian children's story title
+- Format examples: "Kancil dan Harimau yang Baik Hati", "Petualangan Seru Si Kura-Kura", "Bintang Kecil yang Berani"
+- DO NOT use English words in the title
+- DO NOT add "(2025)", "(2026)", or any year
+- DO NOT use words like "Resmi", "Ultimate", "Secret", "Amazing", "Panduan", "Terbaik"
+- Keep it simple, warm, and magical — like a real dongeng title
+
+Provide the output in valid, raw JSON format (no markdown, no code blocks):
 {
-  "title": "A beautiful story title in Indonesian",
+  "title": "Judul dongeng yang indah dan alami dalam Bahasa Indonesia",
   "hook": {
     "text": "A brief opening question or statement to hook the kids in Indonesian"
   },

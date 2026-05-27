@@ -81,41 +81,29 @@ class SEOOptimizerAgent {
 
   async optimizeTitle(originalTitle, strategy) {
     // YouTube title limit: 100 characters, optimal: 60-70
-    let optimizedTitle = originalTitle;
-    
-    // Add power words if not present
-    const powerWords = ['Ultimate', 'Complete', 'Essential', 'Proven', 'Secret', 'Amazing', 'Powerful'];
-    const hasPowerWord = powerWords.some(word => 
-      originalTitle.toLowerCase().includes(word.toLowerCase())
-    );
-    
-    if (!hasPowerWord && originalTitle.length < 60) {
-      const randomPowerWord = powerWords[Math.floor(Math.random() * powerWords.length)];
-      optimizedTitle = `${randomPowerWord} ${originalTitle}`;
+    // For Indonesian children's story channel — do NOT inject English power words or year.
+    // The title from Gemini is already natural Indonesian. Just clean and trim it.
+    let optimizedTitle = originalTitle.trim();
+
+    // Remove any accidental year already appended (e.g. "(2025)" or "(2026)")
+    optimizedTitle = optimizedTitle.replace(/\s*\(\d{4}\)\s*$/, '').trim();
+
+    // Remove leading English power words that may have leaked in
+    const badPrefixes = ['Ultimate ', 'Complete ', 'Essential ', 'Proven ', 'Secret ', 'Amazing ', 'Powerful ', 'Resmi '];
+    for (const prefix of badPrefixes) {
+      if (optimizedTitle.startsWith(prefix)) {
+        optimizedTitle = optimizedTitle.slice(prefix.length).trim();
+      }
     }
-    
-    // Add year if relevant and not present
-    const currentYear = new Date().getFullYear();
-    if (!optimizedTitle.includes(currentYear.toString()) && optimizedTitle.length < 70) {
-      optimizedTitle = `${optimizedTitle} (${currentYear})`;
-    }
-    
-    // Ensure primary keyword is in title
-    const primaryKeyword = strategy.keywords[0];
-    if (primaryKeyword && !optimizedTitle.toLowerCase().includes(primaryKeyword.toLowerCase())) {
-      optimizedTitle = `${optimizedTitle} - ${primaryKeyword}`;
-    }
-    
-    // Truncate if too long
+
+    // Truncate if too long (100 char YouTube limit)
     if (optimizedTitle.length > 100) {
       optimizedTitle = optimizedTitle.substring(0, 97) + '...';
     }
-    
-    // Capitalize properly
-    optimizedTitle = this.titleCase(optimizedTitle);
-    
+
     return optimizedTitle;
   }
+
 
   titleCase(str) {
     const smallWords = ['a', 'an', 'and', 'as', 'at', 'but', 'by', 'for', 'if', 'in', 'of', 'on', 'or', 'the', 'to', 'via', 'vs'];

@@ -473,6 +473,229 @@
             }
         }
 
+        .pipeline-card {
+            grid-column: 1 / -1;
+            background: linear-gradient(135deg, rgba(15, 15, 25, 0.7) 0%, rgba(20, 15, 35, 0.7) 100%);
+            border: 1px solid rgba(139, 92, 246, 0.2);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+            margin-bottom: 10px;
+        }
+
+        .pipeline-tabs {
+            display: flex;
+            gap: 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            padding-bottom: 12px;
+        }
+
+        .tab-btn {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            color: #94a3b8;
+            padding: 8px 18px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-family: 'Outfit', sans-serif;
+            font-weight: 500;
+            font-size: 0.9em;
+            transition: all 0.3s ease;
+        }
+
+        .tab-btn:hover {
+            background: rgba(139, 92, 246, 0.1);
+            color: #f1f5f9;
+            border-color: rgba(139, 92, 246, 0.3);
+        }
+
+        .tab-btn.active {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(139, 92, 246, 0.2) 100%);
+            color: #c084fc;
+            border-color: #8b5cf6;
+            box-shadow: 0 0 12px rgba(139, 92, 246, 0.2);
+        }
+
+        /* Pipeline Tables / List styling */
+        .pipeline-table-container {
+            overflow-x: auto;
+            width: 100%;
+        }
+
+        .pipeline-table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 0.95em;
+        }
+
+        .pipeline-table th, .pipeline-table td {
+            padding: 14px 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .pipeline-table th {
+            color: #a78bfa;
+            font-weight: 600;
+            font-size: 0.85em;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border-bottom: 1px solid rgba(139, 92, 246, 0.2);
+        }
+
+        .pipeline-table tr:hover {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .pipeline-title {
+            font-weight: 500;
+            color: #f1f5f9;
+            max-width: 380px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .pipeline-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+
+        .badge-scheduled {
+            background: rgba(59, 130, 246, 0.15);
+            color: #60a5fa;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+
+        .badge-paused {
+            background: rgba(245, 158, 11, 0.15);
+            color: #fbbf24;
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+
+        .badge-published {
+            background: rgba(16, 185, 129, 0.15);
+            color: #34d399;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .badge-failed {
+            background: rgba(239, 68, 68, 0.15);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .btn-sm {
+            padding: 6px 14px;
+            font-size: 0.85em;
+            border-radius: 8px;
+            font-weight: 500;
+        }
+
+        /* Channel Selector */
+        .channel-selector-card {
+            grid-column: 1 / -1;
+            background: linear-gradient(135deg, rgba(15, 25, 15, 0.7) 0%, rgba(10, 25, 35, 0.7) 100%);
+            border: 1px solid rgba(52, 211, 153, 0.2);
+        }
+
+        .channel-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .channel-item {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 14px 18px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .channel-item:hover {
+            background: rgba(52, 211, 153, 0.07);
+            border-color: rgba(52, 211, 153, 0.25);
+        }
+
+        .channel-item.selected {
+            background: rgba(52, 211, 153, 0.12);
+            border-color: rgba(52, 211, 153, 0.5);
+            box-shadow: 0 0 20px rgba(52, 211, 153, 0.12);
+        }
+
+        .channel-avatar {
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid rgba(52, 211, 153, 0.3);
+            flex-shrink: 0;
+        }
+
+        .channel-avatar-placeholder {
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            flex-shrink: 0;
+        }
+
+        .channel-info {
+            flex: 1;
+        }
+
+        .channel-info strong {
+            display: block;
+            font-size: 1em;
+            font-weight: 600;
+            color: #f1f5f9;
+            margin-bottom: 2px;
+        }
+
+        .channel-info span {
+            font-size: 0.82em;
+            color: #94a3b8;
+        }
+
+        .channel-select-btn {
+            background: rgba(52, 211, 153, 0.15);
+            border: 1px solid rgba(52, 211, 153, 0.3);
+            color: #34d399;
+            padding: 7px 16px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.85em;
+            font-weight: 600;
+            transition: all 0.25s ease;
+            white-space: nowrap;
+        }
+
+        .channel-select-btn:hover {
+            background: rgba(52, 211, 153, 0.28);
+            border-color: rgba(52, 211, 153, 0.6);
+        }
+
+        .channel-select-btn.selected-btn {
+            background: rgba(52, 211, 153, 0.3);
+            border-color: #34d399;
+            color: #fff;
+        }
+
         @media (max-width: 768px) {
             .container {
                 padding: 20px 10px;
@@ -580,6 +803,54 @@
                 </div>
             </div>
 
+            <!-- Content Pipeline Card -->
+            <div class="dashboard-card glass-panel pipeline-card">
+                <h2><span class="icon">🎬</span> Content Pipeline & History</h2>
+                <div class="card-content">
+                    <div class="pipeline-tabs">
+                        <button class="tab-btn active" onclick="switchPipelineTab('queue')">📅 Queue / Scheduled</button>
+                        <button class="tab-btn" onclick="switchPipelineTab('published')">✅ Published History</button>
+                    </div>
+                    <div id="pipeline-content" style="margin-top: 20px;">
+                        <div id="pipeline-queue-section">
+                            <div id="pipeline-queue-list" class="loading">Loading queue...</div>
+                        </div>
+                        <div id="pipeline-published-section" style="display: none;">
+                            <div id="pipeline-published-list" class="loading">Loading publication history...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- YouTube Channel Selector Card -->
+            <div class="dashboard-card glass-panel channel-selector-card">
+                <h2><span class="icon">📺</span> YouTube Channel <span style="font-size:0.65em; color:#34d399; background:rgba(52,211,153,0.1); padding:3px 10px; border-radius:20px; vertical-align:middle;">Upload Destination</span></h2>
+                <div class="card-content">
+                    <p style="color:#94a3b8; font-size:0.9em; margin-bottom:16px;">Select which YouTube channel videos will be uploaded to. Currently uploading to: <strong id="current-channel-name" style="color:#34d399;">Loading...</strong></p>
+                    <div id="channel-list" class="channel-list loading">Loading channels from your Google account...</div>
+
+                    <!-- Manual Channel ID Override (for Brand Accounts) -->
+                    <div style="margin-top: 20px; padding: 16px; background: rgba(255,255,255,0.02); border: 1px dashed rgba(52,211,153,0.2); border-radius: 14px;">
+                        <p style="color:#94a3b8; font-size:0.85em; margin-bottom:10px;">
+                            💡 <strong style="color:#f1f5f9;">Can't see @ceritaku.singkat?</strong> Brand Account channels may not appear in the list above. Enter the Channel ID directly:
+                        </p>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                            <input id="manual-channel-id" type="text" placeholder="e.g. UCxxxxxxxxxxxxxxxxxxxxx"
+                                style="flex:1; min-width:200px; padding:9px 14px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:10px; color:#f1f5f9; font-family:'Outfit',sans-serif; font-size:0.9em; outline:none;">
+                            <input id="manual-channel-title" type="text" placeholder="Display name (e.g. Ceritaku Singkat)"
+                                style="flex:1; min-width:180px; padding:9px 14px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:10px; color:#f1f5f9; font-family:'Outfit',sans-serif; font-size:0.9em; outline:none;">
+                            <button class="channel-select-btn" onclick="selectChannelManual()" style="flex-shrink:0;">
+                                ✅ Apply Channel
+                            </button>
+                        </div>
+                        <p style="color:#64748b; font-size:0.78em; margin-top:8px;">To find your Channel ID: go to YouTube → Your Channel → About → Share channel → Copy channel ID</p>
+                    </div>
+
+                    <div id="channel-select-status" style="margin-top:12px; font-size:0.85em; display:none;"></div>
+                </div>
+            </div>
+
+
             <!-- System Overview Card -->
             <div class="dashboard-card glass-panel">
                 <h2><span class="icon">📈</span> System Overview</h2>
@@ -669,6 +940,12 @@
 
                 // Check generation status
                 checkGenerationStatus();
+                
+                // Load content pipeline data
+                loadPipelineData();
+
+                // Load YouTube channel list
+                loadChannels();
                 
             } catch (error) {
                 console.error('Dashboard load error:', error);
@@ -1063,6 +1340,353 @@
         
         // Load dashboard on page load
         loadDashboard();
+
+        // Content Pipeline JS Logic
+        let activePipelineTab = 'queue';
+        let pipelineData = [];
+
+        function switchPipelineTab(tab) {
+            activePipelineTab = tab;
+            
+            // Toggle active tab class
+            const buttons = document.querySelectorAll('.pipeline-tabs .tab-btn');
+            buttons.forEach(btn => {
+                if (btn.getAttribute('onclick').includes(tab)) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+            
+            // Toggle active section visibility
+            if (tab === 'queue') {
+                document.getElementById('pipeline-queue-section').style.display = 'block';
+                document.getElementById('pipeline-published-section').style.display = 'none';
+            } else {
+                document.getElementById('pipeline-queue-section').style.display = 'none';
+                document.getElementById('pipeline-published-section').style.display = 'block';
+            }
+            
+            renderPipeline();
+        }
+
+        async function loadChannels() {
+            const channelListEl = document.getElementById('channel-list');
+            const currentNameEl = document.getElementById('current-channel-name');
+
+            try {
+                const response = await fetch('/youtube/channels');
+                if (!response.ok) {
+                    channelListEl.classList.remove('loading');
+                    channelListEl.innerHTML = '<p style="color:#f87171;">⚠️ Could not load channels. Check YouTube API credentials.</p>';
+                    return;
+                }
+                const data = await response.json();
+                const { channels, selectedChannelId, selectedChannelName } = data;
+
+                channelListEl.classList.remove('loading');
+
+                // Update "currently uploading to" label — use stored name first, then API lookup, then fallback
+                if (currentNameEl) {
+                    if (selectedChannelName) {
+                        currentNameEl.textContent = selectedChannelName;
+                    } else if (selectedChannelId && channels) {
+                        const found = channels.find(c => c.id === selectedChannelId);
+                        currentNameEl.textContent = found ? found.title : selectedChannelId;
+                    } else {
+                        currentNameEl.textContent = 'Not set';
+                    }
+                }
+
+                // If no API channels returned, just show the hardcoded active channel badge
+                if (!channels || channels.length === 0) {
+                    channelListEl.innerHTML = selectedChannelId
+                        ? `<div class="channel-item selected">
+                              <div class="channel-avatar-placeholder">📺</div>
+                              <div class="channel-info">
+                                  <strong>${selectedChannelName || selectedChannelId}</strong>
+                                  <span>${selectedChannelId} &nbsp;•&nbsp; Hardcoded upload destination</span>
+                              </div>
+                              <button class="channel-select-btn selected-btn" disabled>✅ Active</button>
+                           </div>`
+                        : '<p style="color:#94a3b8;">No channels found on this account.</p>';
+                    return;
+                }
+
+                // Render API-listed channels
+                channelListEl.innerHTML = channels.map(ch => {
+                    const isSelected = ch.id === selectedChannelId;
+                    const avatarHtml = ch.thumbnail
+                        ? `<img class="channel-avatar" src="${ch.thumbnail}" alt="${ch.title}" onerror="this.style.display='none';this.nextSibling.style.display='flex'"><div class="channel-avatar-placeholder" style="display:none;">📺</div>`
+                        : `<div class="channel-avatar-placeholder">📺</div>`;
+                    const subsK = Number(ch.subscriberCount) >= 1000 ? (ch.subscriberCount / 1000).toFixed(1) + 'K' : ch.subscriberCount;
+                    return `
+                        <div class="channel-item ${isSelected ? 'selected' : ''}" id="channel-item-${ch.id}">
+                            ${avatarHtml}
+                            <div class="channel-info">
+                                <strong>${ch.title}</strong>
+                                <span>${ch.customUrl ? '@' + ch.customUrl.replace('@','') : ch.id} &nbsp;•&nbsp; ${subsK} subscribers &nbsp;•&nbsp; ${ch.videoCount} videos</span>
+                            </div>
+                            <button class="channel-select-btn ${isSelected ? 'selected-btn' : ''}"
+                                id="select-btn-${ch.id}"
+                                onclick="selectChannel('${ch.id}', '${ch.title.replace(/'/g,'&#39;')}')">
+                                ${isSelected ? '✅ Selected' : 'Select'}
+                            </button>
+                        </div>`;
+                }).join('');
+
+                // If the selected channel is NOT in the API list (Brand Account), show it as a pinned card on top
+                if (selectedChannelId && !channels.find(c => c.id === selectedChannelId)) {
+                    const pinnedCard = `
+                        <div class="channel-item selected" id="channel-item-${selectedChannelId}" style="border-color:rgba(52,211,153,0.5); margin-bottom:4px;">
+                            <div class="channel-avatar-placeholder">📺</div>
+                            <div class="channel-info">
+                                <strong>${selectedChannelName || selectedChannelId}</strong>
+                                <span>${selectedChannelId} &nbsp;•&nbsp; <span style="color:#34d399;">Active upload destination</span></span>
+                            </div>
+                            <button class="channel-select-btn selected-btn" disabled>✅ Active</button>
+                        </div>`;
+                    channelListEl.innerHTML = pinnedCard + channelListEl.innerHTML;
+                }
+
+            } catch (error) {
+                channelListEl.classList.remove('loading');
+                channelListEl.innerHTML = '<p style="color:#f87171;">⚠️ Failed to load channels: ' + error.message + '</p>';
+            }
+        }
+
+
+        async function selectChannel(channelId, channelTitle) {
+            const statusEl = document.getElementById('channel-select-status');
+            const currentNameEl = document.getElementById('current-channel-name');
+
+            try {
+                // Update UI immediately
+                document.querySelectorAll('.channel-item').forEach(el => el.classList.remove('selected'));
+                document.querySelectorAll('.channel-select-btn').forEach(btn => {
+                    btn.classList.remove('selected-btn');
+                    btn.textContent = 'Select';
+                });
+                const selectedItem = document.getElementById('channel-item-' + channelId);
+                const selectedBtn = document.getElementById('select-btn-' + channelId);
+                if (selectedItem) selectedItem.classList.add('selected');
+                if (selectedBtn) { selectedBtn.classList.add('selected-btn'); selectedBtn.textContent = '✅ Selected'; }
+                if (currentNameEl) currentNameEl.textContent = channelTitle;
+
+                const response = await fetch('/youtube/select-channel', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ channelId, channelName: channelTitle })
+                });
+
+                if (!response.ok) throw new Error('Server error: ' + response.status);
+
+                if (statusEl) {
+                    statusEl.style.display = 'block';
+                    statusEl.style.color = '#34d399';
+                    statusEl.innerHTML = `✅ Channel selected: <strong>${channelTitle}</strong>. All new video uploads will go to this channel.`;
+                    setTimeout(() => { statusEl.style.display = 'none'; }, 5000);
+                }
+            } catch (error) {
+                if (statusEl) {
+                    statusEl.style.display = 'block';
+                    statusEl.style.color = '#f87171';
+                    statusEl.textContent = '❌ Failed to save channel: ' + error.message;
+                }
+            }
+        }
+
+        async function selectChannelManual() {
+            const channelId = (document.getElementById('manual-channel-id')?.value || '').trim();
+            const channelTitle = (document.getElementById('manual-channel-title')?.value || '').trim() || channelId;
+            const statusEl = document.getElementById('channel-select-status');
+
+            if (!channelId || !channelId.startsWith('UC')) {
+                if (statusEl) {
+                    statusEl.style.display = 'block';
+                    statusEl.style.color = '#fbbf24';
+                    statusEl.textContent = '⚠️ Please enter a valid Channel ID (starts with UC...). Find it via YouTube → Your Channel → About.';
+                }
+                return;
+            }
+
+            try {
+                const response = await fetch('/youtube/select-channel', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ channelId })
+                });
+
+                if (!response.ok) throw new Error('Server error: ' + response.status);
+
+                const currentNameEl = document.getElementById('current-channel-name');
+                if (currentNameEl) currentNameEl.textContent = channelTitle;
+
+                if (statusEl) {
+                    statusEl.style.display = 'block';
+                    statusEl.style.color = '#34d399';
+                    statusEl.innerHTML = `✅ Channel set to <strong>${channelTitle}</strong> (${channelId}). All new video uploads will go to this channel.`;
+                    setTimeout(() => { statusEl.style.display = 'none'; }, 6000);
+                }
+
+                // Clear inputs
+                document.getElementById('manual-channel-id').value = '';
+                document.getElementById('manual-channel-title').value = '';
+            } catch (error) {
+                if (statusEl) {
+                    statusEl.style.display = 'block';
+                    statusEl.style.color = '#f87171';
+                    statusEl.textContent = '❌ Failed to save channel: ' + error.message;
+                }
+            }
+        }
+
+        async function loadPipelineData() {
+
+            try {
+                const response = await fetch('/publish-history');
+                pipelineData = await response.json();
+                renderPipeline();
+            } catch (error) {
+                console.error('Failed to load content pipeline data:', error);
+                document.getElementById('pipeline-queue-list').innerHTML = `<div class="log-entry error">⚠️ Failed to load content pipeline: ${error.message}</div>`;
+                document.getElementById('pipeline-published-list').innerHTML = `<div class="log-entry error">⚠️ Failed to load publication history: ${error.message}</div>`;
+            }
+        }
+
+        function renderPipeline() {
+            const queueList = document.getElementById('pipeline-queue-list');
+            const publishedList = document.getElementById('pipeline-published-list');
+            
+            if (queueList) queueList.classList.remove('loading');
+            if (publishedList) publishedList.classList.remove('loading');
+            
+            // Filter queue and published items
+            const queueItems = pipelineData.filter(item => item.status !== 'published');
+            const publishedItems = pipelineData.filter(item => item.status === 'published');
+            
+            // 1. Render Queue List
+            if (queueList) {
+                if (queueItems.length === 0) {
+                    queueList.innerHTML = `
+                        <div style="text-align: center; padding: 30px; color: #64748b; font-style: italic;">
+                            📅 No scheduled or queued content in the pipeline. Click "Generate Content Now" above to create some!
+                        </div>
+                    `;
+                } else {
+                    queueList.innerHTML = `
+                        <div class="pipeline-table-container">
+                            <table class="pipeline-table">
+                                <thead>
+                                    <tr>
+                                        <th>Video Title</th>
+                                        <th>Estimated Publish Time</th>
+                                        <th>Status</th>
+                                        <th style="text-align: right;">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${queueItems.map(item => `
+                                        <tr>
+                                            <td>
+                                                <div class="pipeline-title" title="${item.title || 'Untitled Story'}">${item.title || 'Untitled Story'}</div>
+                                            </td>
+                                            <td>
+                                                <span style="color: #cbd5e1;">${new Date(item.publish_time || item.publishTime).toLocaleString()}</span>
+                                            </td>
+                                            <td>
+                                                <span class="pipeline-badge badge-${item.status}">${item.status}</span>
+                                            </td>
+                                            <td style="text-align: right;">
+                                                <button class="btn btn-sm" onclick="manualPublishVideo('${item.production_id || item.productionId}', this)">
+                                                    ⚡ Publish Now
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+                }
+            }
+            
+            // 2. Render Published List
+            if (publishedList) {
+                if (publishedItems.length === 0) {
+                    publishedList.innerHTML = `
+                        <div style="text-align: center; padding: 30px; color: #64748b; font-style: italic;">
+                            📺 No published videos found yet in the history.
+                        </div>
+                    `;
+                } else {
+                    publishedList.innerHTML = `
+                        <div class="pipeline-table-container">
+                            <table class="pipeline-table">
+                                <thead>
+                                    <tr>
+                                        <th>Video Title</th>
+                                        <th>Publication Date</th>
+                                        <th>Status</th>
+                                        <th style="text-align: right;">Links</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${publishedItems.map(item => `
+                                        <tr>
+                                            <td>
+                                                <div class="pipeline-title" title="${item.title || 'Untitled Story'}">${item.title || 'Untitled Story'}</div>
+                                            </td>
+                                            <td>
+                                                <span style="color: #cbd5e1;">${new Date(item.published_at || item.publishedAt || item.publish_time).toLocaleString()}</span>
+                                            </td>
+                                            <td>
+                                                <span class="pipeline-badge badge-published">Published</span>
+                                            </td>
+                                            <td style="text-align: right;">
+                                                <a href="${item.youtube_url || item.youtubeUrl || '#'}" target="_blank" class="btn btn-sm btn-outline" style="text-decoration: none; padding: 6px 12px; display: inline-flex; align-items: center; gap: 4px;">
+                                                    📺 Watch
+                                                </a>
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+                }
+            }
+        }
+
+        async function manualPublishVideo(contentId, btnElement) {
+            if (!confirm('Are you sure you want to publish this video to YouTube immediately?')) return;
+            
+            const originalText = btnElement.innerHTML;
+            btnElement.disabled = true;
+            btnElement.innerHTML = '⏳ Publishing...';
+            
+            try {
+                const response = await fetch(`/publish/${contentId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('Video published successfully!');
+                    loadPipelineData();
+                    loadDashboard();
+                } else {
+                    alert('Failed to publish: ' + (result.error || 'Unknown error'));
+                    btnElement.disabled = false;
+                    btnElement.innerHTML = originalText;
+                }
+            } catch (error) {
+                alert('Request failed. Please check if your server is running.');
+                btnElement.disabled = false;
+                btnElement.innerHTML = originalText;
+            }
+        }
     </script>
 </body>
 </html>

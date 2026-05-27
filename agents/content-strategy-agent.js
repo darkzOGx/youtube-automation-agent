@@ -257,20 +257,40 @@ class ContentStrategyAgent {
         finalScore: topic.score * this.getSeasonalMultiplier(topic.topic) * this.getAudienceMultiplier(topic.topic)
       }));
 
-    return scoredTopics[0] || { topic: 'Technology Trends', score: 1 };
+    // Fallback pool: Indonesian children's story characters & themes
+    const fallbackTopics = [
+      'Kelinci Putih yang Jujur',
+      'Kancil dan Buaya',
+      'Gajah Kecil yang Berani',
+      'Kucing dan Tikus Sahabat Sejati',
+      'Burung Pipit yang Rajin',
+      'Singa yang Baik Hati',
+      'Rusa dan Kura-Kura',
+      'Anak Katak yang Pemberani',
+      'Pohon Apel yang Dermawan',
+      'Bintang Kecil di Langit Malam',
+      'Ulat yang Menjadi Kupu-Kupu',
+      'Beruang dan Lebah Madu',
+      'Tupai Kecil yang Suka Menolong',
+      'Rubah dan Anggur Manis',
+      'Ikan Kecil di Lautan Luas'
+    ];
+
+    const randomFallback = fallbackTopics[Math.floor(Math.random() * fallbackTopics.length)];
+    return scoredTopics[0] || { topic: randomFallback, score: 1 };
   }
 
   async generateAngle(topic) {
-    // Generate unique angle for the topic
+    // Generate unique angle for children's Indonesian story channel
     const angles = [
-      `The Ultimate Guide to ${topic}`,
-      `${topic}: What Nobody Is Telling You`,
-      `How ${topic} Will Change Everything in 2025`,
-      `The Hidden Truth About ${topic}`,
-      `${topic} Explained in 5 Minutes`,
-      `Why ${topic} Is More Important Than You Think`,
-      `${topic}: Expert Secrets Revealed`,
-      `The Complete ${topic} Tutorial for Beginners`
+      `Kisah ${topic} yang Penuh Keajaiban`,
+      `Petualangan Seru ${topic}`,
+      `${topic} dan Pelajaran Hidup yang Berharga`,
+      `Dongeng: ${topic} yang Baik Hati`,
+      `${topic}: Persahabatan dan Keberanian`,
+      `Si Kecil ${topic} yang Pemberani`,
+      `Rahasia Kebaikan ${topic}`,
+      `${topic} Belajar Berbagi dan Peduli`
     ];
 
     return angles[Math.floor(Math.random() * angles.length)];

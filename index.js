@@ -165,6 +165,16 @@ class YouTubeAutomationAgent {
       }
     });
 
+    // Get full publish history/queue
+    this.app.get('/publish-history', async (req, res) => {
+      try {
+        const history = await this.db.getPublishHistory();
+        res.json(history);
+      } catch (error) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+
     // Manual publish
     this.app.post('/publish/:contentId', async (req, res) => {
       try {
@@ -173,6 +183,87 @@ class YouTubeAutomationAgent {
         res.json({ success: true, result });
       } catch (error) {
         res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // List all YouTube channels on the authenticated account (personal + Brand Accounts)
+    this.app.get('/youtube/channels', async (req, res) => {
+      try {
+        const youtube = this.credentials.getYouTubeClient();
+
+        // Get personal channel (mine: true)
+        const mineResponse = await youtube.channels.list({
+          part: 'snippet,statistics',
+          mine: true,
+          maxResults: 50
+        });
+
+        // Get Brand Account channels managed by this account
+        let brandChannels = [];
+        try {
+          const brandResponse = await youtube.channels.list({
+            part: 'snippet,statistics',
+            managedByMe: true,
+            maxResults: 50
+          });
+          brandChannels = brandResponse.data.items || [];
+        } catch (brandErr) {
+          this.logger.warn('Could not fetch brand channels:', brandErr.message);
+        }
+
+        // Merge, dedup by channel ID
+        const allItems = [...(mineResponse.data.items || []), ...brandChannels];
+        const seen = new Set();
+        const channels = allItems
+          .filter(ch => {
+            if (seen.has(ch.id)) return false;
+            seen.add(ch.id);
+            return true;
+          })
+          .map(ch => ({
+            id: ch.id,
+            title: ch.snippet.title,
+            description: ch.snippet.description,
+            customUrl: ch.snippet.customUrl,
+            thumbnail: ch.snippet.thumbnails?.default?.url || null,
+            subscriberCount: ch.statistics?.subscriberCount || '0',
+            videoCount: ch.statistics?.videoCount || '0'
+          }));
+
+        // Include which channel is currently selected (ID + saved name)
+        const selectedChannelId = this.credentials.credentials?.channel?.selectedChannelId || null;
+        const selectedChannelName = this.credentials.credentials?.channel?.selectedChannelName || null;
+
+        res.json({ channels, selectedChannelId, selectedChannelName });
+      } catch (error) {
+        this.logger.error('Failed to list YouTube channels:', error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // Select a specific channel for uploads
+    this.app.post('/youtube/select-channel', async (req, res) => {
+      try {
+        const { channelId, channelName } = req.body;
+        if (!channelId) {
+          return res.status(400).json({ error: 'channelId is required' });
+        }
+
+        // Persist the selected channel in credentials
+        if (!this.credentials.credentials.channel) {
+          this.credentials.credentials.channel = {};
+        }
+        this.credentials.credentials.channel.selectedChannelId = channelId;
+        if (channelName) {
+          this.credentials.credentials.channel.selectedChannelName = channelName;
+        }
+        await this.credentials.saveCredentials();
+
+        this.logger.info(`YouTube channel selected for uploads: ${channelId} (${channelName || 'unnamed'})`);
+        res.json({ success: true, channelId, channelName });
+      } catch (error) {
+        this.logger.error('Failed to select channel:', error);
+        res.status(500).json({ error: error.message });
       }
     });
   }

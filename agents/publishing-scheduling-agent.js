@@ -109,6 +109,22 @@ class PublishingSchedulingAgent {
   async uploadToYouTube(scheduleEntry) {
     const { metadata } = scheduleEntry;
     
+    if (metadata.video.simulated || (metadata.video.path && metadata.video.path.endsWith('.json'))) {
+      this.logger.info(`[Simulation] Simulating YouTube upload for simulated video: ${metadata.video.path}`);
+      
+      // Simulate network latency
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      const mockVideoId = `yt_${Math.random().toString(36).substring(2, 11)}`;
+      return {
+        id: mockVideoId,
+        snippet: {
+          title: metadata.seo.title,
+          description: metadata.seo.description
+        }
+      };
+    }
+    
     // Prepare video metadata
     const videoMetadata = {
       snippet: {
@@ -121,10 +137,25 @@ class PublishingSchedulingAgent {
       },
       status: {
         privacyStatus: process.env.DEFAULT_PRIVACY_STATUS || 'public',
-        publishAt: scheduleEntry.publishTime,
         selfDeclaredMadeForKids: false
       }
     };
+
+    // If a specific channel is selected (for accounts with multiple channels), add it
+    const selectedChannelId = this.credentials?.credentials?.channel?.selectedChannelId;
+    if (selectedChannelId) {
+      videoMetadata.snippet.channelId = selectedChannelId;
+      this.logger.info(`Uploading to selected channel: ${selectedChannelId}`);
+    }
+
+    
+    // Only schedule if privacy status is private and publish time is in the future
+    if (videoMetadata.status.privacyStatus === 'private' && scheduleEntry.publishTime) {
+      const publishTime = new Date(scheduleEntry.publishTime);
+      if (publishTime > new Date()) {
+        videoMetadata.status.publishAt = scheduleEntry.publishTime;
+      }
+    }
     
     // Upload video file
     const videoUpload = await this.youtube.videos.insert({
@@ -152,8 +183,13 @@ class PublishingSchedulingAgent {
   }
 
   async getVideoStream(videoPath) {
-    // In a real implementation, this would return a file stream
-    // For now, we'll simulate it
+    const standardFs = require('fs');
+    if (videoPath && standardFs.existsSync(videoPath) && videoPath.endsWith('.mp4')) {
+      this.logger.info(`Creating real file read stream for video upload: ${videoPath}`);
+      return standardFs.createReadStream(videoPath);
+    }
+    
+    // Fallback simulation
     return JSON.stringify({
       message: 'Video stream would be provided here',
       path: videoPath,

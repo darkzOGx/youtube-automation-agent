@@ -315,7 +315,7 @@ class Database {
   // Production methods
   async saveProductionData(production) {
     await this.executeQuery(
-      `INSERT INTO productions (
+      `INSERT OR REPLACE INTO productions (
         id, status, assets, timeline, scheduled_publish_time, 
         priority, estimated_duration
       ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -329,6 +329,7 @@ class Database {
         production.estimatedDuration
       ]
     );
+    return production.id;
   }
 
   async updateProductionData(production) {
@@ -409,6 +410,13 @@ class Database {
     
     return rows.map(row => ({
       ...row,
+      productionId: row.production_id,
+      publishTime: row.publish_time,
+      youtubeId: row.youtube_id,
+      youtubeUrl: row.youtube_url,
+      publishedAt: row.published_at,
+      errorMessage: row.error_message,
+      createdAt: row.created_at,
       metadata: JSON.parse(row.metadata || '{}')
     }));
   }
@@ -426,6 +434,39 @@ class Database {
     
     return rows.map(row => ({
       ...row,
+      productionId: row.production_id,
+      publishTime: row.publish_time,
+      youtubeId: row.youtube_id,
+      youtubeUrl: row.youtube_url,
+      publishedAt: row.published_at,
+      errorMessage: row.error_message,
+      createdAt: row.created_at,
+      metadata: JSON.parse(row.metadata || '{}')
+    }));
+  }
+
+  async getPublishHistory() {
+    const rows = await this.getAllRows(
+      `SELECT * FROM publish_schedule 
+       ORDER BY 
+         CASE 
+           WHEN status = 'scheduled' THEN 1 
+           WHEN status = 'paused' THEN 2
+           WHEN status = 'published' THEN 3
+           ELSE 4 
+         END, 
+         publish_time DESC`
+    );
+    
+    return rows.map(row => ({
+      ...row,
+      productionId: row.production_id,
+      publishTime: row.publish_time,
+      youtubeId: row.youtube_id,
+      youtubeUrl: row.youtube_url,
+      publishedAt: row.published_at,
+      errorMessage: row.error_message,
+      createdAt: row.created_at,
       metadata: JSON.parse(row.metadata || '{}')
     }));
   }

@@ -309,8 +309,8 @@ class AIVideoGenerator {
         return await this.generateReplicateVideo(script, visualAssets, audioPath, outputPath);
       }
       
-      // Fallback to simple slideshow with Playwright
-      return await this.generateSlideshowVideo(script, visualAssets, audioPath, outputPath);
+      // Use reliable FFmpeg slideshow (no Playwright needed)
+      return await this.generateFFmpegSlideshow(script, visualAssets, audioPath, outputPath);
     } catch (error) {
       this.logger.error('Video generation failed:', error);
       return await this.simulateVideoGeneration(script, visualAssets, audioPath, outputPath);
@@ -337,7 +337,7 @@ class AIVideoGenerator {
     // Download the generated video
     if (output && output.length > 0) {
       await this.downloadVideo(output[0], outputPath);
-      
+
       // Add audio track
       await this.addAudioToVideo(outputPath, audioPath, outputPath);
     }
@@ -345,62 +345,116 @@ class AIVideoGenerator {
     return outputPath;
   }
 
-  async generateSlideshowVideo(script, visualAssets, audioPath, outputPath) {
-    this.logger.info('Creating slideshow video...');
-    
-    const { chromium } = require('playwright');
-    const browser = await chromium.launch();
-    const page = await browser.newPage();
+  async generateFFmpegSlideshow(script, visualAssets, audioPath, outputPath) {
+    this.logger.info('Creating FFmpeg slideshow video with AI illustrations...');
 
-    // Create HTML for slideshow
-    const slideshowHtml = this.createSlideshowHTML(script, visualAssets);
-    
-    // Set page content
-    await page.setContent(slideshowHtml);
-    await page.setViewportSize({ width: 1920, height: 1080 });
+    // Filter to only real image files (not .info simulation files)
+    const realImages = (visualAssets || []).filter(p => {
+      const standardFs = require('fs');
+      return p && typeof p === 'string' && !p.endsWith('.info') && standardFs.existsSync(p);
+    });
 
-    // Record video of the slideshow
-    const videoPath = outputPath.replace('.mp4', '_visual.mp4');
-    
-    // Use Playwright to record
-    await page.waitForTimeout(1000); // Wait for assets to load
-    
-    // Create video frames by taking screenshots at intervals
-    const duration = this.calculateScriptDuration(script);
-    const frameCount = Math.ceil(duration * 30); // 30 FPS
-    const frameInterval = duration / frameCount * 1000;
-
-    const framesDir = path.join(path.dirname(outputPath), 'frames');
-    await fs.mkdir(framesDir, { recursive: true });
-
-    for (let i = 0; i < frameCount; i++) {
-      await page.screenshot({
-        path: path.join(framesDir, `frame_${String(i).padStart(6, '0')}.png`),
-        fullPage: true
-      });
-      
-      // Advance animation
-      await page.evaluate(() => {
-        if (window.advanceAnimation) {
-          window.advanceAnimation();
-        }
-      });
-      
-      await page.waitForTimeout(frameInterval);
+    if (realImages.length === 0) {
+      this.logger.warn('No real image assets found, creating text-only slideshow');
+      return await this.generateTextOnlySlideshow(script, audioPath, outputPath);
     }
 
-    await browser.close();
+    const framesDir = path.join(path.dirname(outputPath), `frames_${Date.now()}`);
+    await fs.mkdir(framesDir, { recursive: true });
 
-    // Convert frames to video using FFmpeg
-    const ffmpegCommand = `ffmpeg -framerate 30 -i "${framesDir}/frame_%06d.png" -c:v libx264 -pix_fmt yuv420p "${videoPath}"`;
-    await execAsync(ffmpegCommand);
+    try {
+      // Build slide list: each image gets equal duration
+      const totalDuration = this.calculateScriptDuration(script);
+      const slideDuration = Math.max(3, Math.floor(totalDuration / realImages.length));
 
-    // Add audio
-    await this.addAudioToVideo(videoPath, audioPath, outputPath);
+      // Step 1: For each image, create a video clip with Ken Burns zoom+pan effect
+      const clipPaths = [];
+      const sections = (script.mainContent && script.mainContent.sections) || [];
 
-    // Cleanup frames
+      for (let i = 0; i < realImages.length; i++) {
+        const imgPath = realImages[i];
+        const clipPath = path.join(framesDir, `clip_${i}.mp4`);
+        const fps = 25;
+        const totalFrames = slideDuration * fps;
+
+        // Simpler, more reliable approach: scale image and apply zoompan
+        const safeCmd = `ffmpeg -y -loop 1 -i "${imgPath}" -vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,zoompan=z='min(zoom+0.001,1.08)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${totalFrames}:s=1280x720:fps=${fps}" -t ${slideDuration} -c:v libx264 -pix_fmt yuv420p -preset fast -r ${fps} "${clipPath}"`;
+
+        await execAsync(safeCmd);
+        clipPaths.push(clipPath);
+        this.logger.info(`Created clip ${i + 1}/${realImages.length}`);
+      }
+
+      // Step 2: Concatenate all clips into one silent video
+      const concatListPath = path.join(framesDir, 'concat_list.txt');
+      const listContent = clipPaths.map(p => `file '${path.resolve(p)}'`).join('\n');
+      await fs.writeFile(concatListPath, listContent);
+
+      const silentVideoPath = path.join(framesDir, 'silent_video.mp4');
+      await execAsync(`ffmpeg -y -f concat -safe 0 -i "${concatListPath}" -c copy "${silentVideoPath}"`);
+
+      // Step 3: Add audio track (TTS narration)
+      const standardFs = require('fs');
+      const hasAudio = audioPath && standardFs.existsSync(audioPath);
+
+      if (hasAudio) {
+        await execAsync(`ffmpeg -y -i "${silentVideoPath}" -i "${audioPath}" -c:v copy -c:a aac -shortest "${outputPath}"`);
+        this.logger.info('Audio track merged into slideshow video');
+      } else {
+        await fs.copyFile(silentVideoPath, outputPath);
+        this.logger.warn('No audio file found, video exported without audio');
+      }
+
+      // Cleanup temp frames directory
+      await this.cleanupDirectory(framesDir);
+
+      this.logger.info(`FFmpeg slideshow video created: ${outputPath}`);
+      return outputPath;
+    } catch (error) {
+      this.logger.error('FFmpeg slideshow failed:', error.message);
+      // Cleanup on failure
+      try { await this.cleanupDirectory(framesDir); } catch (_) {}
+      throw error;
+    }
+  }
+
+  async generateTextOnlySlideshow(script, audioPath, outputPath) {
+    this.logger.info('Generating text-only slideshow as fallback...');
+
+    const sections = (script.mainContent && script.mainContent.sections) || [{ title: script.title }];
+    const totalDuration = this.calculateScriptDuration(script);
+    const slideDuration = Math.max(5, Math.floor(totalDuration / sections.length));
+    const framesDir = path.join(path.dirname(outputPath), `textframes_${Date.now()}`);
+    await fs.mkdir(framesDir, { recursive: true });
+
+    const clipPaths = [];
+    const colors = ['0x1a1a2e', '0x16213e', '0x0f3460', '0x533483', '0x2d6a4f'];
+
+    for (let i = 0; i < sections.length; i++) {
+      const clipPath = path.join(framesDir, `tclip_${i}.mp4`);
+      const color = colors[i % colors.length];
+      const title = (sections[i].title || script.title || '').replace(/['":\\]/g, ' ').replace(/[^\x20-\x7E]/g, '');
+      const fps = 25;
+      const frames = slideDuration * fps;
+
+      const cmd = `ffmpeg -y -f lavfi -i "color=c=${color}:size=1280x720:rate=${fps}" -vf "drawtext=text='${title}':fontcolor=white:fontsize=56:x=(w-text_w)/2:y=(h-text_h)/2:box=1:boxcolor=black@0.3:boxborderw=20" -t ${slideDuration} -c:v libx264 -pix_fmt yuv420p -preset fast "${clipPath}"`;
+      await execAsync(cmd);
+      clipPaths.push(clipPath);
+    }
+
+    const concatListPath = path.join(framesDir, 'concat.txt');
+    await fs.writeFile(concatListPath, clipPaths.map(p => `file '${p}'`).join('\n'));
+    const silentPath = path.join(framesDir, 'silent.mp4');
+    await execAsync(`ffmpeg -y -f concat -safe 0 -i "${concatListPath}" -c copy "${silentPath}"`);
+
+    const standardFs = require('fs');
+    if (audioPath && standardFs.existsSync(audioPath)) {
+      await execAsync(`ffmpeg -y -i "${silentPath}" -i "${audioPath}" -c:v copy -c:a aac -shortest "${outputPath}"`);
+    } else {
+      await fs.copyFile(silentPath, outputPath);
+    }
+
     await this.cleanupDirectory(framesDir);
-
     return outputPath;
   }
 
