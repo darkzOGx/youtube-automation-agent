@@ -500,11 +500,11 @@ class DailyAutomation {
     }
 
     // Check scheduled tasks
+    const taskStatus = new Map();
     this.scheduledTasks.forEach((task, name) => {
-      if (Object.prototype.hasOwnProperty.call(health.scheduledTasks, name) || !(name in Object.prototype)) {
-        health.scheduledTasks[name] = task.running;
-      }
+      taskStatus.set(name, task.running);
     });
+    health.scheduledTasks = Object.fromEntries(taskStatus);
 
     // Get system resources (simplified)
     health.systemResources = {

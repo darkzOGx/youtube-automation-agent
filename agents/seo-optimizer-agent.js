@@ -211,15 +211,15 @@ class SEOOptimizerAgent {
     tags.add(topic.replace(/\s+/g, '_'));
     
     // Add content type tags
-    const contentTypeTags = {
-      'Tutorial': ['how to', 'tutorial', 'guide', 'step by step', 'learn'],
-      'Explainer': ['explained', 'what is', 'understanding', 'explanation'],
-      'Review': ['review', 'comparison', 'vs', 'best', 'top'],
-      'List': ['top 10', 'best', 'list', 'countdown'],
-      'Story': ['story', 'journey', 'experience', 'case study']
-    };
+    const contentTypeTags = new Map([
+      ['Tutorial', ['how to', 'tutorial', 'guide', 'step by step', 'learn']],
+      ['Explainer', ['explained', 'what is', 'understanding', 'explanation']],
+      ['Review', ['review', 'comparison', 'vs', 'best', 'top']],
+      ['List', ['top 10', 'best', 'list', 'countdown']],
+      ['Story', ['story', 'journey', 'experience', 'case study']]
+    ]);
     
-    const typeTags = Object.prototype.hasOwnProperty.call(contentTypeTags, strategy.contentType) ? contentTypeTags[strategy.contentType] : [];
+    const typeTags = contentTypeTags.get(strategy.contentType) || [];
     typeTags.forEach(tag => tags.add(tag));
     
     // Add year tags
@@ -287,18 +287,18 @@ class SEOOptimizerAgent {
   }
 
   getNicheTags(niche) {
-    const nicheTags = {
-      'technology': ['tech', 'technology', 'innovation', 'future tech', 'tech news'],
-      'gaming': ['gaming', 'gameplay', 'walkthrough', 'lets play', 'game review'],
-      'education': ['educational', 'learning', 'study tips', 'online learning', 'edtech'],
-      'business': ['business tips', 'entrepreneurship', 'startup', 'business strategy', 'success'],
-      'lifestyle': ['lifestyle', 'life hacks', 'daily routine', 'productivity', 'self improvement'],
-      'health': ['health tips', 'fitness', 'healthy living', 'wellness', 'nutrition'],
-      'entertainment': ['entertainment', 'fun', 'viral', 'trending', 'must watch'],
-      'general': ['video', 'youtube', 'content', 'new', 'latest']
-    };
+    const nicheTags = new Map([
+      ['technology', ['tech', 'technology', 'innovation', 'future tech', 'tech news']],
+      ['gaming', ['gaming', 'gameplay', 'walkthrough', 'lets play', 'game review']],
+      ['education', ['educational', 'learning', 'study tips', 'online learning', 'edtech']],
+      ['business', ['business tips', 'entrepreneurship', 'startup', 'business strategy', 'success']],
+      ['lifestyle', ['lifestyle', 'life hacks', 'daily routine', 'productivity', 'self improvement']],
+      ['health', ['health tips', 'fitness', 'healthy living', 'wellness', 'nutrition']],
+      ['entertainment', ['entertainment', 'fun', 'viral', 'trending', 'must watch']],
+      ['general', ['video', 'youtube', 'content', 'new', 'latest']]
+    ]);
     
-    return Object.prototype.hasOwnProperty.call(nicheTags, niche) ? nicheTags[niche] : nicheTags.general;
+    return nicheTags.get(niche) || nicheTags.get('general');
   }
 
   generateLongTailKeywords(strategy) {
@@ -492,15 +492,15 @@ class SEOOptimizerAgent {
   }
 
   calculateOptimalLength(contentType) {
-    const optimalLengths = {
-      'Tutorial': '10-15 minutes',
-      'Explainer': '5-10 minutes',
-      'Review': '8-12 minutes',
-      'List': '8-15 minutes',
-      'Story': '10-20 minutes'
-    };
+    const optimalLengths = new Map([
+      ['Tutorial', '10-15 minutes'],
+      ['Explainer', '5-10 minutes'],
+      ['Review', '8-12 minutes'],
+      ['List', '8-15 minutes'],
+      ['Story', '10-20 minutes']
+    ]);
     
-    return Object.prototype.hasOwnProperty.call(optimalLengths, contentType) ? optimalLengths[contentType] : '8-12 minutes';
+    return optimalLengths.get(contentType) || '8-12 minutes';
   }
 
   selectCategory(strategy) {

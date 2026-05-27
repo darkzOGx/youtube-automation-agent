@@ -207,7 +207,13 @@ class PublishingSchedulingAgent {
 
   async uploadThumbnail(videoId, thumbnailPath) {
     try {
-      const thumbnailBuffer = await fs.readFile(thumbnailPath);
+      // Validate path to prevent traversal
+      const basePath = path.resolve(path.join(__dirname, '..'));
+      const resolvedThumbnail = path.resolve(path.normalize(thumbnailPath));
+      if (!resolvedThumbnail.startsWith(basePath)) {
+        throw new Error('Invalid thumbnail path');
+      }
+      const thumbnailBuffer = await fs.readFile(resolvedThumbnail);
       
       await this.youtube.thumbnails.set({
         videoId: videoId,
@@ -224,7 +230,13 @@ class PublishingSchedulingAgent {
 
   async uploadCaptions(videoId, captionsPath) {
     try {
-      const captionsContent = await fs.readFile(captionsPath, 'utf8');
+      // Validate path to prevent traversal
+      const basePath = path.resolve(path.join(__dirname, '..'));
+      const resolvedCaptions = path.resolve(path.normalize(captionsPath));
+      if (!resolvedCaptions.startsWith(basePath)) {
+        throw new Error('Invalid captions path');
+      }
+      const captionsContent = await fs.readFile(resolvedCaptions, 'utf8');
       
       await this.youtube.captions.insert({
         part: 'snippet',
@@ -440,7 +452,7 @@ class PublishingSchedulingAgent {
     if (published.length < 2) return 'Insufficient data';
     
     const dates = published.map(p => new Date(p.publishedAt)).sort((a, b) => a - b);
-    const totalDays = (dates[dates.length - 1] - dates[0]) / (1000 * 60 * 60 * 24);
+    const totalDays = (dates.at(-1) - dates.at(0)) / (1000 * 60 * 60 * 24);
     const frequency = published.length / totalDays;
     
     if (frequency >= 1) return `${frequency.toFixed(1)} videos per day`;

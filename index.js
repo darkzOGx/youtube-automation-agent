@@ -386,11 +386,11 @@ class YouTubeAutomationAgent {
       this.logger.error('Background generation failed:', error);
       this.generationStatus.status = 'failed';
       this.generationStatus.currentStep = 'Failed during: ' + this.generationStatus.currentStep;
+      const updatedSteps = {};
       for (const [key, val] of Object.entries(this.generationStatus.steps)) {
-        if (val === 'processing' && Object.prototype.hasOwnProperty.call(this.generationStatus.steps, key)) {
-          this.generationStatus.steps[key] = 'failed';
-        }
+        updatedSteps[key] = val === 'processing' ? 'failed' : val;
       }
+      this.generationStatus.steps = updatedSteps;
       this.generationStatus.error = error.message || 'Unknown error occurred.';
       this.generationStatus.timestamp = new Date().toISOString();
       this.generationStatus.estimatedSecondsRemaining = 0;

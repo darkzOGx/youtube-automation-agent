@@ -277,7 +277,7 @@ class ContentStrategyAgent {
       'Ikan Kecil di Lautan Luas'
     ];
 
-    const randomFallback = fallbackTopics[Math.floor(Math.random() * fallbackTopics.length)];
+    const randomFallback = fallbackTopics.at(Math.floor(Math.random() * fallbackTopics.length));
     return scoredTopics[0] || { topic: randomFallback, score: 1 };
   }
 
@@ -294,7 +294,7 @@ class ContentStrategyAgent {
       `${topic} Belajar Berbagi dan Peduli`
     ];
 
-    return angles[Math.floor(Math.random() * angles.length)];
+    return angles.at(Math.floor(Math.random() * angles.length));
   }
 
   async identifyTargetAudience(topic) {
@@ -370,7 +370,7 @@ class ContentStrategyAgent {
       { day: 'Sunday', hour: 10 }
     ];
 
-    const selected = bestTimes[Math.floor(Math.random() * bestTimes.length)];
+    const selected = bestTimes.at(Math.floor(Math.random() * bestTimes.length));
     const nextDate = this.getNextWeekday(selected.day);
     nextDate.setHours(selected.hour, 0, 0, 0);
     

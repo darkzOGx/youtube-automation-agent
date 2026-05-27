@@ -245,7 +245,7 @@ Provide the output in valid, raw JSON format (no markdown, no code blocks):
       return `${strategy.topic} Review: Is It Worth It?`;
     }
 
-    return templates[Math.floor(Math.random() * templates.length)];
+    return templates.at(Math.floor(Math.random() * templates.length));
   }
 
   async generateHook(strategy) {
@@ -272,7 +272,7 @@ Provide the output in valid, raw JSON format (no markdown, no code blocks):
       }
     ];
 
-    const selected = hooks[Math.floor(Math.random() * hooks.length)];
+    const selected = hooks.at(Math.floor(Math.random() * hooks.length));
     
     return {
       type: selected.type,
@@ -290,7 +290,7 @@ Provide the output in valid, raw JSON format (no markdown, no code blocks):
       `how ${topic} could change your life`
     ];
     
-    return questions[Math.floor(Math.random() * questions.length)];
+    return questions.at(Math.floor(Math.random() * questions.length));
   }
 
   generateStatistic(topic) {
@@ -302,7 +302,7 @@ Provide the output in valid, raw JSON format (no markdown, no code blocks):
       `${topic} can save you hours every single day`
     ];
     
-    return stats[Math.floor(Math.random() * stats.length)];
+    return stats.at(Math.floor(Math.random() * stats.length));
   }
 
   async generateIntroduction(strategy) {
@@ -316,15 +316,15 @@ Provide the output in valid, raw JSON format (no markdown, no code blocks):
   }
 
   getValueProposition(strategy) {
-    const propositions = {
-      'Tutorial': `how to implement ${strategy.topic} step by step`,
-      'Explainer': `what ${strategy.topic} is and why it matters`,
-      'List': `the most important things about ${strategy.topic}`,
-      'Review': `whether ${strategy.topic} is right for you`,
-      'Story': `the incredible journey of ${strategy.topic}`
-    };
+    const propositionsMap = new Map([
+      ['Tutorial', `how to implement ${strategy.topic} step by step`],
+      ['Explainer', `what ${strategy.topic} is and why it matters`],
+      ['List', `the most important things about ${strategy.topic}`],
+      ['Review', `whether ${strategy.topic} is right for you`],
+      ['Story', `the incredible journey of ${strategy.topic}`]
+    ]);
     
-    return Object.prototype.hasOwnProperty.call(propositions, strategy.contentType) ? propositions[strategy.contentType] : `everything about ${strategy.topic}`;
+    return propositionsMap.get(strategy.contentType) || `everything about ${strategy.topic}`;
   }
 
   getCredibilityStatement(strategy) {
@@ -336,7 +336,7 @@ Provide the output in valid, raw JSON format (no markdown, no code blocks):
       "Using proven methods and strategies"
     ];
     
-    return statements[Math.floor(Math.random() * statements.length)];
+    return statements.at(Math.floor(Math.random() * statements.length));
   }
 
   async generateMainContent(strategy, template) {
@@ -355,20 +355,27 @@ Provide the output in valid, raw JSON format (no markdown, no code blocks):
   }
 
   async generateSection(sectionType, strategy) {
-    const sectionGenerators = {
-      problem: () => this.generateProblemSection(strategy),
-      solution_steps: () => this.generateSolutionSteps(strategy),
-      demonstration: () => this.generateDemonstration(strategy),
-      explanation: () => this.generateExplanation(strategy),
-      examples: () => this.generateExamples(strategy),
-      list_items: () => this.generateListItems(strategy),
-      pros: () => this.generatePros(strategy),
-      cons: () => this.generateCons(strategy),
-      comparison: () => this.generateComparison(strategy),
-      implications: () => this.generateImplications(strategy)
-    };
+    const generatorsMap = new Map([
+      ['hook', () => this.generateHook(strategy)],
+      ['introduction', () => this.generateIntroduction(strategy)],
+      ['problem', () => this.generateProblem(strategy)],
+      ['solution_steps', () => this.generateSolutionSteps(strategy)],
+      ['demonstration', () => this.generateDemonstration(strategy)],
+      ['recap', () => this.generateRecap(strategy)],
+      ['cta', () => this.generateCTA(strategy)],
+      ['question', () => this.generateQuestion(strategy)],
+      ['background', () => this.generateBackground(strategy)],
+      ['explanation', () => this.generateExplanation(strategy)],
+      ['examples', () => this.generateExamples(strategy)],
+      ['summary', () => this.generateSummary(strategy)],
+      ['list_items', () => this.generateListItems(strategy)],
+      ['pros', () => this.generatePros(strategy)],
+      ['cons', () => this.generateCons(strategy)],
+      ['comparison', () => this.generateComparison(strategy)],
+      ['implications', () => this.generateImplications(strategy)]
+    ]);
 
-    const generator = Object.prototype.hasOwnProperty.call(sectionGenerators, sectionType) ? sectionGenerators[sectionType] : null;
+    const generator = generatorsMap.get(sectionType) || null;
     
     if (generator) {
       return await generator();
@@ -424,7 +431,7 @@ Provide the output in valid, raw JSON format (no markdown, no code blocks):
       'Scaling and Automation'
     ];
     
-    return titles[stepNumber - 1] || `Advanced ${topic} Techniques`;
+    return titles.at(stepNumber - 1) || `Advanced ${topic} Techniques`;
   }
 
   generateStepDescription(topic, stepNumber) {
@@ -440,7 +447,7 @@ Provide the output in valid, raw JSON format (no markdown, no code blocks):
       `Insider secret: This works best when combined with regular practice`
     ];
     
-    return tips[Math.floor(Math.random() * tips.length)];
+    return tips.at(Math.floor(Math.random() * tips.length));
   }
 
   async generateDemonstration(strategy) {
@@ -525,7 +532,7 @@ Provide the output in valid, raw JSON format (no markdown, no code blocks):
       `The Future of ${topic}`
     ];
     
-    return titles[index - 1] || `Advanced ${topic} Technique #${index}`;
+    return titles.at(index - 1) || `Advanced ${topic} Technique #${index}`;
   }
 
   generateListItemDescription(topic) {
@@ -541,7 +548,7 @@ Provide the output in valid, raw JSON format (no markdown, no code blocks):
       'The difference between success and failure'
     ];
     
-    return impacts[Math.floor(Math.random() * impacts.length)];
+    return impacts.at(Math.floor(Math.random() * impacts.length));
   }
 
   async generatePros(strategy) {
