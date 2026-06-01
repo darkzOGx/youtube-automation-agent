@@ -31,19 +31,38 @@ class ThumbnailDesignerAgent {
     try {
       this.logger.info(`Generating thumbnail for: ${script.title}`);
 
-      // Generate thumbnail concept
+      // --- FUTURE DEVELOPMENT: A/B Testing ---
+      // // Variant A
+      // const conceptA = await this.generateConcept(script);
+      // const promptA = await this.createPrompt(conceptA);
+      // const thumbnailPathA = await this.createThumbnail(conceptA, script);
+      // const finalThumbnailA = await this.addTextOverlay(thumbnailPathA, conceptA);
+      // const optimizedThumbnailA = await this.optimizeForYouTube(finalThumbnailA);
+      //
+      // // Variant B
+      // const conceptB = await this.generateConcept(script); // generates a different random concept
+      // const promptB = await this.createPrompt(conceptB);
+      // const thumbnailPathB = await this.createThumbnail(conceptB, script);
+      // const finalThumbnailB = await this.addTextOverlay(thumbnailPathB, conceptB);
+      // const optimizedThumbnailB = await this.optimizeForYouTube(finalThumbnailB);
+      // 
+      // const thumbnailData = {
+      //   path: optimizedThumbnailA,
+      //   variantBPath: optimizedThumbnailB,
+      //   concept: conceptA,
+      //   conceptB: conceptB,
+      //   prompt: promptA,
+      //   dimensions: { width: 1280, height: 720 },
+      //   fileSize: await this.getFileSize(optimizedThumbnailA),
+      //   createdAt: new Date().toISOString()
+      // };
+      // ---------------------------------------
+
+      // CURRENT: Single thumbnail generation
       const concept = await this.generateConcept(script);
-
-      // Create thumbnail prompt for AI generation
       const prompt = await this.createPrompt(concept);
-
-      // Generate base thumbnail
       const thumbnailPath = await this.createThumbnail(concept, script);
-
-      // Add text overlay
       const finalThumbnail = await this.addTextOverlay(thumbnailPath, concept);
-
-      // Optimize for YouTube
       const optimizedThumbnail = await this.optimizeForYouTube(finalThumbnail);
 
       const thumbnailData = {
