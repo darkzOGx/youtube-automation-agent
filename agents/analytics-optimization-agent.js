@@ -9,6 +9,7 @@ class AnalyticsOptimizationAgent {
     this.youtubeAnalytics = null;
     this.youtube = null;
     this.performanceData = new Map();
+    this.apiCache = new Map();
   }
 
   async initialize() {
@@ -87,6 +88,12 @@ class AnalyticsOptimizationAgent {
   }
 
   async getVideoDetails(videoId) {
+    const cacheKey = `video_${videoId}`;
+    if (this.apiCache.has(cacheKey)) {
+      const cached = this.apiCache.get(cacheKey);
+      if (Date.now() - cached.timestamp < 3600000) return cached.data; // 1 hour
+    }
+
     const response = await this.youtube.videos.list({
       part: 'snippet,statistics,contentDetails',
       id: videoId
@@ -110,9 +117,17 @@ class AnalyticsOptimizationAgent {
         commentCount: parseInt(video.statistics.commentCount) || 0
       }
     };
+    
+    this.apiCache.set(cacheKey, { timestamp: Date.now(), data: result });
+    return result;
   }
 
   async getVideoAnalytics(videoId) {
+    const cacheKey = `analytics_${videoId}`;
+    if (this.apiCache.has(cacheKey)) {
+      const cached = this.apiCache.get(cacheKey);
+      if (Date.now() - cached.timestamp < 3600000) return cached.data; // 1 hour
+    }
     const endDate = new Date().toISOString().split('T')[0];
     const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     
@@ -132,7 +147,7 @@ class AnalyticsOptimizationAgent {
         this.getDeviceAnalytics(videoId, startDate, endDate)
       ]);
       
-      return {
+      const result = {
         period: { startDate, endDate },
         views: viewsData,
         watchTime: watchTimeData,
@@ -141,6 +156,8 @@ class AnalyticsOptimizationAgent {
         devices: deviceData,
         engagement: await this.calculateEngagementMetrics(videoId)
       };
+      this.apiCache.set(cacheKey, { timestamp: Date.now(), data: result });
+      return result;
     } catch (error) {
       this.logger.error(`Failed to get analytics for ${videoId}:`, error);
       return this.getSimulatedAnalytics(videoId);
