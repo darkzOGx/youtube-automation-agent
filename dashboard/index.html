@@ -738,22 +738,48 @@
                     <p>Next Generation</p>
                 </div>
             </div>
-            <div style="text-align: center; display: flex; justify-content: center; gap: 15px; flex-wrap: wrap;">
-                <button class="btn" onclick="triggerContentGeneration()">🎬 Generate Content Now</button>
-                <button class="btn btn-outline" onclick="viewAnalytics()">📊 View Analytics</button>
-                <button class="btn btn-outline" onclick="viewSchedule()">📅 View Schedule</button>
+            <div style="text-align: center; display: flex; justify-content: center; gap: 15px; flex-wrap: wrap;" id="main-nav-tabs">
+                <button class="btn active" id="nav-btn-dashboard" onclick="switchMainTab('dashboard')">🎛️ Control Center</button>
+                <a href="/dashboard/analytics" target="_blank" class="btn btn-outline" style="text-decoration: none; display: inline-block;">📊 View Analytics ↗️</a>
+                <a href="/dashboard/schedule" target="_blank" class="btn btn-outline" style="text-decoration: none; display: inline-block;">📅 View Schedule ↗️</a>
+                <button class="btn" style="background: linear-gradient(135deg, #f59e0b, #d97706); margin-left: 10px;" onclick="triggerContentGeneration()">🎬 Generate Content Now</button>
+            </div>
+            
+            <div style="text-align: center; display: flex; justify-content: center; margin-top: 15px;">
+                <div style="display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.05); padding: 10px 20px; border-radius: 12px;">
+                    <label for="image-model-provider" style="font-weight: 500; color: #a78bfa; font-size: 0.9em;">Image Generator:</label>
+                    <select id="image-model-provider" class="form-control" style="width: auto; background: rgba(0,0,0,0.2); border: 1px solid rgba(139, 92, 246, 0.3); color: white; padding: 6px 12px; border-radius: 6px; font-size: 0.9em;" onchange="updateImageModelList()">
+                        <option value="gemini">Google Gemini</option>
+                        <option value="openai">OpenAI</option>
+                        <option value="openrouter">OpenRouter</option>
+                    </select>
+                    
+                    <label for="image-model-name" style="font-weight: 500; color: #a78bfa; margin-left: 10px; font-size: 0.9em;">Model:</label>
+                    <select id="image-model-name" class="form-control" style="width: auto; background: rgba(0,0,0,0.2); border: 1px solid rgba(139, 92, 246, 0.3); color: white; padding: 6px 12px; border-radius: 6px; font-size: 0.9em;">
+                        <option value="imagen-4.0-generate-001">Imagen 4.0</option>
+                        <option value="imagen-3.0-generate-002">Imagen 3.0 (Best)</option>
+                        <option value="imagen-3.0-fast-generate-001">Imagen 3.0 Fast (Cheaper)</option>
+                    </select>
+
+                    <label for="video-format" style="font-weight: 500; color: #a78bfa; margin-left: 10px; font-size: 0.9em;">Video Format:</label>
+                    <select id="video-format" class="form-control" style="width: auto; background: rgba(0,0,0,0.2); border: 1px solid rgba(139, 92, 246, 0.3); color: white; padding: 6px 12px; border-radius: 6px; font-size: 0.9em;">
+                        <option value="slideshow">Ken Burns Slideshow</option>
+                        <option value="video_ai">True AI Video (Luma/Runway)</option>
+                    </select>
+                </div>
             </div>
         </div>
         
         <!-- Dashboard Core Grid -->
-        <div class="dashboard-grid">
-            
-            <!-- Real-time Asynchronous Content Generator Panel -->
-            <div class="dashboard-card glass-panel generator-card">
-                <h2><span class="icon">🤖</span> Content Generation Hub</h2>
-                <div class="card-content generator-content">
-                    
-                    <div class="generator-header">
+        <div id="dashboard-view">
+            <div id="dashboard-grid-container" class="dashboard-grid">
+                
+                <!-- Real-time Asynchronous Content Generator Panel -->
+                <div class="dashboard-card glass-panel generator-card">
+                    <h2><span class="icon">🤖</span> Content Generation Hub</h2>
+                    <div class="card-content generator-content">
+                        
+                        <div class="generator-header">
                         <div class="generator-info-box">
                             <div class="spinner-container" id="generator-spinner" style="display: none;">
                                 <div class="spinner"></div>
@@ -804,7 +830,7 @@
             </div>
 
             <!-- Content Pipeline Card -->
-            <div class="dashboard-card glass-panel pipeline-card">
+            <div id="pipeline-section" class="dashboard-card glass-panel pipeline-card">
                 <h2><span class="icon">🎬</span> Content Pipeline & History</h2>
                 <div class="card-content">
                     <div class="pipeline-tabs">
@@ -828,23 +854,6 @@
                 <div class="card-content">
                     <p style="color:#94a3b8; font-size:0.9em; margin-bottom:16px;">Select which YouTube channel videos will be uploaded to. Currently uploading to: <strong id="current-channel-name" style="color:#34d399;">Loading...</strong></p>
                     <div id="channel-list" class="channel-list loading">Loading channels from your Google account...</div>
-
-                    <!-- Manual Channel ID Override (for Brand Accounts) -->
-                    <div style="margin-top: 20px; padding: 16px; background: rgba(255,255,255,0.02); border: 1px dashed rgba(52,211,153,0.2); border-radius: 14px;">
-                        <p style="color:#94a3b8; font-size:0.85em; margin-bottom:10px;">
-                            💡 <strong style="color:#f1f5f9;">Can't see @ceritaku.singkat?</strong> Brand Account channels may not appear in the list above. Enter the Channel ID directly:
-                        </p>
-                        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-                            <input id="manual-channel-id" type="text" placeholder="e.g. UCxxxxxxxxxxxxxxxxxxxxx"
-                                style="flex:1; min-width:200px; padding:9px 14px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:10px; color:#f1f5f9; font-family:'Outfit',sans-serif; font-size:0.9em; outline:none;">
-                            <input id="manual-channel-title" type="text" placeholder="Display name (e.g. Ceritaku Singkat)"
-                                style="flex:1; min-width:180px; padding:9px 14px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:10px; color:#f1f5f9; font-family:'Outfit',sans-serif; font-size:0.9em; outline:none;">
-                            <button class="channel-select-btn" onclick="selectChannelManual()" style="flex-shrink:0;">
-                                ✅ Apply Channel
-                            </button>
-                        </div>
-                        <p style="color:#64748b; font-size:0.78em; margin-top:8px;">To find your Channel ID: go to YouTube → Your Channel → About → Share channel → Copy channel ID</p>
-                    </div>
 
                     <div id="channel-select-status" style="margin-top:12px; font-size:0.85em; display:none;"></div>
                 </div>
@@ -894,18 +903,20 @@
             <div class="dashboard-card glass-panel">
                 <h2><span class="icon">🤖</span> Agent Status</h2>
                 <div class="card-content">
-                    <div id="agent-status" class="loading">Loading agent status...</div>
+                    <div id="agent-status" class="loading">Loading agents...</div>
                 </div>
             </div>
-            
-            <!-- Performance Metrics Card -->
-            <div class="dashboard-card glass-panel">
-                <h2><span class="icon">📈</span> Performance Metrics</h2>
-                <div class="card-content">
-                    <div id="performance-metrics" class="loading">Loading metrics...</div>
+
+                <!-- Performance Metrics Card -->
+                <div id="system-metrics" class="dashboard-card glass-panel">
+                    <h2><span class="icon">📈</span> Performance Metrics</h2>
+                    <div class="card-content">
+                        <div id="performance-metrics" class="loading">Loading metrics...</div>
+                    </div>
                 </div>
             </div>
         </div>
+
     </div>
     
     <!-- Refresh Button -->
@@ -1020,13 +1031,11 @@
             const metrics = document.getElementById('performance-metrics');
             metrics.classList.remove('loading');
             if (data && data.totalVideos !== undefined) {
-                document.getElementById('content-count').textContent = data.totalVideos || '0';
-                document.getElementById('published-count').textContent = data.totalVideos || '0';
                 
                 metrics.innerHTML = `
                     <div style="display: flex; flex-direction: column; gap: 10px;">
-                        <p><strong>Average Performance Score:</strong> <span class="success" style="font-weight:600;">${data.averagePerformanceScore || 'N/A'}/100</span></p>
-                        <p><strong>Total Content Generated:</strong> ${data.totalVideos || 0}</p>
+                        <p><strong>Average Performance Score:</strong> <span class="success" style="font-weight:600;">${data.totalVideos > 0 ? (data.averagePerformanceScore + '/100') : 'Belum ada data (Menunggu Analytics)'}</span></p>
+                        <p><strong>Total Content Generated:</strong> <span id="metrics-total-content">0</span></p>
                         <p><strong>Channel Category:</strong> Children Stories</p>
                         <p><strong>System Health:</strong> Excellent</p>
                     </div>
@@ -1301,13 +1310,47 @@
             }
         }
         
+        function updateImageModelList() {
+            const provider = document.getElementById('image-model-provider').value;
+            const modelSelect = document.getElementById('image-model-name');
+            modelSelect.innerHTML = '';
+            
+            if (provider === 'gemini') {
+                modelSelect.innerHTML = `
+                    <option value="imagen-4.0-generate-001">Imagen 4.0</option>
+                    <option value="imagen-3.0-generate-002">Imagen 3.0 (Best)</option>
+                    <option value="imagen-3.0-fast-generate-001">Imagen 3.0 Fast (Cheaper)</option>
+                `;
+            } else if (provider === 'openai') {
+                modelSelect.innerHTML = `
+                    <option value="dall-e-3">DALL-E 3 (Best)</option>
+                    <option value="dall-e-2">DALL-E 2 (Cheaper)</option>
+                `;
+            } else if (provider === 'openrouter') {
+                modelSelect.innerHTML = `
+                    <option value="x-ai/grok-imagine-image-quality">xAI Grok (Image Quality)</option>
+                    <option value="bytedance-seed/seedream-4.5">ByteDance SeeDream 4.5</option>
+                `;
+            }
+        }
+        
         async function triggerContentGeneration() {
             if (confirm('Generate content now? This will launch the background generation pipeline to compile a new story video.')) {
                 try {
+                    const imageProvider = document.getElementById('image-model-provider').value;
+                    const imageModel = document.getElementById('image-model-name').value;
+                    const videoFormat = document.getElementById('video-format').value;
+                    
                     const response = await fetch('/generate', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ topic: null, style: 'story' })
+                        body: JSON.stringify({ 
+                            topic: null, 
+                            style: 'story',
+                            imageProvider: imageProvider,
+                            imageModel: imageModel,
+                            videoFormat: videoFormat
+                        })
                     });
                     const result = await response.json();
                     
@@ -1322,15 +1365,19 @@
                 }
             }
         }
-        
-        function viewAnalytics() {
-            window.open('/analytics', '_blank');
+        function switchMainTab(tab) {
+            // Since Analytics and Schedule now open in new tabs, we only handle Dashboard tab styles
+            document.getElementById('nav-btn-dashboard').className = 'btn active';
+            const dashboardView = document.getElementById('dashboard-view');
+            if (dashboardView) dashboardView.style.display = 'block';
         }
+
         
-        function viewSchedule() {
-            window.open('/schedule', '_blank');
-        }
-        
+        // Hide analytics and schedule by default on load
+        document.addEventListener('DOMContentLoaded', () => {
+            switchMainTab('dashboard');
+        });
+
         function refreshDashboard() {
             loadDashboard();
         }
@@ -1377,8 +1424,13 @@
             try {
                 const response = await fetch('/youtube/channels');
                 if (!response.ok) {
+                    let errMsg = 'Check YouTube API credentials.';
+                    try {
+                        const errData = await response.json();
+                        if (errData.error) errMsg = errData.error;
+                    } catch(e) {}
                     channelListEl.classList.remove('loading');
-                    channelListEl.innerHTML = '<p style="color:#f87171;">⚠️ Could not load channels. Check YouTube API credentials.</p>';
+                    channelListEl.innerHTML = `<p style="color:#f87171;">⚠️ Could not load channels. ${errMsg}</p>`;
                     return;
                 }
                 const data = await response.json();
@@ -1451,7 +1503,7 @@
 
             } catch (error) {
                 channelListEl.classList.remove('loading');
-                channelListEl.innerHTML = '<p style="color:#f87171;">⚠️ Failed to load channels: ' + error.message + '</p>';
+                channelListEl.innerHTML = '<p style="color:#f87171;">⚠️ Could not load channels. Check YouTube API credentials.</p>';
             }
         }
 
@@ -1565,6 +1617,14 @@
             const queueItems = pipelineData.filter(item => item.status !== 'published');
             const publishedItems = pipelineData.filter(item => item.status === 'published');
             
+            // Update dashboard metric cards
+            const contentCountEl = document.getElementById('content-count');
+            const publishedCountEl = document.getElementById('published-count');
+            const metricsTotalEl = document.getElementById('metrics-total-content');
+            if (contentCountEl) contentCountEl.textContent = pipelineData.length.toString();
+            if (publishedCountEl) publishedCountEl.textContent = publishedItems.length.toString();
+            if (metricsTotalEl) metricsTotalEl.textContent = pipelineData.length.toString();
+            
             // 1. Render Queue List
             if (queueList) {
                 if (queueItems.length === 0) {
@@ -1597,9 +1657,15 @@
                                             <td>
                                                 <span class="pipeline-badge badge-${item.status}">${item.status}</span>
                                             </td>
-                                            <td style="text-align: right;">
+                                            <td style="text-align: right; display: flex; justify-content: flex-end; gap: 8px;">
+                                                <button class="btn btn-sm btn-outline" onclick="previewVideo('${item.id}')">
+                                                    👁️ Preview
+                                                </button>
                                                 <button class="btn btn-sm" onclick="manualPublishVideo('${item.production_id || item.productionId}', this)">
                                                     ⚡ Publish Now
+                                                </button>
+                                                <button class="btn btn-sm btn-outline" style="color: #ef4444; border-color: #ef4444;" onclick="promptDeleteVideo('${item.id}')">
+                                                    🗑️ Delete
                                                 </button>
                                             </td>
                                         </tr>
@@ -1658,6 +1724,102 @@
             }
         }
 
+        function getMediaUrl(path) {
+            if (!path) return '';
+            if (path.includes('/data/videos/')) {
+                return '/data/videos/' + path.split('/data/videos/')[1];
+            } else if (path.includes('/uploads/thumbnails/')) {
+                return '/uploads/thumbnails/' + path.split('/uploads/thumbnails/')[1];
+            } else if (path.includes('/data/')) {
+                return '/data/' + path.split('/data/')[1];
+            }
+            return path;
+        }
+
+        function previewVideo(id) {
+            const item = pipelineData.find(i => i.id === id);
+            if (!item) return;
+
+            document.getElementById('preview-title').textContent = item.title || 'Video Preview';
+            const videoEl = document.getElementById('preview-video');
+            const thumbEl = document.getElementById('preview-thumbnail');
+            const noMediaEl = document.getElementById('preview-no-media');
+
+            let hasMedia = false;
+            videoEl.style.display = 'none';
+            thumbEl.style.display = 'none';
+            noMediaEl.style.display = 'none';
+
+            if (item.metadata && item.metadata.video && item.metadata.video.path) {
+                videoEl.src = getMediaUrl(item.metadata.video.path);
+                videoEl.style.display = 'block';
+                hasMedia = true;
+            }
+            
+            if (item.metadata && item.metadata.thumbnail && item.metadata.thumbnail.path) {
+                thumbEl.src = getMediaUrl(item.metadata.thumbnail.path);
+                if (!hasMedia) {
+                    thumbEl.style.display = 'block';
+                    hasMedia = true;
+                }
+            }
+            
+            if (!hasMedia) {
+                noMediaEl.style.display = 'block';
+            }
+
+            const modal = document.getElementById('preview-modal');
+            modal.style.display = 'flex';
+        }
+
+        let currentDeleteId = null;
+        let currentDeleteTitle = null;
+        let currentDeleteProductionId = null;
+
+        function promptDeleteVideo(id) {
+            const item = pipelineData.find(i => i.id === id);
+            if (!item) return;
+            currentDeleteId = id;
+            currentDeleteTitle = item.title;
+            currentDeleteProductionId = item.production_id || item.productionId;
+            document.getElementById('delete-feedback').value = '';
+            document.getElementById('delete-modal').style.display = 'flex';
+        }
+
+        async function confirmDeleteVideo() {
+            if (!currentDeleteId) return;
+            const btn = document.getElementById('btn-confirm-delete');
+            const originalText = btn.textContent;
+            btn.textContent = '⏳ Deleting...';
+            btn.disabled = true;
+
+            try {
+                const feedback = document.getElementById('delete-feedback').value;
+                const response = await fetch('/schedule/' + currentDeleteId, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        feedback, 
+                        videoTitle: currentDeleteTitle, 
+                        productionId: currentDeleteProductionId 
+                    })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    document.getElementById('delete-modal').style.display = 'none';
+                    loadPipelineData();
+                } else {
+                    alert('Failed to delete: ' + (result.error || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Request failed.');
+            } finally {
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }
+        }
+
         async function manualPublishVideo(contentId, btnElement) {
             if (!confirm('Are you sure you want to publish this video to YouTube immediately?')) return;
             
@@ -1688,5 +1850,49 @@
             }
         }
     </script>
+
+    <!-- Preview Modal -->
+    <div id="preview-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center; padding: 20px;">
+        <div style="background: #1e293b; border-radius: 12px; max-width: 800px; width: 100%; max-height: 90vh; overflow-y: auto; padding: 24px; position: relative;">
+            <button onclick="document.getElementById('preview-modal').style.display='none'; document.getElementById('preview-video').pause();" style="position: absolute; top: 16px; right: 16px; background: none; border: none; color: #cbd5e1; font-size: 24px; cursor: pointer;">&times;</button>
+            <h2 id="preview-title" style="margin-top: 0; color: #f8fafc; font-size: 1.2rem; margin-bottom: 16px;">Video Preview</h2>
+            
+            <div style="margin-bottom: 16px; background: #000; border-radius: 8px; overflow: hidden; display: flex; justify-content: center; align-items: center; min-height: 200px;">
+                <video id="preview-video" controls style="width: 100%; max-height: 400px; display: none;"></video>
+                <img id="preview-thumbnail" style="width: 100%; max-height: 400px; object-fit: contain; display: none;" />
+                <div id="preview-no-media" style="color: #94a3b8; display: none;">No media available to preview</div>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                <div class="stat-card" style="margin: 0; padding: 12px;">
+                    <div style="color: #94a3b8; font-size: 0.8rem; margin-bottom: 4px;">Thumbnail</div>
+                    <button class="btn btn-sm btn-outline" onclick="document.getElementById('preview-video').style.display='none'; document.getElementById('preview-video').pause(); document.getElementById('preview-thumbnail').style.display='block';">View Thumbnail</button>
+                </div>
+                <div class="stat-card" style="margin: 0; padding: 12px;">
+                    <div style="color: #94a3b8; font-size: 0.8rem; margin-bottom: 4px;">Video</div>
+                    <button class="btn btn-sm btn-outline" onclick="document.getElementById('preview-thumbnail').style.display='none'; document.getElementById('preview-video').style.display='block';">View Video</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Modal -->
+    <div id="delete-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center; padding: 20px;">
+        <div style="background: #1e293b; border-radius: 12px; max-width: 500px; width: 100%; padding: 24px;">
+            <h2 style="margin-top: 0; color: #f87171; display: flex; align-items: center; gap: 8px;">⚠️ Confirm Deletion</h2>
+            <p style="color: #cbd5e1; margin-bottom: 20px;">Are you sure you want to delete this scheduled video? This action cannot be undone.</p>
+            
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; color: #94a3b8; font-size: 0.9rem; margin-bottom: 8px;">Optional Feedback (Why is it bad?)</label>
+                <textarea id="delete-feedback" placeholder="e.g., Pacing too slow, wrong images used..." style="width: 100%; background: #0f172a; border: 1px solid #334155; border-radius: 8px; color: #f8fafc; padding: 12px; min-height: 100px; font-family: inherit; resize: vertical; box-sizing: border-box;"></textarea>
+                <div style="color: #64748b; font-size: 0.8rem; margin-top: 4px;">This feedback helps our AI agents improve future videos.</div>
+            </div>
+            
+            <div style="display: flex; justify-content: flex-end; gap: 12px;">
+                <button class="btn btn-outline" onclick="document.getElementById('delete-modal').style.display='none'">Cancel</button>
+                <button class="btn" style="background: #ef4444; color: white;" id="btn-confirm-delete" onclick="confirmDeleteVideo()">Yes, Delete It</button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>

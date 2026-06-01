@@ -46,21 +46,58 @@ class ContentStrategyAgent {
   }
 
   async fetchYouTubeTrends() {
-    // Use YouTube API to fetch trending videos
     const youtube = this.credentials.getYouTubeClient();
+    const region = process.env.YOUTUBE_REGION || 'ID';
     
+    // Niche search queries for target children's bedtime stories & fairy tales
+    const searchQuery = region === 'ID' 
+      ? 'dongeng anak OR cerita anak OR cerita tidur OR fabel anak' 
+      : 'bedtime stories for kids OR fairy tales for children OR kids stories';
+      
     try {
-      const response = await youtube.videos.list({
-        part: 'snippet,statistics',
-        chart: 'mostPopular',
-        maxResults: 50,
-        regionCode: process.env.YOUTUBE_REGION || 'US'
+      this.logger.info(`Fetching YouTube search trends for niche: "${searchQuery}" in region: ${region}`);
+      
+      // Step 1: Search for high-view, niche-relevant videos
+      const searchResponse = await youtube.search.list({
+        part: 'snippet',
+        q: searchQuery,
+        type: 'video',
+        maxResults: 25,
+        regionCode: region,
+        relevanceLanguage: region === 'ID' ? 'id' : 'en',
+        order: 'viewCount' // Sort by most viewed in this niche
       });
 
-      return response.data.items.map(video => ({
+      const videoIds = searchResponse.data.items.map(item => item.id.videoId).filter(Boolean);
+      if (videoIds.length === 0) {
+        this.logger.warn('No niche videos found via search, falling back to popular chart');
+        
+        // Fallback to generic popular chart
+        const fallbackResponse = await youtube.videos.list({
+          part: 'snippet,statistics',
+          chart: 'mostPopular',
+          maxResults: 25,
+          regionCode: region
+        });
+        return fallbackResponse.data.items.map(video => ({
+          title: video.snippet.title,
+          tags: video.snippet.tags || [],
+          viewCount: parseInt(video.statistics.viewCount) || 100000,
+          category: video.snippet.categoryId,
+          publishedAt: video.snippet.publishedAt
+        }));
+      }
+
+      // Step 2: Fetch detailed statistics for these specific niche videos
+      const detailsResponse = await youtube.videos.list({
+        part: 'snippet,statistics',
+        id: videoIds.join(',')
+      });
+
+      return detailsResponse.data.items.map(video => ({
         title: video.snippet.title,
         tags: video.snippet.tags || [],
-        viewCount: parseInt(video.statistics.viewCount),
+        viewCount: parseInt(video.statistics.viewCount) || 100000,
         category: video.snippet.categoryId,
         publishedAt: video.snippet.publishedAt
       }));
@@ -156,8 +193,14 @@ class ContentStrategyAgent {
   }
 
   extractKeywords(text) {
-    // Simple keyword extraction
-    const stopWords = ['the', 'is', 'at', 'which', 'on', 'and', 'a', 'an', 'as', 'are', 'was', 'were', 'been', 'be', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can', 'could', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'what', 'which', 'who', 'when', 'where', 'why', 'how', 'all', 'each', 'every', 'both', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 'can', 'will', 'just', 'should', 'now'];
+    // Simple keyword extraction with English and Indonesian stop words
+    const stopWords = [
+      'the', 'is', 'at', 'which', 'on', 'and', 'a', 'an', 'as', 'are', 'was', 'were', 'been', 'be', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can', 'could', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'what', 'which', 'who', 'when', 'where', 'why', 'how', 'all', 'each', 'every', 'both', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 'just', 'now',
+      // Indonesian Stop Words and Adverbs
+      'dan', 'yang', 'untuk', 'dengan', 'bisa', 'akan', 'telah', 'oleh', 'dari', 'ke', 'di', 'ini', 'itu', 'ada', 'saja', 'kita', 'kamu', 'saya', 'mereka', 'dia', 'langsung', 'resmi', 'terbaru', 'terbaik', 'adalah', 'atau', 'pada', 'juga', 'dalam', 'tidak', 'kami', 'seperti', 'hanya', 'tentang', 'banyak', 'beberapa', 'sangat', 'secara', 'lebih', 'paling', 'baru', 'lama', 'satu', 'dua', 'tiga', 'empat', 'lima', 'enam', 'tujuh', 'delapan', 'sembilan', 'sepuluh', 'cara', 'buat', 'bikin', 'oleh', 'untuk', 'agar', 'supaya',
+      // Niche-Generic/Metadata Terms to avoid generic topics
+      'anak', 'anak-anak', 'dongeng', 'cerita', 'lagu', 'kartun', 'shorts', 'video', 'youtube', 'channel', 'menonton', 'tonton', 'film', 'episode', 'terbaru', 'indonesia'
+    ];
     
     return text
       .toLowerCase()
@@ -203,7 +246,7 @@ class ContentStrategyAgent {
       .slice(0, 50);
   }
 
-  async generateContentStrategy(requestedTopic = null) {
+  async generateContentStrategy(requestedTopic = null, analyticsData = {}) {
     try {
       let topic, angle, targetAudience, contentType;
 
@@ -212,7 +255,7 @@ class ContentStrategyAgent {
         angle = await this.generateAngle(topic);
       } else {
         // Select from trending topics
-        const selectedTopic = this.selectOptimalTopic();
+        const selectedTopic = this.selectOptimalTopic(analyticsData.topTopics || []);
         topic = selectedTopic.topic;
         angle = await this.generateAngle(topic);
       }
@@ -247,16 +290,27 @@ class ContentStrategyAgent {
     }
   }
 
-  selectOptimalTopic() {
+  selectOptimalTopic(topTopics = []) {
     // Use scoring algorithm to select best topic
     const recentTopics = this.getRecentTopics();
     
     const scoredTopics = this.trendingTopics
       .filter(topic => !recentTopics.includes(topic.topic))
-      .map(topic => ({
-        ...topic,
-        finalScore: topic.score * this.getSeasonalMultiplier(topic.topic) * this.getAudienceMultiplier(topic.topic)
-      }));
+      .map(topic => {
+        let score = topic.score;
+        // Bias score heavily if it contains top performing keywords from past analytics
+        if (topTopics.length > 0) {
+          const topicWords = topic.topic.toLowerCase().split(/\s+/);
+          const hasTopTopic = topTopics.some(t => topicWords.includes(t.toLowerCase()));
+          if (hasTopTopic) score += 50; // Big boost for proven topics
+        }
+        
+        return {
+          ...topic,
+          finalScore: (score * this.getSeasonalMultiplier(topic.topic) * this.getAudienceMultiplier(topic.topic)) + (Math.random() * 10)
+        };
+      })
+      .sort((a, b) => b.finalScore - a.finalScore);
 
     // Fallback pool: Indonesian children's story characters & themes
     const fallbackTopics = [
@@ -332,12 +386,12 @@ class ContentStrategyAgent {
 
   selectContentType(topic) {
     const types = [
-      { type: 'Tutorial', suitableFor: ['how to', 'guide', 'learn'] },
-      { type: 'List', suitableFor: ['best', 'top', 'worst'] },
-      { type: 'Review', suitableFor: ['review', 'vs', 'comparison'] },
-      { type: 'Explainer', suitableFor: ['what is', 'why', 'explained'] },
-      { type: 'News', suitableFor: ['breaking', 'latest', 'new'] },
-      { type: 'Story', suitableFor: ['story', 'journey', 'experience'] }
+      { type: 'Tutorial', suitableFor: ['how to', 'guide', 'learn', 'cara', 'panduan', 'belajar'] },
+      { type: 'List', suitableFor: ['best', 'top', 'worst', 'terbaik', 'paling'] },
+      { type: 'Review', suitableFor: ['review', 'vs', 'comparison', 'ulasan'] },
+      { type: 'Explainer', suitableFor: ['what is', 'why', 'explained', 'apa itu', 'mengapa', 'penjelasan'] },
+      { type: 'News', suitableFor: ['breaking', 'latest', 'new', 'terbaru', 'berita'] },
+      { type: 'Story', suitableFor: ['story', 'journey', 'experience', 'cerita', 'dongeng', 'petualangan', 'kisah'] }
     ];
 
     const topicLower = topic.toLowerCase();
@@ -348,7 +402,8 @@ class ContentStrategyAgent {
       }
     }
 
-    return 'Explainer';
+    // Default to Story for children's channel
+    return 'Story';
   }
 
   predictViews(topic) {
@@ -360,14 +415,24 @@ class ContentStrategyAgent {
   }
 
   calculateBestPublishTime() {
-    // Analyze best publishing times
+    // Analyze best publishing times (Prime Time Indonesia for kids/parents)
+    // 16:00 WIB (After school / nap time)
+    // 19:00 WIB (After dinner / before bedtime)
     const bestTimes = [
-      { day: 'Tuesday', hour: 14 },
-      { day: 'Wednesday', hour: 14 },
-      { day: 'Thursday', hour: 14 },
-      { day: 'Friday', hour: 15 },
-      { day: 'Saturday', hour: 10 },
-      { day: 'Sunday', hour: 10 }
+      { day: 'Monday', hour: 16 },
+      { day: 'Monday', hour: 19 },
+      { day: 'Tuesday', hour: 16 },
+      { day: 'Tuesday', hour: 19 },
+      { day: 'Wednesday', hour: 16 },
+      { day: 'Wednesday', hour: 19 },
+      { day: 'Thursday', hour: 16 },
+      { day: 'Thursday', hour: 19 },
+      { day: 'Friday', hour: 16 },
+      { day: 'Friday', hour: 19 },
+      { day: 'Saturday', hour: 10 }, // Weekend morning
+      { day: 'Saturday', hour: 16 },
+      { day: 'Sunday', hour: 10 },   // Weekend morning
+      { day: 'Sunday', hour: 16 }
     ];
 
     const selected = bestTimes.at(Math.floor(Math.random() * bestTimes.length));

@@ -48,7 +48,7 @@ class ProductionManagementAgent {
     try {
       this.logger.info('Processing content for production...');
       
-      const { strategy, script, thumbnail, seo } = contentData;
+      const { strategy, script, thumbnail, seo, videoFormat } = contentData;
       
       // Create production entry
       const productionId = this.generateProductionId();
@@ -88,6 +88,15 @@ class ProductionManagementAgent {
       // Save to database
       await this.db.saveProductionData(productionData);
       
+      if (contentData.testMode === 'audio_only') {
+        this.logger.info('Test mode: audio_only. Skipping video rendering.');
+        await this.generateAudioNarration(productionData);
+        productionData.status = 'ready (audio-only)';
+        productionData.timeline.readyForUpload = new Date().toISOString();
+        await this.db.updateProductionData(productionData);
+        return productionData;
+      }
+      
       // Generate video content
       await this.generateVideoContent(productionData);
       
@@ -98,7 +107,19 @@ class ProductionManagementAgent {
       await this.generateCaptions(productionData);
       
       // Final assembly
-      await this.assembleVideo(productionData);
+      await this.assembleVideo(productionData, videoFormat);
+      
+      // Generate YouTube Shorts from main video
+      if (productionData.assets.finalVideo && productionData.assets.finalVideo.path) {
+        const shortVideoPath = productionData.assets.finalVideo.path.replace('.mp4', '_shorts.mp4');
+        const generatedShort = await this.aiVideoGenerator.generateShortVideo(
+          productionData.assets.finalVideo.path, 
+          shortVideoPath
+        );
+        if (generatedShort) {
+          productionData.assets.shortsVideo = { path: generatedShort };
+        }
+      }
       
       // Mark as ready
       productionData.status = 'ready';
@@ -161,7 +182,7 @@ class ProductionManagementAgent {
     // Add main content
     if (script.mainContent && script.mainContent.sections) {
       script.mainContent.sections.forEach((section, index) => {
-        ttsText += `Section ${index + 1}: ${section.title}\n`;
+        // Skip adding explicit "Section X" to make the story flow naturally for children
         
         if (Array.isArray(section.content)) {
           section.content.forEach(line => {
@@ -176,7 +197,7 @@ class ProductionManagementAgent {
           });
         } else if (section.items) {
           section.items.forEach(item => {
-            ttsText += `Number ${item.number}: ${item.title}. ${item.description}\n`;
+            ttsText += `${item.title}. ${item.description}\n`;
           });
         } else if (typeof section.content === 'string') {
           ttsText += `${section.content}\n`;
@@ -208,16 +229,17 @@ class ProductionManagementAgent {
 
   async processThumbnail(thumbnail) {
     try {
-      // Try to generate AI thumbnail first
-      const script = thumbnail.script || { title: 'Ethereal Dreamscript Video' };
-      const aiThumbnail = await this.aiVideoGenerator.generateThumbnail(script, 'ethereal');
-      
+      if (!thumbnail || !thumbnail.path) {
+        throw new Error('Thumbnail path is missing');
+      }
+
+      // We already have a beautifully designed thumbnail with text overlay from ThumbnailDesignerAgent!
       return {
-        path: aiThumbnail.path,
+        path: thumbnail.path,
         originalPath: thumbnail.path,
-        dimensions: aiThumbnail.dimensions,
-        fileSize: aiThumbnail.fileSize,
-        generatedWith: 'AI'
+        dimensions: thumbnail.dimensions || { width: 1280, height: 720 },
+        fileSize: thumbnail.fileSize || 0,
+        generatedWith: 'ThumbnailDesigner'
       };
     } catch (error) {
       this.logger.error('AI thumbnail generation failed:', error);
@@ -292,7 +314,9 @@ class ProductionManagementAgent {
       const visualAssets = [];
       
       for (const prompt of visualPrompts) {
-        const assets = await this.aiVideoGenerator.generateVisualAssets(prompt, 'ethereal', 1);
+        const imageProvider = script.imageProvider || 'gemini';
+        const imageModel = script.imageModel || 'imagen-4.0-generate-001';
+        const assets = await this.aiVideoGenerator.generateVisualAssets(prompt, 'ethereal', 1, imageProvider, imageModel);
         visualAssets.push(...assets);
       }
       
@@ -555,8 +579,8 @@ class ProductionManagementAgent {
     return srt;
   }
 
-  async assembleVideo(productionData) {
-    this.logger.info('Assembling final AI-generated video...');
+  async assembleVideo(productionData, videoFormat = 'slideshow') {
+    this.logger.info(`Assembling final video using format: ${videoFormat}`);
     
     try {
       const finalVideoPath = path.join(__dirname, '..', 'data', 'videos', `${productionData.id}_final.mp4`);
@@ -566,7 +590,8 @@ class ProductionManagementAgent {
         productionData.script,
         productionData.assets.video.visualAssets || [],
         productionData.assets.audio.path,
-        finalVideoPath
+        finalVideoPath,
+        videoFormat
       );
       
       // Get file stats
@@ -642,23 +667,30 @@ class ProductionManagementAgent {
     const prompts = [];
     
     // Title prompt
-    prompts.push(`${script.title}, ethereal storytelling, mystical background`);
+    prompts.push(`${script.title}, ethereal storytelling, vibrant children storybook illustration`);
     
     // Content-based prompts
     if (script.mainContent && script.mainContent.sections) {
       script.mainContent.sections.forEach(section => {
         if (section.title) {
-          prompts.push(`${section.title}, ethereal dreamscape, creative visualization`);
+          prompts.push(`${section.title}, ethereal dreamscape, vibrant children storybook illustration`);
+        }
+        if (typeof section.content === 'string') {
+          // Extract more prompts from paragraphs so we have more images for shorter transitions
+          const sentences = section.content.split(/[.!?]+/).filter(s => s.trim().length > 20);
+          sentences.slice(0, 2).forEach(s => {
+            prompts.push(`${s.trim()}, vibrant children storybook illustration`);
+          });
         }
       });
     }
     
-    // Ensure we have at least 3 prompts
-    while (prompts.length < 3) {
-      prompts.push('ethereal dreamscape, mystical storytelling, creative visualization');
+    // Ensure we have enough prompts for quick transitions
+    while (prompts.length < 8) {
+      prompts.push('ethereal dreamscape, mystical storytelling, vibrant children storybook illustration');
     }
     
-    return prompts.slice(0, 5); // Limit to 5 for cost control
+    return prompts.slice(0, 15); // Increased limit to 15 to fix "gambar terlalu sedikit" issue
   }
 
   // Fallback simulation methods

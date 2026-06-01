@@ -180,7 +180,34 @@ class PublishingSchedulingAgent {
       await this.uploadCaptions(videoId, metadata.captions.path);
     }
     
+    // Post Top-Level Comment
+    if (metadata.seo && metadata.seo.pinnedComment) {
+      await this.postTopLevelComment(videoId, metadata.seo.pinnedComment);
+    }
+    
     return videoUpload.data;
+  }
+
+  async postTopLevelComment(videoId, commentText) {
+    try {
+      this.logger.info(`Posting top-level comment for video: ${videoId}`);
+      await this.youtube.commentThreads.insert({
+        part: 'snippet',
+        requestBody: {
+          snippet: {
+            videoId: videoId,
+            topLevelComment: {
+              snippet: {
+                textOriginal: commentText
+              }
+            }
+          }
+        }
+      });
+      this.logger.success('Top-level comment posted successfully');
+    } catch (error) {
+      this.logger.warn(`Could not post top-level comment (might need channel owner scopes): ${error.message}`);
+    }
   }
 
   /**
@@ -222,12 +249,12 @@ class PublishingSchedulingAgent {
   async uploadThumbnail(videoId, thumbnailPath) {
     try {
       const safePath = this.validatePath(thumbnailPath);
-      const thumbnailBuffer = await fs.readFile(safePath); // nosemgrep: path-traversal - validated by validatePath()
+      const thumbnailStream = standardFs.createReadStream(safePath); // nosemgrep: path-traversal - validated by validatePath()
       
       await this.youtube.thumbnails.set({
         videoId: videoId,
         media: {
-          body: thumbnailBuffer
+          body: thumbnailStream
         }
       });
       

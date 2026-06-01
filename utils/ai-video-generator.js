@@ -4,9 +4,11 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { exec } = require('child_process');
 const { promisify } = require('util');
 const fs = require('fs').promises;
+const standardFs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const FormData = require('form-data');
+const { MsEdgeTTS, OUTPUT_FORMAT } = require('msedge-tts');
 const { Logger } = require('./logger');
 
 const execAsync = promisify(exec);
@@ -22,7 +24,9 @@ class AIVideoGenerator {
     const openaiKey = rawCredentials.openai?.apiKey || process.env.OPENAI_API_KEY;
     const replicateKey = rawCredentials.replicate?.apiKey || process.env.REPLICATE_API_KEY;
     const geminiKey = rawCredentials.gemini?.apiKey || process.env.GEMINI_API_KEY;
+    const openRouterKey = rawCredentials.openrouter?.apiKey || process.env.OPENROUTER_API_KEY;
     
+    this.openRouterKey = openRouterKey;
     if (openaiKey && !openaiKey.includes('YOUR_OPENAI_API_KEY')) {
       this.openai = new OpenAI({ apiKey: openaiKey });
       this.logger.info('OpenAI service initialized');
@@ -32,8 +36,12 @@ class AIVideoGenerator {
     
     if (geminiKey) {
       try {
+        this.geminiKey = geminiKey;
         this.genAI = new GoogleGenerativeAI(geminiKey);
-        this.gemini = this.genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+        this.gemini = this.genAI.getGenerativeModel({ 
+          model: 'gemini-2.5-flash',
+          systemInstruction: 'You are an AI assistant that generates creative content, scripts, and concepts for YouTube videos.'
+        });
         this.logger.info('Google Gemini service initialized');
       } catch (error) {
         this.logger.error('Failed to initialize Google Gemini:', error);
@@ -72,90 +80,43 @@ class AIVideoGenerator {
         return await this.generateOpenAITTS(text, outputPath);
       }
       
-      // Fallback to Free Google Translate TTS
-      return await this.generateGoogleTTS(text, outputPath);
+      // Fallback to Free Microsoft Edge Neural TTS
+      return await this.generateMsEdgeTTS(text, outputPath);
     } catch (error) {
       this.logger.error('TTS generation failed:', error);
       throw error;
     }
   }
 
-  async generateGoogleTTS(text, outputPath) {
-    this.logger.info('Generating free Google Translate TTS audio...');
+  async generateMsEdgeTTS(text, outputPath) {
+    this.logger.info('Generating free Microsoft Edge Neural TTS audio...');
     
-    try {
-      // Split text into chunks of max 150 characters
-      const chunks = [];
-      const sentences = text.match(/[^.!?]+[.!?]*/g) || [text];
-      
-      let currentChunk = '';
-      for (const sentence of sentences) {
-        if ((currentChunk + sentence).length > 150) {
-          if (currentChunk.trim()) {
-            chunks.push(currentChunk.trim());
-          }
-          currentChunk = sentence;
-        } else {
-          currentChunk += sentence;
-        }
-      }
-      if (currentChunk.trim()) {
-        chunks.push(currentChunk.trim());
-      }
-      
-      this.logger.info(`Split text into ${chunks.length} chunks for TTS generation`);
-      
-      const chunkPaths = [];
-      for (let i = 0; i < chunks.length; i++) {
-        if (!chunks[i] || !chunks[i].trim()) continue;
-        const chunkText = encodeURIComponent(chunks[i]);
-        const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${chunkText}&tl=id&client=tw-ob`;
-        const chunkPath = outputPath.replace('.mp3', `_chunk_${i}.mp3`);
+    return new Promise(async (resolve, reject) => {
+      try {
+        const tts = new MsEdgeTTS();
+        const format = OUTPUT_FORMAT.AUDIO_24KHZ_96KBITRATE_MONO_MP3 || "audio-24khz-96kbitrate-mono-mp3";
+        await tts.setMetadata("id-ID-GadisNeural", format);
         
-        const response = await axios({
-          method: 'GET',
-          url: url,
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-          },
-          responseType: 'stream'
+        await fs.mkdir(path.dirname(outputPath), { recursive: true });
+        const fileStream = standardFs.createWriteStream(outputPath);
+        
+        const { audioStream } = tts.toStream(text);
+        audioStream.pipe(fileStream);
+        
+        audioStream.on("end", () => {
+          this.logger.info('Microsoft Edge Neural TTS generation complete');
+          resolve(outputPath);
         });
         
-        const writer = require('fs').createWriteStream(chunkPath);
-        response.data.pipe(writer);
-        
-        await new Promise((resolve, reject) => {
-          writer.on('finish', resolve);
-          writer.on('error', reject);
+        audioStream.on("error", (err) => {
+          this.logger.error('Microsoft Edge Neural TTS stream error:', err);
+          reject(err);
         });
-        
-        chunkPaths.push(chunkPath);
+      } catch (error) {
+        this.logger.error('Microsoft Edge Neural TTS generation failed:', error);
+        reject(error);
       }
-      
-      // Concatenate all chunks using FFmpeg
-      if (chunkPaths.length === 1) {
-        await fs.rename(chunkPaths[0], outputPath);
-      } else {
-        const concatListPath = outputPath.replace('.mp3', '_list.txt');
-        const listContent = chunkPaths.map(p => `file '${path.resolve(p)}'`).join('\n');
-        await fs.writeFile(concatListPath, listContent);
-        
-        const command = `ffmpeg -y -f concat -safe 0 -i "${concatListPath}" -c copy "${outputPath}"`;
-        await execAsync(command);
-        
-        // Cleanup chunks and list file
-        await fs.unlink(concatListPath);
-        for (const chunkPath of chunkPaths) {
-          await fs.unlink(chunkPath);
-        }
-      }
-      
-      this.logger.info('Free Google Translate TTS generation complete');
-      return outputPath;
-    } catch (error) {
-      this.logger.error('Google Translate TTS generation failed:', error);
-      throw error;
-    }
+    });
   }
 
   async generateElevenLabsTTS(text, outputPath) {
@@ -184,7 +145,7 @@ class AIVideoGenerator {
       responseType: 'stream'
     });
 
-    const writer = require('fs').createWriteStream(outputPath);
+    const writer = standardFs.createWriteStream(outputPath);
     response.data.pipe(writer);
 
     return new Promise((resolve, reject) => {
@@ -211,7 +172,7 @@ class AIVideoGenerator {
     return outputPath;
   }
 
-  async generateVisualAssets(prompt, style = "ethereal", count = 1) {
+  async generateVisualAssets(prompt, style = "ethereal", count = 1, imageProvider = "gemini", imageModel = "imagen-4.0-generate-001") {
     this.logger.info(`Generating ${count} visual assets with style: ${style}`);
     
     try {
@@ -221,10 +182,10 @@ class AIVideoGenerator {
 
       let enhancedPrompt = this.enhanceVisualPrompt(prompt, style);
       
-      if (this.openai) {
-        // Use DALL-E 3 for high-quality images
+      if (imageProvider === 'openai' && this.openai) {
+        // Use OpenAI DALL-E for high-quality images
         const response = await this.openai.images.generate({
-          model: "dall-e-3",
+          model: imageModel,
           prompt: enhancedPrompt,
           n: count,
           size: "1792x1024", // 16:9 aspect ratio for video
@@ -251,18 +212,68 @@ class AIVideoGenerator {
         const enhancedText = geminiResult.response.text().trim().replace(/["']/g, '');
         this.logger.info(`Gemini enhanced prompt: "${enhancedText}"`);
         
-        // Add style cues
-        const finalPrompt = encodeURIComponent(`${enhancedText}, cute children's book cartoon style, vector illustration, vibrant colors, highly detailed, 16:9 aspect ratio`);
+        const finalPrompt = `${enhancedText}, cute children's book cartoon style, vector illustration, vibrant colors, highly detailed, 16:9 aspect ratio`;
         const localPaths = [];
         
         for (let i = 0; i < count; i++) {
           const imagePath = path.join(__dirname, '..', 'data', 'assets', `visual_${Date.now()}_${i}.png`);
-          const pollUrl = `https://image.pollinations.ai/prompt/${finalPrompt}?width=1280&height=720&nologo=true&seed=${Math.floor(Math.random() * 100000)}`;
-          await this.downloadImage(pollUrl, imagePath);
+          
+          try {
+            if (imageProvider === 'openrouter' && this.openRouterKey && this.openRouterKey !== 'YOUR_OPENROUTER_API_KEY') {
+              // Use OpenRouter
+              this.logger.info(`Generating visual asset via OpenRouter (${imageModel})...`);
+              const response = await axios.post(
+                'https://openrouter.ai/api/v1/chat/completions',
+                {
+                  model: imageModel,
+                  messages: [{ role: 'user', content: finalPrompt }]
+                },
+                {
+                  headers: {
+                    'Authorization': `Bearer ${this.openRouterKey}`,
+                    'HTTP-Referer': 'http://localhost:3456',
+                    'X-Title': 'Youtube Automation Agent'
+                  }
+                }
+              );
+              
+              const message = response.data.choices[0].message;
+              if (message.refusal) {
+                  throw new Error(`OpenRouter refused request: ${message.refusal}`);
+              }
+              const content = message.content;
+              const urlMatch = content.match(/https?:\/\/[^\s\)]+/);
+              if (urlMatch) {
+                  const imgRes = await axios.get(urlMatch[0], { responseType: 'arraybuffer' });
+                  await fs.writeFile(imagePath, imgRes.data);
+              } else {
+                  throw new Error(`OpenRouter did not return an image URL. Response: ${content}`);
+              }
+            } else {
+              // Use Gemini Developer API (Imagen 4)
+              const url = `https://generativelanguage.googleapis.com/v1beta/models/${imageModel}:predict?key=${this.geminiKey}`;
+              const response = await axios.post(
+                url,
+                {
+                  instances: [{ prompt: finalPrompt }],
+                  parameters: { sampleCount: 1, aspectRatio: "16:9" }
+                },
+                { headers: { 'Content-Type': 'application/json' } }
+              );
+              
+              const base64Data = response.data.predictions[0].bytesBase64Encoded;
+              await fs.writeFile(imagePath, Buffer.from(base64Data, 'base64'));
+            }
+          } catch (apiError) {
+            this.logger.warn(`API Image generation failed (${imageProvider}), falling back to pollinations.ai: ${apiError.message}`);
+            const fallbackUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt)}?width=1280&height=720&nologo=true&seed=${Math.floor(Math.random() * 100000)}`;
+            await this.downloadImage(fallbackUrl, imagePath);
+          }
+          
           localPaths.push(imagePath);
         }
         
-        this.logger.info(`Generated ${localPaths.length} visual assets via Pollinations (Gemini-enhanced)`);
+        this.logger.info(`Generated ${localPaths.length} visual assets via Gemini Imagen 4`);
         return localPaths;
       }
     } catch (error) {
@@ -291,7 +302,7 @@ class AIVideoGenerator {
       responseType: 'stream'
     });
 
-    const writer = require('fs').createWriteStream(outputPath);
+    const writer = standardFs.createWriteStream(outputPath);
     response.data.pipe(writer);
 
     return new Promise((resolve, reject) => {
@@ -300,13 +311,38 @@ class AIVideoGenerator {
     });
   }
 
-  async generateVideo(script, visualAssets, audioPath, outputPath) {
-    this.logger.info('Generating video from assets...');
+  async getSfxFile(keywords) {
+    if (!keywords || keywords.length === 0) return null;
+    try {
+      const sfxDir = path.join(__dirname, '..', 'assets', 'sfx');
+      const files = await fs.readdir(sfxDir).catch(() => []);
+      const validFiles = files.filter(f => f.endsWith('.mp3') || f.endsWith('.wav'));
+      
+      for (const keyword of keywords) {
+        const lowerKw = keyword.toLowerCase();
+        for (const file of validFiles) {
+          if (file.toLowerCase().includes(lowerKw)) {
+            return path.join(sfxDir, file);
+          }
+        }
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async generateVideo(script, visualAssets, audioPath, outputPath, videoFormat = 'slideshow') {
+    this.logger.info(`Generating video from assets... Format: ${videoFormat}`);
     
     try {
-      // Try Replicate for video generation first
-      if (this.replicate && this.replicate.auth) {
-        return await this.generateReplicateVideo(script, visualAssets, audioPath, outputPath);
+      if (videoFormat === 'video_ai') {
+        // Try Replicate/Luma/Runway for true AI video generation
+        if (this.replicate && this.replicate.auth) {
+          return await this.generateReplicateVideo(script, visualAssets, audioPath, outputPath);
+        } else {
+          this.logger.warn('AI Video requested (video_ai) but Replicate API key is missing. Falling back to Slideshow.');
+        }
       }
       
       // Use reliable FFmpeg slideshow (no Playwright needed)
@@ -350,7 +386,6 @@ class AIVideoGenerator {
 
     // Filter to only real image files (not .info simulation files)
     const realImages = (visualAssets || []).filter(p => {
-      const standardFs = require('fs');
       return p && typeof p === 'string' && !p.endsWith('.info') && standardFs.existsSync(p);
     });
 
@@ -364,15 +399,47 @@ class AIVideoGenerator {
 
     try {
       // Build slide list: each image gets equal duration
-      const totalDuration = this.calculateScriptDuration(script);
-      const slideDuration = Math.max(3, Math.floor(totalDuration / realImages.length));
-
+      let totalDuration = this.calculateScriptDuration(script);
+      
+      const hasAudio = audioPath && standardFs.existsSync(audioPath);
+      
+      if (hasAudio) {
+        try {
+          // Probe actual audio duration to prevent premature cutoff with -shortest
+          const probeCommand = `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${audioPath}"`;
+          const { stdout } = await execAsync(probeCommand);
+          const probedDuration = parseFloat(stdout.trim());
+          if (!isNaN(probedDuration) && probedDuration > 0) {
+            totalDuration = probedDuration;
+            this.logger.info(`Probed exact audio duration: ${totalDuration}s`);
+          }
+        } catch (e) {
+          this.logger.warn(`Failed to probe audio duration, falling back to estimate. Error: ${e.message}`);
+        }
+      }
+      
+      // Use Math.ceil to ensure visual is slightly longer than audio, so -shortest cuts perfectly at audio end
+      const slideDuration = Math.max(3, Math.ceil(totalDuration / realImages.length));
       // Step 1: For each image, create a video clip with Ken Burns zoom+pan effect
       const clipPaths = [];
       const sections = (script.mainContent && script.mainContent.sections) || [];
+      const sfxInputs = [];
 
       for (let i = 0; i < realImages.length; i++) {
         const imgPath = realImages[i];
+        
+        // Check for SFX
+        if (sections[i] && sections[i].sfx_keywords) {
+           const sfxPath = await this.getSfxFile(sections[i].sfx_keywords);
+           if (sfxPath) {
+              sfxInputs.push({
+                 path: sfxPath,
+                 delayMs: i * slideDuration * 1000
+              });
+              this.logger.info(`Assigned SFX ${path.basename(sfxPath)} for section ${i} at delay ${i * slideDuration}s`);
+           }
+        }
+        
         const clipPath = path.join(framesDir, `clip_${i}.mp4`);
         const fps = 25;
         const totalFrames = slideDuration * fps;
@@ -394,12 +461,64 @@ class AIVideoGenerator {
       await execAsync(`ffmpeg -y -f concat -safe 0 -i "${concatListPath}" -c copy "${silentVideoPath}"`);
 
       // Step 3: Add audio track (TTS narration)
-      const standardFs = require('fs');
-      const hasAudio = audioPath && standardFs.existsSync(audioPath);
+
 
       if (hasAudio) {
-        await execAsync(`ffmpeg -y -i "${silentVideoPath}" -i "${audioPath}" -c:v copy -c:a aac -shortest "${outputPath}"`);
-        this.logger.info('Audio track merged into slideshow video');
+        let bgmCommand = '';
+        let hasBgm = false;
+        let randomBgm = '';
+        
+        try {
+          const bgmDir = path.join(__dirname, '..', 'assets', 'bgm');
+          const bgmFiles = await fs.readdir(bgmDir).catch(() => []);
+          const validBgm = bgmFiles.filter(f => f.endsWith('.mp3') || f.endsWith('.wav'));
+          
+          if (validBgm.length > 0) {
+            randomBgm = path.join(bgmDir, validBgm[Math.floor(Math.random() * validBgm.length)]);
+            hasBgm = true;
+          }
+        } catch (e) {
+          this.logger.warn(`Failed to process BGM: ${e.message}`);
+        }
+        
+        // Build filter complex for dynamic audio mixing
+        let inputs = ` -i "${silentVideoPath}" -i "${audioPath}"`;
+        if (hasBgm) inputs += ` -stream_loop -1 -i "${randomBgm}"`;
+        
+        sfxInputs.forEach(sfx => {
+           inputs += ` -i "${sfx.path}"`;
+        });
+        
+        let filterComplex = `[1:a]volume=1.0[a1];`;
+        let amixInputs = '[a1]';
+        let mixCount = 1;
+        let inputIndex = 1; // 0 is video, 1 is TTS
+        
+        if (hasBgm) {
+           inputIndex++;
+           filterComplex += `[${inputIndex}:a]volume=0.15[a2];`;
+           amixInputs += '[a2]';
+           mixCount++;
+        }
+        
+        sfxInputs.forEach((sfx, index) => {
+           inputIndex++;
+           const sfxLabel = `sfx${index}`;
+           filterComplex += `[${inputIndex}:a]adelay=${sfx.delayMs}|${sfx.delayMs},volume=0.8[${sfxLabel}];`;
+           amixInputs += `[${sfxLabel}]`;
+           mixCount++;
+        });
+        
+        filterComplex += `${amixInputs}amix=inputs=${mixCount}:duration=first:dropout_transition=2[a]`;
+        
+        bgmCommand = `ffmpeg -y${inputs} -filter_complex "${filterComplex}" -map 0:v -map "[a]" -c:v copy -c:a aac -shortest "${outputPath}"`;
+        
+        this.logger.info(`Mixing TTS with ${hasBgm ? 'BGM' : 'no BGM'} and ${sfxInputs.length} SFX tracks`);
+        
+        if (bgmCommand) {
+          await execAsync(bgmCommand);
+        }
+        this.logger.info('Audio track merged into video');
       } else {
         await fs.copyFile(silentVideoPath, outputPath);
         this.logger.warn('No audio file found, video exported without audio');
@@ -447,7 +566,6 @@ class AIVideoGenerator {
     const silentPath = path.join(framesDir, 'silent.mp4');
     await execAsync(`ffmpeg -y -f concat -safe 0 -i "${concatListPath}" -c copy "${silentPath}"`);
 
-    const standardFs = require('fs');
     if (audioPath && standardFs.existsSync(audioPath)) {
       await execAsync(`ffmpeg -y -i "${silentPath}" -i "${audioPath}" -c:v copy -c:a aac -shortest "${outputPath}"`);
     } else {
@@ -691,13 +809,29 @@ class AIVideoGenerator {
       responseType: 'stream'
     });
 
-    const writer = require('fs').createWriteStream(outputPath);
+    const writer = standardFs.createWriteStream(outputPath);
     response.data.pipe(writer);
 
     return new Promise((resolve, reject) => {
       writer.on('finish', resolve);
       writer.on('error', reject);
     });
+  }
+
+  async generateShortVideo(mainVideoPath, outputPath) {
+    this.logger.info(`Extracting YouTube Shorts from ${mainVideoPath}`);
+    // Crop center for 9:16 vertical ratio (1080x1920) from horizontal (1920x1080)
+    // Trim to 59 seconds max length
+    const command = `ffmpeg -y -i "${mainVideoPath}" -vf "crop=ih*(9/16):ih,scale=1080:1920" -t 59 -c:v libx264 -preset fast -crf 23 -c:a aac -b:a 192k "${outputPath}"`;
+    
+    try {
+      await execAsync(command);
+      this.logger.success(`YouTube Shorts generated: ${outputPath}`);
+      return outputPath;
+    } catch (error) {
+      this.logger.error('Failed to generate YouTube Shorts:', error);
+      return null;
+    }
   }
 
   async cleanupDirectory(dirPath) {
@@ -747,7 +881,8 @@ class AIVideoGenerator {
         const geminiResult = await this.gemini.generateContent(systemPrompt + script.title);
         const enhancedText = geminiResult.response.text().trim().replace(/["']/g, '');
         
-        const finalPrompt = encodeURIComponent(`YouTube thumbnail for "${script.title}": ${enhancedText}, cute children's book cartoon style, vibrant colors, epic fantasy lighting, extremely eye-catching, 16:9 aspect ratio`);
+        // Remove "YouTube thumbnail" and add "no text, no words" to prevent gibberish text generation
+        const finalPrompt = encodeURIComponent(`Cute children's book cartoon scene: ${enhancedText}, vibrant colors, epic fantasy lighting, extremely eye-catching, no text, no words, no letters, clear focus, 16:9 aspect ratio`);
         const pollUrl = `https://image.pollinations.ai/prompt/${finalPrompt}?width=1280&height=720&nologo=true&seed=${Math.floor(Math.random() * 100000)}`;
         
         await this.downloadImage(pollUrl, thumbnailPath);

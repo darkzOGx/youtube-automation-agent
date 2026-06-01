@@ -103,6 +103,8 @@ class YouTubeAutomationAgent {
   setupAPI() {
     this.app.use(express.json());
     this.app.use(express.static(path.join(__dirname, 'dashboard')));
+    this.app.use('/data', express.static(path.join(__dirname, 'data')));
+    this.app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
     
     // Main dashboard route
     this.app.get('/', (req, res) => {
@@ -132,10 +134,10 @@ class YouTubeAutomationAgent {
           return res.status(400).json({ success: false, error: 'A content generation task is already running.' });
         }
         
-        const { topic, style, length } = req.body;
+        const { topic, style, length, imageProvider, imageModel, videoFormat, testMode } = req.body;
         
         // Start background content generation
-        this.runBackgroundGeneration(topic, style, length).catch(err => {
+        this.runBackgroundGeneration(topic, style, length, imageProvider, imageModel, videoFormat, testMode).catch(err => {
           this.logger.error('Background generation process crashed:', err);
         });
         
@@ -144,6 +146,9 @@ class YouTubeAutomationAgent {
         res.status(500).json({ success: false, error: error.message });
       }
     });
+
+    // Mount separate dashboard detail pages
+    require('./dashboard-details.js')(this.app, this.agents, this.db);
 
     // Get analytics
     this.app.get('/analytics', async (req, res) => {
@@ -182,6 +187,32 @@ class YouTubeAutomationAgent {
         const result = await this.agents.publishing.publishContent(contentId);
         res.json({ success: true, result });
       } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Delete schedule item
+    this.app.delete('/schedule/:id', async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { feedback, videoTitle, productionId } = req.body;
+        
+        // Remove from schedule agent queue in memory
+        this.agents.publishing.publishQueue = this.agents.publishing.publishQueue.filter(e => e.id !== id);
+        
+        // Remove from db
+        await this.db.deleteScheduleEntry(id);
+        
+        // Save feedback if provided
+        if (feedback && feedback.trim() !== '') {
+          await this.db.saveFeedback({ feedback, videoTitle, productionId });
+          this.logger.info(`Feedback saved for deleted video: ${videoTitle}`);
+        }
+        
+        this.logger.info(`Schedule entry deleted: ${id}`);
+        res.json({ success: true, message: 'Schedule entry deleted.' });
+      } catch (error) {
+        this.logger.error(`Failed to delete schedule entry ${req.params.id}:`, error);
         res.status(500).json({ success: false, error: error.message });
       }
     });
@@ -236,7 +267,10 @@ class YouTubeAutomationAgent {
 
         res.json({ channels, selectedChannelId, selectedChannelName });
       } catch (error) {
-        this.logger.error('Failed to list YouTube channels:', error);
+        this.logger.error('Failed to list YouTube channels:', error.message || error);
+        if (error.response && error.response.data) {
+          this.logger.error('YouTube API Error details:', JSON.stringify(error.response.data));
+        }
         res.status(500).json({ error: error.message });
       }
     });
@@ -300,6 +334,10 @@ class YouTubeAutomationAgent {
     const contentId = await this.db.saveProductionData(productionData);
     this.logger.info(`Content saved with ID: ${contentId}`);
     
+    // Step 7: Schedule for publishing
+    await this.agents.publishing.scheduleContent(productionData);
+    this.logger.info('Content scheduled for publishing');
+    
     return {
       contentId,
       title: script.title,
@@ -307,7 +345,7 @@ class YouTubeAutomationAgent {
     };
   }
 
-  async runBackgroundGeneration(topic = null, style = null, length = 'medium') {
+  async runBackgroundGeneration(topic = null, style = null, length = 'medium', imageProvider = 'gemini', imageModel = 'imagen-4.0-generate-001', videoFormat = 'slideshow', testMode = false) {
     this.generationStatus = {
       status: 'generating',
       currentStep: 'Initializing content generation...',
@@ -330,8 +368,15 @@ class YouTubeAutomationAgent {
       
       // Step 1: Strategy
       this.generationStatus.currentStep = 'Analyzing Content Strategy...';
-      const strategy = await this.agents.strategy.generateContentStrategy(topic);
-      this.logger.info(`Strategy generated: ${strategy.topic}`);
+      const topTopics = this.agents.analytics.getTopPerformingTopics();
+      const topKeywords = this.agents.analytics.getTopPerformingKeywords();
+      const analyticsData = { topTopics, topKeywords };
+      
+      const strategy = await this.agents.strategy.generateContentStrategy(topic, analyticsData);
+      if (style) {
+        strategy.contentType = style.charAt(0).toUpperCase() + style.slice(1);
+      }
+      this.logger.info(`Strategy generated: ${strategy.topic} (${strategy.contentType})`);
       
       // Step 2: Script Writing
       this.generationStatus.steps.strategy = 'completed';
@@ -339,6 +384,8 @@ class YouTubeAutomationAgent {
       this.generationStatus.estimatedSecondsRemaining = 160;
       this.generationStatus.currentStep = 'Generating Story Script via Google Gemini...';
       const script = await this.agents.scriptWriter.generateScript(strategy);
+      script.imageProvider = imageProvider;
+      script.imageModel = imageModel;
       this.generationStatus.title = script.title;
       this.logger.info(`Script generated: ${script.title}`);
       
@@ -355,19 +402,21 @@ class YouTubeAutomationAgent {
       this.generationStatus.steps.seo = 'processing';
       this.generationStatus.estimatedSecondsRemaining = 130;
       this.generationStatus.currentStep = 'Optimizing SEO keywords and tags...';
-      const seoData = await this.agents.seoOptimizer.optimize(script, strategy);
+      const seoData = await this.agents.seoOptimizer.optimize(script, strategy, analyticsData);
       this.logger.info('SEO optimization complete');
       
       // Step 5: Production Management (Vivid fairytale assets + Free Google TTS + Slideshow compilation)
       this.generationStatus.steps.seo = 'completed';
       this.generationStatus.steps.production = 'processing';
-      this.generationStatus.estimatedSecondsRemaining = 115;
+      this.generationStatus.estimatedSecondsRemaining = 600;
       this.generationStatus.currentStep = 'Generating visual illustrations and synthesizing audio narration...';
       const productionData = await this.agents.production.processContent({
         strategy,
         script,
         thumbnail,
-        seo: seoData
+        seo: seoData,
+        videoFormat: videoFormat || 'slideshow',
+        testMode
       });
       this.logger.info('Production processing complete');
       
@@ -378,8 +427,13 @@ class YouTubeAutomationAgent {
       const contentId = await this.db.saveProductionData(productionData);
       this.logger.info(`Content saved with ID: ${contentId}`);
       
+      // Step 7: Schedule for publishing
+      this.generationStatus.currentStep = 'Scheduling content for publication...';
+      await this.agents.publishing.scheduleContent(productionData);
+      this.logger.info('Content scheduled for publishing');
+      
       this.generationStatus.status = 'completed';
-      this.generationStatus.currentStep = 'Content generated successfully!';
+      this.generationStatus.currentStep = 'Content generated successfully and scheduled for publication!';
       this.generationStatus.contentId = contentId;
       this.generationStatus.timestamp = new Date().toISOString();
     } catch (error) {

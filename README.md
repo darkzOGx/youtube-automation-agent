@@ -411,6 +411,44 @@ To deploy this YouTube Automation Agent 24/7 on a remote Linux VPS or server (so
    pm2 logs youtube-automation
    ```
 
+## 🗺️ Roadmap & Bug Tracker
+
+The project is being developed in 5 distinct phases. We use this roadmap to track our progress, planned features, and active bugs.
+
+### Phase 1: Core Systems & MVP (✅ Completed)
+- ✅ Setup project structure and configuration.
+- ✅ Implement basic AI agents (Script, Strategy, Video).
+- ✅ Integrate YouTube API (upload).
+- ✅ Basic Web Dashboard.
+
+### Phase 2: Enhanced Storytelling & Voice (✅ Completed)
+- ✅ Support for 'Story' video format.
+- ✅ Implement Free Google TTS (Edge TTS) integration.
+- ✅ Proper Indonesian narrative script generation.
+
+### Phase 3: Visual Generation & Editing (✅ Completed)
+- ✅ Integrate Google Gemini / Imagen for AI image generation.
+- ✅ Dynamic FFmpeg slideshow generation with zoom/pan effects.
+- ✅ Auto-generation of thumbnails.
+
+### Phase 4: Community & Shorts (✅ Completed)
+- ✅ YouTube Shorts automatic extraction from main video.
+- ✅ Automated Community Posts via YouTube API.
+- ✅ Automatic Top-Level Pinned Comments on published videos.
+- ✅ Smart Publishing Schedule Optimization.
+
+### Phase 5: Self-Learning & Analytics Loop (✅ Completed)
+- ✅ Analytics Agent to fetch past video performance.
+- ✅ Auto-adjust titles, keywords, and topics based on top performers.
+
+### 🐛 Active Bug Tracker (Known Issues)
+- ✅ **[FIXED]** `videoGenerator is undefined` error during Shorts generation.
+- ✅ **[FIXED]** Repetitive fallback script generation ("mari kita hayati").
+- ⏳ **[PENDING]** Edge TTS occasionally times out on very long scripts.
+- ⏳ **[PENDING]** FFmpeg transition artifacts on some video renders.
+
+*(See [ISSUES.md](ISSUES.md) for the full issue tracker).*
+
 ## 🤝 Contributing
 
 1. Fork the repository

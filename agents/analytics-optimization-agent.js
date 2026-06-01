@@ -343,16 +343,16 @@ class AnalyticsOptimizationAgent {
       insights.push({
         type: 'success',
         category: 'views',
-        message: 'Video is performing above average in terms of views',
+        message: 'Video berkinerja luar biasa di atas rata-rata penonton!',
         impact: 'high'
       });
     } else if (analytics.views.totalViews < 1000) {
       insights.push({
         type: 'warning',
         category: 'views',
-        message: 'Video views are below expected threshold',
+        message: 'Jumlah penonton video saat ini berada di bawah target dasar',
         impact: 'high',
-        recommendation: 'Consider promoting the video or optimizing SEO'
+        recommendation: 'Coba promosikan video di media sosial atau tingkatkan optimasi SEO dongeng'
       });
     }
     
@@ -361,16 +361,16 @@ class AnalyticsOptimizationAgent {
       insights.push({
         type: 'success',
         category: 'retention',
-        message: 'Excellent audience retention rate',
+        message: 'Daya pertahanan penonton sangat luar biasa (anak-anak betah menyimak sampai akhir)!',
         impact: 'medium'
       });
     } else if (analytics.watchTime.averageViewPercentage < 30) {
       insights.push({
         type: 'critical',
         category: 'retention',
-        message: 'Poor audience retention - viewers are dropping off early',
+        message: 'Daya pertahanan penonton kurang optimal - anak-anak mulai bosan di awal cerita',
         impact: 'high',
-        recommendation: 'Review content structure and pacing'
+        recommendation: 'Tinjau kembali struktur naskah dongeng dan percepat tempo penyampaian cerita'
       });
     }
     
@@ -379,16 +379,16 @@ class AnalyticsOptimizationAgent {
       insights.push({
         type: 'success',
         category: 'thumbnail',
-        message: 'Thumbnail is highly effective at driving clicks',
+        message: 'Gambar mini (thumbnail) sangat memikat dan efektif memicu klik anak-anak!',
         impact: 'high'
       });
     } else if (thumbnailMetrics.clickThroughRate < 3) {
       insights.push({
         type: 'warning',
         category: 'thumbnail',
-        message: 'Thumbnail may not be compelling enough',
+        message: 'Gambar mini kurang memikat rasa penasaran penonton',
         impact: 'high',
-        recommendation: 'Consider A/B testing different thumbnail designs'
+        recommendation: 'Gunakan warna yang lebih cerah atau uji coba beberapa desain gambar mini baru'
       });
     }
     
@@ -397,16 +397,16 @@ class AnalyticsOptimizationAgent {
       insights.push({
         type: 'success',
         category: 'seo',
-        message: 'Video is well-optimized for search',
+        message: 'Video teroptimasi dengan sangat baik untuk mesin pencari!',
         impact: 'medium'
       });
     } else if (seoMetrics.overallSEOScore < 50) {
       insights.push({
         type: 'warning',
         category: 'seo',
-        message: 'SEO optimization needs improvement',
+        message: 'Optimasi SEO video masih perlu banyak peningkatan',
         impact: 'medium',
-        recommendation: 'Optimize title, description, and tags'
+        recommendation: 'Optimalkan kembali keselarasan judul, deskripsi, dan tag dongeng'
       });
     }
     
@@ -415,16 +415,16 @@ class AnalyticsOptimizationAgent {
       insights.push({
         type: 'success',
         category: 'engagement',
-        message: 'High audience engagement',
+        message: 'Interaksi penonton sangat aktif (banyak menyukai dan berkomentar)!',
         impact: 'medium'
       });
     } else if (analytics.engagement.engagementRate < 1) {
       insights.push({
         type: 'warning',
         category: 'engagement',
-        message: 'Low audience engagement',
+        message: 'Interaksi penonton (like/comment) masih cukup rendah',
         impact: 'medium',
-        recommendation: 'Encourage more interaction in future videos'
+        recommendation: 'Berikan pertanyaan interaktif sederhana di akhir dongeng untuk memicu komentar anak-anak'
       });
     }
     
@@ -587,29 +587,29 @@ class AnalyticsOptimizationAgent {
   }
 
   generateThumbnailRecommendations(ctr) {
-    if (ctr > 8) return ['Thumbnail is performing excellently', 'Consider using similar design elements in future thumbnails'];
-    if (ctr > 5) return ['Good thumbnail performance', 'Minor optimizations may help'];
-    if (ctr > 3) return ['Average performance', 'Test brighter colors or more contrasting text'];
-    return ['Poor thumbnail performance', 'Consider A/B testing', 'Use more compelling imagery', 'Increase text contrast'];
+    if (ctr > 8) return ['Performa gambar mini sangat luar biasa! 🌟', 'Pertahankan gaya desain ceria ini untuk video berikutnya.'];
+    if (ctr > 5) return ['Performa gambar mini cukup baik 👍', 'Lakukan sedikit optimalisasi kontras warna agar lebih menarik.'];
+    if (ctr > 3) return ['Performa gambar mini rata-rata ⚖️', 'Coba gunakan warna karakter yang lebih cerah atau teks dengan kontras lebih tinggi.'];
+    return ['Performa gambar mini kurang optimal ⚠️', 'Coba perbesar ukuran teks judul di gambar mini', 'Gunakan visual karakter dongeng yang lebih ekspresif', 'Tingkatkan kontras warna latar belakang.'];
   }
 
   generateSEORecommendations(titleScore, descriptionScore, tagScore, searchPerformance) {
     const recommendations = [];
     
     if (titleScore < 70) {
-      recommendations.push('Optimize title with power words and emotional triggers');
+      recommendations.push('Optimalkan judul dongeng agar lebih hangat, ajaib, dan memikat rasa penasaran anak-anak');
     }
     
     if (descriptionScore < 60) {
-      recommendations.push('Improve description with timestamps, links, and detailed content');
+      recommendations.push('Lengkapi deskripsi dengan ringkasan dongeng yang manis, tautan playlist cerita, dan timestamps');
     }
     
     if (tagScore < 50) {
-      recommendations.push('Use more relevant tags and long-tail keywords');
+      recommendations.push('Gunakan kata kunci dongeng anak yang lebih populer (seperti fabel anak, cerita pengantar tidur)');
     }
     
     if (searchPerformance.searchPercentage < 15) {
-      recommendations.push('Focus on search optimization to improve organic discovery');
+      recommendations.push('Fokus pada optimasi kata kunci pencarian dongeng anak untuk meningkatkan penemuan organik');
     }
     
     return recommendations;
@@ -701,6 +701,75 @@ class AnalyticsOptimizationAgent {
     }
     
     return insights;
+  }
+
+  getTopPerformingKeywords(limit = 10) {
+    if (this.performanceData.size === 0) return [];
+    const keywordScores = new Map();
+    for (const [_, report] of this.performanceData.entries()) {
+      const tags = report.videoDetails?.tags || [];
+      const score = report.performance?.score || 0;
+      for (const tag of tags) {
+        keywordScores.set(tag, (keywordScores.get(tag) || 0) + score);
+      }
+    }
+    return Array.from(keywordScores.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, limit)
+      .map(entry => entry[0]);
+  }
+
+  getTopPerformingTopics(limit = 5) {
+    if (this.performanceData.size === 0) return [];
+    const topicScores = new Map();
+    const commonStopWords = ['dan', 'yang', 'untuk', 'dengan', 'dari', 'pada', 'dalam', 'ini', 'itu', 'sebuah'];
+    
+    for (const [_, report] of this.performanceData.entries()) {
+      const title = report.videoDetails?.title || '';
+      const words = title.toLowerCase()
+        .replace(/[^\w\s]/g, '')
+        .split(/\s+/)
+        .filter(w => w.length > 3 && !commonStopWords.includes(w));
+        
+      const score = report.performance?.score || 0;
+      for (const word of words) {
+        topicScores.set(word, (topicScores.get(word) || 0) + score);
+      }
+    }
+    return Array.from(topicScores.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, limit)
+      .map(entry => entry[0]);
+  }
+
+  async runABTestCheck(publishingAgent) {
+    this.logger.info('Running A/B Test check on recent videos...');
+    const recentVideos = Array.from(this.performanceData.values()).filter(report => {
+      const publishedAt = new Date(report.videoDetails?.publishedAt || 0);
+      const hoursSincePublish = (Date.now() - publishedAt.getTime()) / (1000 * 60 * 60);
+      return hoursSincePublish >= 24 && hoursSincePublish <= 72; // Check videos between 1 and 3 days old
+    });
+
+    for (const report of recentVideos) {
+      if (!report.thumbnailMetrics) continue;
+      const ctr = report.thumbnailMetrics.clickThroughRate || 0;
+      
+      // If CTR is low, try to swap thumbnail
+      if (ctr < 4.0) {
+        this.logger.info(`Low CTR detected (${ctr}%) for video ${report.videoId}. Triggering A/B thumbnail swap.`);
+        try {
+          // Find the video in the db to get variantBPath
+          const scheduleEntry = await this.db.getScheduleEntryByYouTubeId(report.videoId);
+          if (scheduleEntry && scheduleEntry.metadata && scheduleEntry.metadata.thumbnail && scheduleEntry.metadata.thumbnail.variantBPath) {
+             const variantBPath = scheduleEntry.metadata.thumbnail.variantBPath;
+             await publishingAgent.uploadThumbnail(report.videoId, variantBPath);
+             this.logger.info(`Swapped to Variant B thumbnail for video ${report.videoId}`);
+          }
+        } catch (error) {
+          this.logger.error(`Failed to swap thumbnail for ${report.videoId}:`, error);
+        }
+      }
+    }
   }
 }
 
