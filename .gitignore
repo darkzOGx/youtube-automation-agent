@@ -77,3 +77,14 @@ backup/
 # Cache
 .cache/
 *.cache
+
+# Development Scratch & Test Scripts
+test-*.js
+clean-db.js
+exchange-token.js
+exchange_token.js
+generate-url.js
+list-titles.js
+query-script.js
+query-thumbnail.js
+scratch/
