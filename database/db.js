@@ -183,6 +183,24 @@ class Database {
         value TEXT NOT NULL,
         description TEXT,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )`,
+      
+      // Automation Events (for system logging)
+      `CREATE TABLE IF NOT EXISTS automation_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_type TEXT NOT NULL,
+        status TEXT NOT NULL,
+        data TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )`,
+
+      // User Feedback (for skipped/deleted videos)
+      `CREATE TABLE IF NOT EXISTS user_feedback (
+        id TEXT PRIMARY KEY,
+        video_title TEXT,
+        production_id TEXT,
+        feedback TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
       )`
     ];
 
@@ -315,7 +333,7 @@ class Database {
   // Production methods
   async saveProductionData(production) {
     await this.executeQuery(
-      `INSERT INTO productions (
+      `INSERT OR REPLACE INTO productions (
         id, status, assets, timeline, scheduled_publish_time, 
         priority, estimated_duration
       ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -329,6 +347,7 @@ class Database {
         production.estimatedDuration
       ]
     );
+    return production.id;
   }
 
   async updateProductionData(production) {
@@ -400,15 +419,64 @@ class Database {
     );
   }
 
+  async deleteScheduleEntry(id) {
+    await this.executeQuery(
+      'DELETE FROM publish_schedule WHERE id = ?',
+      [id]
+    );
+  }
+
+  async getScheduleEntryByYouTubeId(youtubeId) {
+    const row = await this.getRow(
+      'SELECT * FROM publish_schedule WHERE youtube_id = ?',
+      [youtubeId]
+    );
+    if (!row) return null;
+    return {
+      ...row,
+      productionId: row.production_id,
+      publishTime: row.publish_time,
+      youtubeId: row.youtube_id,
+      youtubeUrl: row.youtube_url,
+      publishedAt: row.published_at,
+      errorMessage: row.error_message,
+      createdAt: row.created_at,
+      metadata: JSON.parse(row.metadata || '{}')
+    };
+  }
+
+  async saveFeedback(feedbackData) {
+    const id = this.generateId('feedback');
+    await this.executeQuery(
+      `INSERT INTO user_feedback (
+        id, video_title, production_id, feedback
+      ) VALUES (?, ?, ?, ?)`,
+      [
+        id,
+        feedbackData.videoTitle || 'Unknown Title',
+        feedbackData.productionId || 'unknown',
+        feedbackData.feedback
+      ]
+    );
+    return id;
+  }
+
   async getPublishQueue() {
     const rows = await this.getAllRows(
       `SELECT * FROM publish_schedule 
        WHERE status IN ('scheduled', 'paused') 
-       ORDER BY publish_time ASC`
+       ORDER BY publish_time ASC, created_at ASC`
     );
     
     return rows.map(row => ({
       ...row,
+      productionId: row.production_id,
+      publishTime: row.publish_time,
+      youtubeId: row.youtube_id,
+      youtubeUrl: row.youtube_url,
+      publishedAt: row.published_at,
+      errorMessage: row.error_message,
+      createdAt: row.created_at,
       metadata: JSON.parse(row.metadata || '{}')
     }));
   }
@@ -420,12 +488,45 @@ class Database {
     const rows = await this.getAllRows(
       `SELECT * FROM publish_schedule 
        WHERE publish_time BETWEEN datetime('now') AND datetime(?)
-       ORDER BY publish_time ASC`,
+       ORDER BY publish_time ASC, created_at ASC`,
       [endDate.toISOString()]
     );
     
     return rows.map(row => ({
       ...row,
+      productionId: row.production_id,
+      publishTime: row.publish_time,
+      youtubeId: row.youtube_id,
+      youtubeUrl: row.youtube_url,
+      publishedAt: row.published_at,
+      errorMessage: row.error_message,
+      createdAt: row.created_at,
+      metadata: JSON.parse(row.metadata || '{}')
+    }));
+  }
+
+  async getPublishHistory() {
+    const rows = await this.getAllRows(
+      `SELECT * FROM publish_schedule 
+       ORDER BY 
+         CASE 
+           WHEN status = 'scheduled' THEN 1 
+           WHEN status = 'paused' THEN 2
+           WHEN status = 'published' THEN 3
+           ELSE 4 
+         END, 
+         publish_time DESC, created_at DESC`
+    );
+    
+    return rows.map(row => ({
+      ...row,
+      productionId: row.production_id,
+      publishTime: row.publish_time,
+      youtubeId: row.youtube_id,
+      youtubeUrl: row.youtube_url,
+      publishedAt: row.published_at,
+      errorMessage: row.error_message,
+      createdAt: row.created_at,
       metadata: JSON.parse(row.metadata || '{}')
     }));
   }
@@ -531,9 +632,11 @@ class Database {
   async getAllSettings() {
     const rows = await this.getAllRows('SELECT * FROM settings ORDER BY key');
     return rows.reduce((settings, row) => {
-      settings[row.key] = row.value;
+      if (row.key !== '__proto__' && row.key !== 'constructor') {
+        settings[row.key] = row.value;
+      }
       return settings;
-    }, {});
+    }, Object.create(null));
   }
 
   // Utility methods
@@ -597,7 +700,7 @@ class Database {
         `backup_${Date.now()}.db`
       );
       
-      const fs = require('fs').promises;
+
       await fs.copyFile(this.dbPath, backupPath);
       
       this.logger.info(`Database backed up to: ${backupPath}`);
@@ -635,7 +738,7 @@ class Database {
 
   async getDatabaseSize() {
     try {
-      const fs = require('fs').promises;
+
       const stats = await fs.stat(this.dbPath);
       return `${(stats.size / 1024 / 1024).toFixed(2)} MB`;
     } catch (error) {

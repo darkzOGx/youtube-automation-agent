@@ -1,4 +1,6 @@
 const cron = require('node-cron');
+const fs = require('fs').promises;
+const path = require('path');
 const { Logger } = require('../utils/logger');
 
 class DailyAutomation {
@@ -216,10 +218,16 @@ class DailyAutomation {
       
       for (const video of recentVideos) {
         try {
-          await this.agents.analytics.analyzeVideoPerformance(video.youtube_id);
+          const performanceData = await this.agents.analytics.analyzeVideoPerformance(video.youtube_id);
           processedCount++;
           
           this.logger.info(`Analyzed video: ${video.title}`);
+          
+          // A/B Testing Metadata Swap Logic
+          if (performanceData && performanceData.thumbnailMetrics && performanceData.thumbnailMetrics.clickThroughRate < 4.0) {
+            this.logger.info(`Video CTR is low (${performanceData.thumbnailMetrics.clickThroughRate}%). Checking for A/B Test alternatives...`);
+            await this.swapABTestTitle(video);
+          }
           
           // Small delay to avoid API rate limits
           await this.sleep(2000);
@@ -240,6 +248,58 @@ class DailyAutomation {
       await this.logAutomationEvent('analytics_collection', 'error', {
         error: error.message
       });
+    }
+  }
+
+  async swapABTestTitle(video) {
+    try {
+      if (!this.agents.publishing || !this.agents.publishing.youtube) {
+        this.logger.warn('YouTube API not ready for A/B test swap');
+        return;
+      }
+
+      // We need to fetch the original DB entry to access abTitles
+      // Assuming 'video' has an id pointing to our database or the scheduled entry
+      const dbEntry = await this.db.getScheduleEntryByYoutubeId(video.youtube_id);
+      
+      if (!dbEntry || !dbEntry.metadata || !dbEntry.metadata.seo || !dbEntry.metadata.seo.abTitles) {
+        this.logger.info(`No A/B title alternatives found for video ${video.youtube_id}`);
+        return;
+      }
+      
+      const abTitles = dbEntry.metadata.seo.abTitles;
+      const currentTitle = video.title; // Or dbEntry.title
+      
+      // Find the next title that is not the current one
+      let newTitle = abTitles.find(t => t !== currentTitle && t !== dbEntry.lastTestedTitle);
+      
+      if (newTitle) {
+        this.logger.info(`Swapping Title! Old: "${currentTitle}" -> New: "${newTitle}"`);
+        
+        await this.agents.publishing.youtube.videos.update({
+          part: 'snippet',
+          requestBody: {
+            id: video.youtube_id,
+            snippet: {
+              title: newTitle,
+              categoryId: '1', // default or keep from dbEntry
+              description: dbEntry.metadata.seo.description,
+              tags: dbEntry.metadata.seo.tags
+            }
+          }
+        });
+        
+        // Update DB so we don't swap to this one again immediately
+        dbEntry.title = newTitle;
+        dbEntry.lastTestedTitle = newTitle;
+        await this.db.updateScheduleEntry(dbEntry);
+        
+        this.logger.success(`Successfully applied A/B test title to ${video.youtube_id}`);
+      } else {
+        this.logger.info('All A/B titles have been exhausted for this video.');
+      }
+    } catch (error) {
+      this.logger.error(`Failed to swap A/B title for ${video.youtube_id}:`, error.message);
     }
   }
 
@@ -412,8 +472,6 @@ class DailyAutomation {
 
   async cleanupOldFiles() {
     // Clean up temporary files older than 7 days
-    const fs = require('fs').promises;
-    const path = require('path');
     
     const tempDir = path.join(__dirname, '..', 'temp');
     const uploadsDir = path.join(__dirname, '..', 'uploads');
@@ -428,8 +486,6 @@ class DailyAutomation {
   }
 
   async cleanDirectoryOldFiles(directory, days) {
-    const fs = require('fs').promises;
-    const path = require('path');
     
     try {
       const files = await fs.readdir(directory);
@@ -502,9 +558,11 @@ class DailyAutomation {
     }
 
     // Check scheduled tasks
+    const taskStatus = new Map();
     this.scheduledTasks.forEach((task, name) => {
-      health.scheduledTasks[name] = task.running;
+      taskStatus.set(name, task.running);
     });
+    health.scheduledTasks = Object.fromEntries(taskStatus);
 
     // Get system resources (simplified)
     health.systemResources = {

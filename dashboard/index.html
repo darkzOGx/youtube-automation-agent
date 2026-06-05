@@ -3,7 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ethereal Dreamscript - YouTube Automation Dashboard</title>
+    <title>Kids Story AI - YouTube Automation</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐈</text></svg>">
+    <!-- Google Fonts Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         * {
             margin: 0;
@@ -12,166 +17,713 @@
         }
         
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: #333;
+            font-family: 'Outfit', sans-serif;
+            background: linear-gradient(135deg, #09090e 0%, #0d0d18 40%, #180927 100%);
+            color: #f1f5f9;
             min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Glassmorphism Background Gradients */
+        body::before {
+            content: "";
+            position: absolute;
+            top: -20%;
+            left: -10%;
+            width: 50%;
+            height: 60%;
+            background: radial-gradient(circle, rgba(118, 75, 162, 0.25) 0%, rgba(0,0,0,0) 70%);
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        body::after {
+            content: "";
+            position: absolute;
+            bottom: -10%;
+            right: -10%;
+            width: 60%;
+            height: 60%;
+            background: radial-gradient(circle, rgba(102, 126, 234, 0.2) 0%, rgba(0,0,0,0) 70%);
+            z-index: -1;
+            pointer-events: none;
         }
         
         .container {
-            max-width: 1200px;
+            max-width: 1250px;
             margin: 0 auto;
-            padding: 20px;
+            padding: 40px 20px;
         }
         
         .header {
             text-align: center;
-            color: white;
-            margin-bottom: 30px;
+            margin-bottom: 40px;
+            animation: fadeInDown 0.8s ease-out;
         }
         
         .header h1 {
-            font-size: 2.5em;
-            margin-bottom: 10px;
+            font-size: 3em;
+            font-weight: 700;
+            background: linear-gradient(45deg, #a78bfa 0%, #f472b6 50%, #60a5fa 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 8px;
+            letter-spacing: -0.03em;
+            filter: drop-shadow(0 2px 10px rgba(167, 139, 250, 0.2));
         }
         
         .header p {
-            font-size: 1.2em;
-            opacity: 0.9;
+            font-size: 1.15em;
+            color: #94a3b8;
+            font-weight: 300;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
         }
         
+        /* Glassmorphic Cards & Panels */
+        .glass-panel {
+            background: rgba(17, 17, 28, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 20px;
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+            padding: 25px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .glass-panel:hover {
+            border-color: rgba(255, 255, 255, 0.15);
+            box-shadow: 0 12px 50px rgba(0, 0, 0, 0.5);
+            transform: translateY(-2px);
+        }
+
         .status-bar {
-            background: rgba(255, 255, 255, 0.95);
-            padding: 20px;
-            border-radius: 15px;
-            margin-bottom: 30px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            margin-bottom: 40px;
+            animation: fadeInUp 0.8s ease-out 0.2s both;
         }
         
         .status-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
             gap: 20px;
-            margin-bottom: 20px;
+            margin-bottom: 25px;
         }
         
         .status-card {
             text-align: center;
-            padding: 15px;
-            background: linear-gradient(45deg, #f093fb 0%, #f5576c 100%);
-            border-radius: 10px;
-            color: white;
+            padding: 20px;
+            background: rgba(30, 27, 75, 0.4);
+            border: 1px solid rgba(139, 92, 246, 0.15);
+            border-radius: 16px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .status-card::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(90deg, #8b5cf6, #ec4899);
+            opacity: 0.7;
         }
         
         .status-card h3 {
-            font-size: 2em;
-            margin-bottom: 5px;
+            font-size: 2.2em;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 4px;
+            text-shadow: 0 0 15px rgba(255, 255, 255, 0.2);
         }
         
         .status-card p {
-            opacity: 0.9;
+            font-size: 0.9em;
+            color: #94a3b8;
+            font-weight: 400;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .status-card #system-status {
+            font-size: 1.8em;
         }
         
         .dashboard-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-            gap: 20px;
+            grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+            gap: 25px;
+            animation: fadeInUp 0.8s ease-out 0.4s both;
         }
         
         .dashboard-card {
-            background: rgba(255, 255, 255, 0.95);
-            padding: 25px;
-            border-radius: 15px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            min-height: 280px;
+            display: flex;
+            flex-direction: column;
         }
         
         .dashboard-card h2 {
-            color: #667eea;
-            margin-bottom: 15px;
+            font-size: 1.4em;
+            font-weight: 600;
+            color: #a78bfa;
+            margin-bottom: 20px;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            padding-bottom: 12px;
+        }
+
+        .dashboard-card h2 span.icon {
+            font-size: 1.2em;
         }
         
         .card-content {
+            font-size: 0.95em;
             line-height: 1.6;
+            color: #cbd5e1;
+            flex-grow: 1;
         }
         
         .loading {
-            text-align: center;
-            color: #666;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            height: 120px;
+            color: #64748b;
             font-style: italic;
         }
+
+        .loading::before {
+            content: "🔄";
+            font-style: normal;
+            font-size: 1.8em;
+            animation: spin 1.5s linear infinite;
+        }
         
+        /* Interactive Buttons */
         .btn {
-            background: linear-gradient(45deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #d946ef 100%);
             color: white;
-            padding: 10px 20px;
+            font-family: 'Outfit', sans-serif;
+            font-weight: 600;
+            font-size: 1em;
+            padding: 12px 28px;
             border: none;
-            border-radius: 5px;
+            border-radius: 12px;
             cursor: pointer;
-            margin: 5px;
-            transition: transform 0.2s;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 20px rgba(99, 102, 241, 0.3);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
         }
         
         .btn:hover {
             transform: translateY(-2px);
+            box-shadow: 0 6px 25px rgba(99, 102, 241, 0.5);
+            filter: brightness(1.1);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 1px solid rgba(139, 92, 246, 0.4);
+            color: #cbd5e1;
+            box-shadow: none;
+        }
+
+        .btn-outline:hover {
+            background: rgba(139, 92, 246, 0.1);
+            border-color: #8b5cf6;
+            color: white;
+            box-shadow: 0 4px 15px rgba(139, 92, 246, 0.15);
         }
         
         .schedule-item {
-            background: #f8f9ff;
-            padding: 10px;
-            margin: 10px 0;
-            border-radius: 5px;
-            border-left: 4px solid #667eea;
+            background: rgba(30, 41, 59, 0.3);
+            padding: 14px;
+            margin: 12px 0;
+            border-radius: 12px;
+            border-left: 4px solid #8b5cf6;
+            transition: all 0.2s ease;
+        }
+
+        .schedule-item:hover {
+            background: rgba(30, 41, 59, 0.5);
+            transform: scale(1.01);
         }
         
         .log-entry {
             font-family: 'Courier New', monospace;
-            font-size: 0.9em;
-            padding: 5px;
-            margin: 2px 0;
-            background: #f5f5f5;
-            border-radius: 3px;
+            font-size: 0.85em;
+            padding: 8px 12px;
+            margin: 6px 0;
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.03);
         }
         
-        .success { color: #28a745; }
-        .warning { color: #ffc107; }
-        .error { color: #dc3545; }
-        .info { color: #17a2b8; }
+        .success { color: #34d399; }
+        .warning { color: #fbbf24; }
+        .error { color: #f87171; }
+        .info { color: #60a5fa; }
         
+        /* Floating Refresh Button */
         .refresh-btn {
             position: fixed;
-            bottom: 20px;
-            right: 20px;
-            width: 60px;
-            height: 60px;
+            bottom: 30px;
+            right: 30px;
+            width: 56px;
+            height: 56px;
             border-radius: 50%;
-            background: linear-gradient(45deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%);
             color: white;
             border: none;
-            font-size: 1.5em;
+            font-size: 1.4em;
             cursor: pointer;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-            transition: transform 0.2s;
+            box-shadow: 0 4px 20px rgba(139, 92, 246, 0.4);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
         }
         
         .refresh-btn:hover {
-            transform: scale(1.1);
+            transform: scale(1.1) rotate(180deg);
+            box-shadow: 0 6px 25px rgba(139, 92, 246, 0.6);
+        }
+
+        /* Real-Time Generator Widget styling */
+        .generator-card {
+            grid-column: 1 / -1;
+            background: linear-gradient(135deg, rgba(20, 20, 35, 0.8) 0%, rgba(30, 20, 50, 0.8) 100%);
+            border: 1px solid rgba(139, 92, 246, 0.25);
+            box-shadow: 0 8px 32px 0 rgba(139, 92, 246, 0.15);
+            animation: fadeInUp 0.8s ease-out both;
+        }
+
+        .generator-content {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .generator-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .generator-info-box {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .spinner-container {
+            width: 48px;
+            height: 48px;
+            position: relative;
+        }
+
+        .spinner {
+            width: 100%;
+            height: 100%;
+            border: 4px solid rgba(139, 92, 246, 0.1);
+            border-top: 4px solid #c084fc;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            border-radius: 50px;
+            font-size: 0.85em;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .badge-idle {
+            background: rgba(100, 116, 139, 0.15);
+            color: #94a3b8;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+        }
+
+        .badge-generating {
+            background: rgba(168, 85, 247, 0.15);
+            color: #c084fc;
+            border: 1px solid rgba(168, 85, 247, 0.3);
+            animation: pulse 2s infinite;
+        }
+
+        .badge-completed {
+            background: rgba(52, 211, 153, 0.15);
+            color: #34d399;
+            border: 1px solid rgba(52, 211, 153, 0.3);
+        }
+
+        .badge-failed {
+            background: rgba(248, 113, 113, 0.15);
+            color: #f87171;
+            border: 1px solid rgba(248, 113, 113, 0.3);
+        }
+
+        .progress-bar-container {
+            width: 100%;
+            height: 10px;
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: 50px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            position: relative;
+        }
+
+        .progress-bar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #6366f1, #a855f7, #ec4899);
+            border-radius: 50px;
+            transition: width 0.5s ease;
+            box-shadow: 0 0 10px rgba(168, 85, 247, 0.5);
+        }
+
+        .step-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 10px;
+        }
+
+        .step-item {
+            background: rgba(15, 23, 42, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            border-radius: 10px;
+            padding: 12px;
+            font-size: 0.85em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #94a3b8;
+            transition: all 0.3s ease;
+        }
+
+        .step-item.active {
+            border-color: rgba(168, 85, 247, 0.4);
+            background: rgba(168, 85, 247, 0.05);
+            color: #f1f5f9;
+            box-shadow: 0 0 15px rgba(168, 85, 247, 0.1);
+        }
+
+        .step-item.done {
+            border-color: rgba(52, 211, 153, 0.2);
+            background: rgba(52, 211, 153, 0.03);
+            color: #34d399;
+        }
+
+        .step-icon {
+            font-size: 1.2em;
+        }
+
+        /* Animations */
+        @keyframes spin {
+            100% { transform: rotate(360deg); }
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .pipeline-card {
+            grid-column: 1 / -1;
+            background: linear-gradient(135deg, rgba(15, 15, 25, 0.7) 0%, rgba(20, 15, 35, 0.7) 100%);
+            border: 1px solid rgba(139, 92, 246, 0.2);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+            margin-bottom: 10px;
+        }
+
+        .pipeline-tabs {
+            display: flex;
+            gap: 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            padding-bottom: 12px;
+        }
+
+        .tab-btn {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            color: #94a3b8;
+            padding: 8px 18px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-family: 'Outfit', sans-serif;
+            font-weight: 500;
+            font-size: 0.9em;
+            transition: all 0.3s ease;
+        }
+
+        .tab-btn:hover {
+            background: rgba(139, 92, 246, 0.1);
+            color: #f1f5f9;
+            border-color: rgba(139, 92, 246, 0.3);
+        }
+
+        .tab-btn.active {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(139, 92, 246, 0.2) 100%);
+            color: #c084fc;
+            border-color: #8b5cf6;
+            box-shadow: 0 0 12px rgba(139, 92, 246, 0.2);
+        }
+
+        /* Pipeline Tables / List styling */
+        .pipeline-table-container {
+            overflow-x: auto;
+            width: 100%;
+        }
+
+        .pipeline-table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 0.95em;
+        }
+
+        .pipeline-table th, .pipeline-table td {
+            padding: 14px 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .pipeline-table th {
+            color: #a78bfa;
+            font-weight: 600;
+            font-size: 0.85em;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border-bottom: 1px solid rgba(139, 92, 246, 0.2);
+        }
+
+        .pipeline-table tr:hover {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .pipeline-title {
+            font-weight: 500;
+            color: #f1f5f9;
+            max-width: 380px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .pipeline-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+
+        .badge-scheduled {
+            background: rgba(59, 130, 246, 0.15);
+            color: #60a5fa;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+
+        .badge-paused {
+            background: rgba(245, 158, 11, 0.15);
+            color: #fbbf24;
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+
+        .badge-published {
+            background: rgba(16, 185, 129, 0.15);
+            color: #34d399;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .badge-failed {
+            background: rgba(239, 68, 68, 0.15);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .btn-sm {
+            padding: 6px 14px;
+            font-size: 0.85em;
+            border-radius: 8px;
+            font-weight: 500;
+        }
+
+        /* Channel Selector */
+        .channel-selector-card {
+            grid-column: 1 / -1;
+            background: linear-gradient(135deg, rgba(15, 25, 15, 0.7) 0%, rgba(10, 25, 35, 0.7) 100%);
+            border: 1px solid rgba(52, 211, 153, 0.2);
+        }
+
+        .channel-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .channel-item {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 14px 18px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .channel-item:hover {
+            background: rgba(52, 211, 153, 0.07);
+            border-color: rgba(52, 211, 153, 0.25);
+        }
+
+        .channel-item.selected {
+            background: rgba(52, 211, 153, 0.12);
+            border-color: rgba(52, 211, 153, 0.5);
+            box-shadow: 0 0 20px rgba(52, 211, 153, 0.12);
+        }
+
+        .channel-avatar {
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid rgba(52, 211, 153, 0.3);
+            flex-shrink: 0;
+        }
+
+        .channel-avatar-placeholder {
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            flex-shrink: 0;
+        }
+
+        .channel-info {
+            flex: 1;
+        }
+
+        .channel-info strong {
+            display: block;
+            font-size: 1em;
+            font-weight: 600;
+            color: #f1f5f9;
+            margin-bottom: 2px;
+        }
+
+        .channel-info span {
+            font-size: 0.82em;
+            color: #94a3b8;
+        }
+
+        .channel-select-btn {
+            background: rgba(52, 211, 153, 0.15);
+            border: 1px solid rgba(52, 211, 153, 0.3);
+            color: #34d399;
+            padding: 7px 16px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.85em;
+            font-weight: 600;
+            transition: all 0.25s ease;
+            white-space: nowrap;
+        }
+
+        .channel-select-btn:hover {
+            background: rgba(52, 211, 153, 0.28);
+            border-color: rgba(52, 211, 153, 0.6);
+        }
+
+        .channel-select-btn.selected-btn {
+            background: rgba(52, 211, 153, 0.3);
+            border-color: #34d399;
+            color: #fff;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px 10px;
+            }
+            .header h1 {
+                font-size: 2.2em;
+            }
+            .generator-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
+        <!-- Dashboard Header -->
         <div class="header">
             <h1>🎬 Ethereal Dreamscript</h1>
-            <p>YouTube Automation Dashboard</p>
+            <p>YouTube Automation Center</p>
         </div>
         
-        <div class="status-bar">
+        <!-- Status Bar Panel -->
+        <div class="status-bar glass-panel">
             <div class="status-grid">
                 <div class="status-card">
-                    <h3 id="system-status">🟢</h3>
+                    <h3 id="system-status">🔄</h3>
                     <p>System Status</p>
                 </div>
                 <div class="status-card">
@@ -187,69 +739,299 @@
                     <p>Next Generation</p>
                 </div>
             </div>
-            <div style="text-align: center;">
-                <button class="btn" onclick="generateContent()">🎬 Generate Content Now</button>
-                <button class="btn" onclick="viewAnalytics()">📊 View Analytics</button>
-                <button class="btn" onclick="viewSchedule()">📅 View Schedule</button>
+            <div style="text-align: center; display: flex; justify-content: center; gap: 15px; flex-wrap: wrap;" id="main-nav-tabs">
+                <button class="btn active" id="nav-btn-dashboard" onclick="switchMainTab('dashboard')">🎛️ Control Center</button>
+                <a href="/dashboard/analytics" target="_blank" class="btn btn-outline" style="text-decoration: none; display: inline-block;">📊 View Analytics ↗️</a>
+                <a href="/dashboard/schedule" target="_blank" class="btn btn-outline" style="text-decoration: none; display: inline-block;">📅 View Schedule ↗️</a>
+                <button class="btn" style="background: linear-gradient(135deg, #f59e0b, #d97706); margin-left: 10px;" onclick="triggerContentGeneration()">🎬 Generate Content Now</button>
+            </div>
+            
+            <div style="text-align: center; display: flex; justify-content: center; margin-top: 15px;">
+                <div style="display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.05); padding: 10px 20px; border-radius: 12px;">
+                    <label for="video-format" style="color: #94a3b8; font-size: 0.8em; margin-right: 8px;">Video Format:</label>
+                    <select id="video-format" style="background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 6px 12px; border-radius: 6px; font-family: 'Outfit', sans-serif; font-size: 0.85em;">
+                        <option value="slideshow">Ken Burns Slideshow</option>
+                        <option value="narrative">Narrative Story</option>
+                        <option value="educational">Educational Video</option>
+                        <option value="documentary">Mini Documentary</option>
+                    </select>
+
+                    <label for="video-type" style="color: #94a3b8; font-size: 0.8em; margin-left: 16px; margin-right: 8px;">Video Type:</label>
+                    <select id="video-type" style="background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 6px 12px; border-radius: 6px; font-family: 'Outfit', sans-serif; font-size: 0.85em;">
+                        <option value="long">Long-form (16:9)</option>
+                        <option value="short">YouTube Shorts (9:16)</option>
+                    </select>
+
+                    <label for="image-model-provider" style="font-weight: 500; color: #a78bfa; font-size: 0.9em;">Image Generator:</label>
+                    <select id="image-model-provider" class="form-control" style="width: auto; background: rgba(0,0,0,0.2); border: 1px solid rgba(139, 92, 246, 0.3); color: white; padding: 6px 12px; border-radius: 6px; font-size: 0.9em;" onchange="updateImageModelList()">
+                        <option value="gemini">Google Gemini</option>
+                        <option value="openai">OpenAI</option>
+                        <option value="openrouter">OpenRouter</option>
+                    </select>
+                    
+                    <label for="image-model-name" style="font-weight: 500; color: #a78bfa; margin-left: 10px; font-size: 0.9em;">Model:</label>
+                    <select id="image-model-name" class="form-control" style="width: auto; background: rgba(0,0,0,0.2); border: 1px solid rgba(139, 92, 246, 0.3); color: white; padding: 6px 12px; border-radius: 6px; font-size: 0.9em;">
+                        <option value="imagen-4.0-fast-generate-001">Google Imagen 4 Fast</option>
+                        <option value="google/gemini-2.5-flash-image">Gemini 2.5 Flash Image</option>
+                        <option value="imagen-4.0-generate-001">Imagen 4</option>
+                    </select>
+
+                    <label for="video-format" style="font-weight: 500; color: #a78bfa; margin-left: 10px; font-size: 0.9em;">Video Format:</label>
+                    <select id="video-format" class="form-control" style="width: auto; background: rgba(0,0,0,0.2); border: 1px solid rgba(139, 92, 246, 0.3); color: white; padding: 6px 12px; border-radius: 6px; font-size: 0.9em;">
+                        <option value="slideshow">Ken Burns Slideshow</option>
+                        <option value="video_ai">True AI Video (Luma/Runway)</option>
+                    </select>
+                </div>
             </div>
         </div>
         
-        <div class="dashboard-grid">
-            <div class="dashboard-card">
-                <h2>📈 System Overview</h2>
+        <!-- Dashboard Core Grid -->
+        <div id="dashboard-view">
+            <div id="dashboard-grid-container" class="dashboard-grid">
+                
+                <!-- Real-time Asynchronous Content Generator Panel -->
+                <div class="dashboard-card glass-panel generator-card">
+                    <h2><span class="icon">🤖</span> Content Generation Hub</h2>
+                    <div class="card-content generator-content">
+                        
+                        <div class="generator-header">
+                        <div class="generator-info-box">
+                            <div class="spinner-container" id="generator-spinner" style="display: none;">
+                                <div class="spinner"></div>
+                            </div>
+                            <div>
+                                <h3 id="generator-title" style="font-size: 1.25em; font-weight: 600; margin-bottom: 4px;">System is Ready</h3>
+                                <p id="generator-subtitle" style="color: #94a3b8; font-size: 0.9em;">Ready to run story generation pipeline.</p>
+                                <p id="generator-eta" style="color: #c084fc; font-size: 0.85em; font-weight: 500; margin-top: 6px; display: none;"></p>
+                            </div>
+                        </div>
+                        <div>
+                            <span class="status-badge badge-idle" id="generator-badge">Idle</span>
+                        </div>
+                    </div>
+
+                    <!-- Progress Bar -->
+                    <div class="progress-bar-container" id="generator-progress-container" style="display: none;">
+                        <div class="progress-bar" id="generator-progress-bar"></div>
+                    </div>
+
+                    <!-- Pipeline Steps -->
+                    <div class="step-list" id="generator-steps" style="display: none;">
+                        <div class="step-item" id="step-strategy">
+                            <span class="step-icon">💡</span>
+                            <span>Content Strategy</span>
+                        </div>
+                        <div class="step-item" id="step-script">
+                            <span class="step-icon">✍️</span>
+                            <span>Gemini Storytelling Script</span>
+                        </div>
+                        <div class="step-item" id="step-thumbnail">
+                            <span class="step-icon">🎨</span>
+                            <span>Thumbnail Concept Design</span>
+                        </div>
+                        <div class="step-item" id="step-seo">
+                            <span class="step-icon">🏷️</span>
+                            <span>SEO Metadata & Keywords</span>
+                        </div>
+                        <div class="step-item" id="step-production">
+                            <span class="step-icon">🎬</span>
+                            <span>Slideshow, Visuals & TTS Concatenation</span>
+                        </div>
+                    </div>
+
+                    <!-- Error Alert -->
+                    <div id="generator-error-box" class="log-entry error" style="display: none;"></div>
+                </div>
+            </div>
+
+            <!-- Content Pipeline Card -->
+            <div id="pipeline-section" class="dashboard-card glass-panel pipeline-card">
+                <h2><span class="icon">🎬</span> Content Pipeline & History</h2>
+                <div class="card-content">
+                    <div class="pipeline-tabs">
+                        <button class="tab-btn active" onclick="switchPipelineTab('queue')">📅 Queue / Scheduled</button>
+                        <button class="tab-btn" onclick="switchPipelineTab('published')">✅ Published History</button>
+                    </div>
+                    <div id="pipeline-content" style="margin-top: 20px;">
+                        <div id="pipeline-queue-section">
+                            <div id="pipeline-queue-list" class="loading">Loading queue...</div>
+                        </div>
+                        <div id="pipeline-published-section" style="display: none;">
+                            <div id="pipeline-published-list" class="loading">Loading publication history...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- YouTube Channel Selector Card -->
+            <div class="dashboard-card glass-panel channel-selector-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.06); margin-bottom: 20px; padding-bottom: 12px;">
+                    <h2 style="border-bottom: none; margin-bottom: 0; padding-bottom: 0;"><span class="icon">📺</span> YouTube Channel <span style="font-size:0.65em; color:#34d399; background:rgba(52,211,153,0.1); padding:3px 10px; border-radius:20px; vertical-align:middle;">Upload Destination</span></h2>
+                    <button onclick="loadChannels(true)" class="btn btn-sm btn-outline" style="border-radius: 8px; padding: 4px 10px; font-size: 0.8em; margin: 0;">🔄 Refresh</button>
+                </div>
+                <div class="card-content">
+                    <p style="color:#94a3b8; font-size:0.9em; margin-bottom:16px;">Select which YouTube channel videos will be uploaded to. Currently uploading to: <strong id="current-channel-name" style="color:#34d399;">Loading...</strong></p>
+                    <div id="channel-list" class="channel-list loading">Loading channels from your Google account...</div>
+
+                    <div id="channel-select-status" style="margin-top:12px; font-size:0.85em; display:none;"></div>
+                </div>
+            </div>
+
+
+            <!-- Voice & TTS Engine Settings Card -->
+            <div class="dashboard-card glass-panel" id="tts-settings-card">
+                <h2><span class="icon">🎙️</span> Voice & TTS Engine <span id="tts-active-badge" style="font-size:0.6em; color:#34d399; background:rgba(52,211,153,0.1); padding:3px 10px; border-radius:20px; vertical-align:middle;">Loading...</span></h2>
+                <div class="card-content">
+                    <p style="color:#94a3b8; font-size:0.88em; margin-bottom:18px;">Configure the text-to-speech engine used for narration. Changes are saved instantly — no restart required.</p>
+                    
+                    <!-- Provider & Voice Row -->
+                    <div style="display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 16px;">
+                        <div style="flex: 1; min-width: 200px;">
+                            <label for="tts-provider-select" style="display:block; font-weight:500; color:#a78bfa; font-size:0.85em; margin-bottom:6px;">TTS Provider</label>
+                            <select id="tts-provider-select" class="form-control" onchange="updateTTSVoiceOptions()" style="width:100%; background:rgba(0,0,0,0.3); border:1px solid rgba(139,92,246,0.3); color:white; padding:10px 14px; border-radius:10px; font-size:0.92em; font-family:'Outfit',sans-serif; cursor:pointer; transition:border-color 0.2s;">
+                                <option value="edge_tts">🆓 Microsoft Edge Neural TTS (Free)</option>
+                                <option value="openai">⭐ OpenAI TTS (Recommended)</option>
+                                <option value="elevenlabs">💎 ElevenLabs (Premium Quality)</option>
+                                <option value="local">🖥️ Local/Custom API Server</option>
+                            </select>
+                        </div>
+                        <div style="flex: 1; min-width: 200px;">
+                            <label for="tts-voice-select" style="display:block; font-weight:500; color:#a78bfa; font-size:0.85em; margin-bottom:6px;">Voice</label>
+                            <select id="tts-voice-select" class="form-control" style="width:100%; background:rgba(0,0,0,0.3); border:1px solid rgba(139,92,246,0.3); color:white; padding:10px 14px; border-radius:10px; font-size:0.92em; font-family:'Outfit',sans-serif; cursor:pointer; transition:border-color 0.2s;">
+                                <option value="id-ID-GadisNeural">Gadis Neural (Perempuan 🇮🇩)</option>
+                                <option value="id-ID-ArdiNeural">Ardi Neural (Laki-laki 🇮🇩)</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- ElevenLabs Config (conditional) -->
+                    <div id="tts-elevenlabs-config" style="display:none; background:rgba(139,92,246,0.06); border:1px solid rgba(139,92,246,0.15); border-radius:12px; padding:16px; margin-bottom:16px;">
+                        <p style="color:#c084fc; font-size:0.82em; font-weight:500; margin-bottom:12px;">💎 ElevenLabs Configuration</p>
+                        <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                            <div style="flex:1; min-width:180px;">
+                                <label for="tts-elevenlabs-key" style="display:block; font-size:0.8em; color:#94a3b8; margin-bottom:4px;">API Key</label>
+                                <input type="password" id="tts-elevenlabs-key" placeholder="xi-..." style="width:100%; background:rgba(0,0,0,0.3); border:1px solid rgba(139,92,246,0.2); color:white; padding:8px 12px; border-radius:8px; font-size:0.88em; font-family:'Outfit',sans-serif;">
+                            </div>
+                            <div style="flex:1; min-width:180px;">
+                                <label for="tts-elevenlabs-voice-id" style="display:block; font-size:0.8em; color:#94a3b8; margin-bottom:4px;">Voice ID</label>
+                                <input type="text" id="tts-elevenlabs-voice-id" placeholder="Enter Voice ID from ElevenLabs" style="width:100%; background:rgba(0,0,0,0.3); border:1px solid rgba(139,92,246,0.2); color:white; padding:8px 12px; border-radius:8px; font-size:0.88em; font-family:'Outfit',sans-serif;">
+                            </div>
+                        </div>
+                        <div style="margin-top: 12px;">
+                            <label for="tts-elevenlabs-model" style="display:block; font-size:0.8em; color:#94a3b8; margin-bottom:4px;">Model Selection</label>
+                            <select id="tts-elevenlabs-model" style="width:100%; background:rgba(0,0,0,0.3); border:1px solid rgba(139,92,246,0.2); color:white; padding:8px 12px; border-radius:8px; font-size:0.88em; font-family:'Outfit',sans-serif;">
+                                <option value="eleven_multilingual_v2">Multilingual v2 ($0.10/1k - Best Emotion & Whisper)</option>
+                                <option value="eleven_turbo_v2_5">Turbo v2.5 ($0.05/1k - Fast & Cheap, 32 Languages)</option>
+                                <option value="eleven_v3">Multilingual v3 ($0.10/1k - Newest Model)</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- OpenAI Config (conditional) -->
+                    <div id="tts-openai-config" style="display:none; background:rgba(52,211,153,0.06); border:1px solid rgba(52,211,153,0.15); border-radius:12px; padding:16px; margin-bottom:16px;">
+                        <p style="color:#34d399; font-size:0.82em; font-weight:500; margin-bottom:8px;">⭐ OpenAI TTS Configuration</p>
+                        <div style="margin-bottom: 12px;">
+                            <label for="tts-openai-key" style="display:block; font-size:0.8em; color:#94a3b8; margin-bottom:4px;">OpenAI API Key</label>
+                            <input type="password" id="tts-openai-key" placeholder="sk-..." style="width:100%; background:rgba(0,0,0,0.3); border:1px solid rgba(52,211,153,0.2); color:white; padding:8px 12px; border-radius:8px; font-size:0.88em; font-family:'Outfit',sans-serif;">
+                        </div>
+                        <label for="tts-openai-model" style="display:block; font-size:0.8em; color:#94a3b8; margin-bottom:4px;">Model Selection</label>
+                        <select id="tts-openai-model" style="width:100%; background:rgba(0,0,0,0.3); border:1px solid rgba(52,211,153,0.2); color:white; padding:8px 12px; border-radius:8px; font-size:0.88em; font-family:'Outfit',sans-serif;">
+                            <option value="tts-1-hd">tts-1-hd (High Quality)</option>
+                            <option value="tts-1">tts-1 (Fast & Cheap)</option>
+                            <option value="gpt-4o-mini-tts">gpt-4o-mini-tts</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Local API Config (conditional) -->
+                    <div id="tts-local-config" style="display:none; background:rgba(52,211,153,0.06); border:1px solid rgba(52,211,153,0.15); border-radius:12px; padding:16px; margin-bottom:16px;">
+                        <p style="color:#34d399; font-size:0.82em; font-weight:500; margin-bottom:8px;">🖥️ Local TTS Server URL</p>
+                        <p style="color:#64748b; font-size:0.78em; margin-bottom:10px;">For F5-TTS, XTTS v2, or CosyVoice. Use SSH tunnel for remote GPU: <code style="color:#a78bfa;">ssh -R 8000:localhost:8000 user@server</code></p>
+                        <input type="url" id="tts-local-url" placeholder="http://localhost:8000" style="width:100%; background:rgba(0,0,0,0.3); border:1px solid rgba(52,211,153,0.2); color:white; padding:8px 12px; border-radius:8px; font-size:0.88em; font-family:'Outfit',sans-serif;">
+                    </div>
+                    
+                    <!-- Action Buttons -->
+                    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                        <button id="tts-test-btn" onclick="testTTSVoice()" class="btn" style="background:linear-gradient(135deg, #8b5cf6, #6366f1); padding:8px 20px; font-size:0.88em; border-radius:10px; border:none; color:white; font-weight:500; cursor:pointer; transition: all 0.2s;">🔊 Test Voice</button>
+                        <button id="tts-save-btn" onclick="saveTTSConfig()" class="btn" style="background:linear-gradient(135deg, #34d399, #059669); padding:8px 20px; font-size:0.88em; border-radius:10px; border:none; color:white; font-weight:500; cursor:pointer; transition: all 0.2s;">💾 Save Settings</button>
+                        <span id="tts-save-status" style="font-size:0.82em; color:#94a3b8; margin-left:6px;"></span>
+                    </div>
+                    
+                    <!-- Test Audio Player -->
+                    <div id="tts-test-player-container" style="display:none; margin-top:14px; background:rgba(0,0,0,0.2); border-radius:10px; padding:12px;">
+                        <p id="tts-test-info" style="font-size:0.8em; color:#94a3b8; margin-bottom:8px;"></p>
+                        <audio id="tts-test-audio" controls style="width:100%; border-radius:8px;"></audio>
+                    </div>
+                </div>
+            </div>
+
+
+
+            <div class="dashboard-card glass-panel">
+                <h2><span class="icon">📈</span> System Overview</h2>
                 <div class="card-content">
                     <div id="system-overview" class="loading">Loading system status...</div>
                 </div>
             </div>
             
-            <div class="dashboard-card">
-                <h2>📅 Upcoming Schedule</h2>
+            <!-- Upcoming Schedule Card -->
+            <div class="dashboard-card glass-panel">
+                <h2><span class="icon">📅</span> Upcoming Schedule</h2>
                 <div class="card-content">
                     <div id="upcoming-schedule" class="loading">Loading schedule...</div>
                 </div>
             </div>
             
-            <div class="dashboard-card">
-                <h2>🎯 Content Strategy</h2>
+            <!-- Content Strategy Card -->
+            <div class="dashboard-card glass-panel">
+                <h2><span class="icon">🎯</span> Content Strategy</h2>
                 <div class="card-content">
-                    <div id="content-strategy">
-                        <p><strong>Current Focus:</strong> Animated Storytelling</p>
-                        <p><strong>Target Audience:</strong> Creative individuals interested in storytelling and imagination</p>
-                        <p><strong>Content Types:</strong> Story-driven content, Explainers, Tutorials</p>
+                    <div id="content-strategy" style="display: flex; flex-direction: column; gap: 10px;">
+                        <p><strong>Current Channel Name:</strong> Ceritaku Singkat</p>
+                        <p><strong>Current Focus:</strong> Children's Animated Stories</p>
+                        <p><strong>Target Audience:</strong> Kids & Toddlers (Bedtime stories, fairy tales, moral lessons in Indonesian)</p>
+                        <p><strong>Content Types:</strong> Story-driven content, Fairytales, Fables</p>
                         <p><strong>Posting Frequency:</strong> Daily</p>
                         <p><strong>Optimal Time:</strong> 2:00 PM</p>
                     </div>
                 </div>
             </div>
             
-            <div class="dashboard-card">
-                <h2>📊 Recent Activity</h2>
+            <!-- Recent Activity Card -->
+            <div class="dashboard-card glass-panel">
+                <h2><span class="icon">📊</span> Recent Activity</h2>
                 <div class="card-content">
                     <div id="recent-activity" class="loading">Loading activity...</div>
                 </div>
             </div>
             
-            <div class="dashboard-card">
-                <h2>🤖 Agent Status</h2>
+            <!-- Agent Status Card -->
+            <div class="dashboard-card glass-panel">
+                <h2><span class="icon">🤖</span> Agent Status</h2>
                 <div class="card-content">
-                    <div id="agent-status" class="loading">Loading agent status...</div>
+                    <div id="agent-status" class="loading">Loading agents...</div>
                 </div>
             </div>
-            
-            <div class="dashboard-card">
-                <h2>📈 Performance Metrics</h2>
-                <div class="card-content">
-                    <div id="performance-metrics" class="loading">Loading metrics...</div>
+
+                <!-- Performance Metrics Card -->
+                <div id="system-metrics" class="dashboard-card glass-panel">
+                    <h2><span class="icon">📈</span> Performance Metrics</h2>
+                    <div class="card-content">
+                        <div id="performance-metrics" class="loading">Loading metrics...</div>
+                    </div>
                 </div>
             </div>
         </div>
+
     </div>
     
+    <!-- Refresh Button -->
     <button class="refresh-btn" onclick="refreshDashboard()" title="Refresh Dashboard">
         🔄
     </button>
     
     <script>
+        let pollingInterval = null;
+
         // Dashboard functionality
         async function loadDashboard() {
             try {
@@ -271,6 +1053,15 @@
                 } catch (error) {
                     console.log('Analytics not available yet');
                 }
+
+                // Check generation status
+                checkGenerationStatus();
+                
+                // Load content pipeline data
+                loadPipelineData();
+
+                // Load YouTube channel list
+                loadChannels();
                 
             } catch (error) {
                 console.error('Dashboard load error:', error);
@@ -282,29 +1073,34 @@
             document.getElementById('system-status').textContent = data.status === 'healthy' ? '🟢' : '🔴';
             
             const overview = document.getElementById('system-overview');
+            overview.classList.remove('loading');
             overview.innerHTML = `
-                <p><strong>Status:</strong> ${data.initialized ? 'Initialized' : 'Initializing'}</p>
-                <p><strong>Agents Active:</strong> ${data.agents ? data.agents.length : 0}/7</p>
-                <p><strong>Uptime:</strong> ${formatUptime(process?.uptime?.() || 0)}</p>
-                <p><strong>Last Updated:</strong> ${new Date().toLocaleTimeString()}</p>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <p><strong>Status:</strong> <span class="success" style="font-weight: 600;">${data.initialized ? 'Initialized & Active' : 'Initializing'}</span></p>
+                    <p><strong>Agents Active:</strong> ${data.agents ? data.agents.length : 0} / 7</p>
+                    <p><strong>Server Uptime:</strong> ${formatUptime(data.uptime || 0)}</p>
+                    <p><strong>Last Updated:</strong> ${new Date().toLocaleTimeString()}</p>
+                </div>
             `;
             
             const agentStatus = document.getElementById('agent-status');
+            agentStatus.classList.remove('loading');
             if (data.agents) {
                 agentStatus.innerHTML = data.agents.map(agent => 
-                    `<div class="schedule-item">✅ ${agent} Agent</div>`
+                    `<div class="schedule-item" style="border-left-color: #34d399; margin: 6px 0; padding: 10px 14px;">✅ <strong style="text-transform: capitalize;">${agent}</strong> Agent Active</div>`
                 ).join('');
             }
         }
         
         function updateSchedule(data) {
             const schedule = document.getElementById('upcoming-schedule');
+            schedule.classList.remove('loading');
             
             if (data && data.length > 0) {
                 schedule.innerHTML = data.slice(0, 3).map(item => `
                     <div class="schedule-item">
                         <strong>${item.title || 'Content Generation'}</strong><br>
-                        <small>${new Date(item.publishTime || item.scheduledTime).toLocaleString()}</small>
+                        <small style="color: #94a3b8;">${new Date(item.publishTime || item.scheduledTime).toLocaleString()}</small>
                     </div>
                 `).join('');
                 
@@ -314,22 +1110,22 @@
                     const nextTime = new Date(nextItem.publishTime || nextItem.scheduledTime);
                     document.getElementById('next-generation').textContent = 
                         nextTime.toLocaleDateString() === new Date().toLocaleDateString() 
-                            ? nextTime.toLocaleTimeString() 
+                            ? nextTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
                             : 'Tomorrow';
                 }
             } else {
                 schedule.innerHTML = `
                     <div class="schedule-item">
-                        <strong>📅 Daily Content Generation</strong><br>
-                        <small>Scheduled for 6:00 AM daily</small>
+                        <strong>📅 Daily Kid Story Generation</strong><br>
+                        <small style="color: #94a3b8;">Scheduled for 6:00 AM daily</small>
                     </div>
                     <div class="schedule-item">
-                        <strong>📊 Analytics Collection</strong><br>
-                        <small>Scheduled for 9:00 AM daily</small>
+                        <strong>📊 YouTube Analytics Collection</strong><br>
+                        <small style="color: #94a3b8;">Scheduled for 9:00 AM daily</small>
                     </div>
                     <div class="schedule-item">
                         <strong>🔧 Optimization Tasks</strong><br>
-                        <small>Scheduled for 10:00 PM daily</small>
+                        <small style="color: #94a3b8;">Scheduled for 10:00 PM daily</small>
                     </div>
                 `;
                 document.getElementById('next-generation').textContent = '6:00 AM';
@@ -338,30 +1134,35 @@
         
         function updateMetrics(data) {
             const metrics = document.getElementById('performance-metrics');
+            metrics.classList.remove('loading');
             if (data && data.totalVideos !== undefined) {
-                document.getElementById('content-count').textContent = data.totalVideos || '0';
-                document.getElementById('published-count').textContent = data.totalVideos || '0';
                 
                 metrics.innerHTML = `
-                    <p><strong>Average Performance:</strong> ${data.averagePerformanceScore || 'N/A'}</p>
-                    <p><strong>Total Content:</strong> ${data.totalVideos || 0}</p>
-                    <p><strong>System Health:</strong> Excellent</p>
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <p><strong>Average Performance Score:</strong> <span class="success" style="font-weight:600;">${data.totalVideos > 0 ? (data.averagePerformanceScore + '/100') : 'Belum ada data (Menunggu Analytics)'}</span></p>
+                        <p><strong>Total Content Generated:</strong> <span id="metrics-total-content">0</span></p>
+                        <p><strong>Channel Category:</strong> Children Stories</p>
+                        <p><strong>System Health:</strong> Excellent</p>
+                    </div>
                 `;
             } else {
                 metrics.innerHTML = `
-                    <p><strong>Status:</strong> System just started</p>
-                    <p><strong>First Content:</strong> Will generate within 24 hours</p>
-                    <p><strong>Automation:</strong> Active and ready</p>
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <p><strong>Status:</strong> Automation active and waiting</p>
+                        <p><strong>First Video Generation:</strong> Ready now</p>
+                        <p><strong>Channel Locale:</strong> ID (Indonesia)</p>
+                    </div>
                 `;
             }
             
             // Update activity log
             const activity = document.getElementById('recent-activity');
+            activity.classList.remove('loading');
             activity.innerHTML = `
                 <div class="log-entry success">✅ System initialized successfully</div>
-                <div class="log-entry info">ℹ️ All 7 agents are active</div>
-                <div class="log-entry info">ℹ️ Content strategy loaded</div>
-                <div class="log-entry info">ℹ️ Automation scheduler started</div>
+                <div class="log-entry info">ℹ️ All 7 agents (Strategy, Script, Thumbnail, SEO, Production, Publishing, Analytics) are active</div>
+                <div class="log-entry info">ℹ️ Kids target audience set: @ceritaku.singkat</div>
+                <div class="log-entry info">ℹ️ Free Google Translate TTS & Pollinations enabled</div>
                 <div class="log-entry success">✅ Ready for content generation</div>
             `;
         }
@@ -371,41 +1172,1080 @@
             const minutes = Math.floor((seconds % 3600) / 60);
             return `${hours}h ${minutes}m`;
         }
-        
-        async function generateContent() {
-            if (confirm('Generate content now? This will create a new video for your channel.')) {
-                try {
-                    const response = await fetch('/generate', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ topic: null, style: 'story' })
-                    });
-                    const result = await response.json();
-                    alert(`Content generation started! Title: ${result.result?.title || 'New Content'}`);
-                    refreshDashboard();
-                } catch (error) {
-                    alert('Content generation failed. Please try again.');
+
+        async function checkGenerationStatus() {
+            try {
+                const response = await fetch('/generation-status');
+                const status = await response.json();
+                updateGeneratorWidget(status);
+            } catch (err) {
+                console.error('Failed to poll generation status:', err);
+            }
+        }
+
+        let localSecondsRemaining = 0;
+        let countdownInterval = null;
+
+        function formatRemainingTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return `${mins}m ${secs.toString().padStart(2, '0')}s`;
+        }
+
+        function updateStepStatus(elementId, status) {
+            const el = document.getElementById(elementId);
+            if (!el) return;
+            
+            // Clear existing classes
+            el.className = 'step-item';
+            
+            // Find or create label span
+            let label = el.querySelector('.step-status-badge');
+            if (!label) {
+                label = document.createElement('span');
+                label.className = 'step-status-badge';
+                label.style.marginLeft = 'auto';
+                label.style.fontSize = '0.75em';
+                label.style.fontWeight = '600';
+                label.style.padding = '3px 8px';
+                label.style.borderRadius = '20px';
+                el.appendChild(label);
+            }
+            
+            if (status === 'pending') {
+                el.classList.add('pending');
+                label.textContent = 'Queue';
+                label.style.background = 'rgba(255,255,255,0.05)';
+                label.style.color = '#64748b';
+                label.style.border = '1px solid rgba(255,255,255,0.05)';
+            } else if (status === 'processing') {
+                el.classList.add('active');
+                label.textContent = 'In Progress';
+                label.style.background = 'rgba(168, 85, 247, 0.15)';
+                label.style.color = '#c084fc';
+                label.style.border = '1px solid rgba(168, 85, 247, 0.3)';
+                label.style.animation = 'pulse 1.5s infinite';
+            } else if (status === 'completed') {
+                el.classList.add('done');
+                label.textContent = 'Finished';
+                label.style.background = 'rgba(52, 211, 153, 0.15)';
+                label.style.color = '#34d399';
+                label.style.border = '1px solid rgba(52, 211, 153, 0.3)';
+            } else if (status === 'failed') {
+                el.className = 'step-item';
+                el.style.borderColor = 'rgba(248, 113, 113, 0.4)';
+                el.style.background = 'rgba(248, 113, 113, 0.05)';
+                el.style.color = '#f87171';
+                label.textContent = 'Failed';
+                label.style.background = 'rgba(248, 113, 113, 0.15)';
+                label.style.color = '#f87171';
+                label.style.border = '1px solid rgba(248, 113, 113, 0.3)';
+            }
+        }
+
+        function updateGeneratorWidget(data) {
+            const badge = document.getElementById('generator-badge');
+            const title = document.getElementById('generator-title');
+            const subtitle = document.getElementById('generator-subtitle');
+            const etaBox = document.getElementById('generator-eta');
+            const spinner = document.getElementById('generator-spinner');
+            const progressContainer = document.getElementById('generator-progress-container');
+            const progressBar = document.getElementById('generator-progress-bar');
+            const stepsContainer = document.getElementById('generator-steps');
+            const errorBox = document.getElementById('generator-error-box');
+
+            // Reset states
+            badge.className = 'status-badge';
+            errorBox.style.display = 'none';
+
+            if (data.status === 'idle') {
+                badge.classList.add('badge-idle');
+                badge.textContent = 'Idle';
+                title.textContent = 'Generator is Ready';
+                subtitle.textContent = 'Click "Generate Content Now" to trigger the automated kids story generation pipeline.';
+                etaBox.style.display = 'none';
+                spinner.style.display = 'none';
+                progressContainer.style.display = 'none';
+                stepsContainer.style.display = 'none';
+
+                if (pollingInterval) {
+                    clearInterval(pollingInterval);
+                    pollingInterval = null;
+                }
+                if (countdownInterval) {
+                    clearInterval(countdownInterval);
+                    countdownInterval = null;
+                }
+            } else if (data.status === 'generating') {
+                badge.classList.add('badge-generating');
+                badge.textContent = 'Generating';
+                title.textContent = data.title ? `Generating: ${data.title}` : 'Generating Video Content...';
+                subtitle.textContent = data.currentStep || 'Running task...';
+                spinner.style.display = 'block';
+                progressContainer.style.display = 'block';
+                stepsContainer.style.display = 'grid';
+
+                // Display dynamic ETA countdown
+                if (data.estimatedSecondsRemaining !== undefined && data.estimatedSecondsRemaining > 0) {
+                    etaBox.style.display = 'block';
+                    etaBox.innerHTML = `⏳ <strong>Estimated Remaining:</strong> ${formatRemainingTime(data.estimatedSecondsRemaining)}`;
+                    localSecondsRemaining = data.estimatedSecondsRemaining;
+                    
+                    if (!countdownInterval) {
+                        countdownInterval = setInterval(() => {
+                            if (localSecondsRemaining > 5) {
+                                localSecondsRemaining--;
+                                etaBox.innerHTML = `⏳ <strong>Estimated Remaining:</strong> ${formatRemainingTime(localSecondsRemaining)}`;
+                            }
+                        }, 1000);
+                    }
+                } else {
+                    etaBox.style.display = 'none';
+                }
+
+                // Calculate progress bar width based on active step
+                let percent = 5;
+                const currentStep = data.currentStep.toLowerCase();
+                
+                if (data.steps) {
+                    updateStepStatus('step-strategy', data.steps.strategy);
+                    updateStepStatus('step-script', data.steps.script);
+                    updateStepStatus('step-thumbnail', data.steps.thumbnail);
+                    updateStepStatus('step-seo', data.steps.seo);
+                    updateStepStatus('step-production', data.steps.production);
+
+                    // Compute progress percent based on steps
+                    let completedSteps = 0;
+                    if (data.steps.strategy === 'completed') completedSteps++;
+                    if (data.steps.script === 'completed') completedSteps++;
+                    if (data.steps.thumbnail === 'completed') completedSteps++;
+                    if (data.steps.seo === 'completed') completedSteps++;
+                    if (data.steps.production === 'completed') completedSteps++;
+
+                    percent = Math.max(5, Math.min(95, completedSteps * 20));
+                    if (currentStep.includes('illustrations') || currentStep.includes('tts') || currentStep.includes('narration') || currentStep.includes('video')) {
+                        percent = 90;
+                    }
+                } else {
+                    // Fallback heuristics
+                    document.querySelectorAll('.step-item').forEach(el => el.className = 'step-item');
+                    if (currentStep.includes('analyzing')) {
+                        percent = 15;
+                        document.getElementById('step-strategy').classList.add('active');
+                    } else if (currentStep.includes('script') || currentStep.includes('gemini')) {
+                        percent = 35;
+                        document.getElementById('step-strategy').classList.add('done');
+                        document.getElementById('step-script').classList.add('active');
+                    } else if (currentStep.includes('thumbnail') || currentStep.includes('designing')) {
+                        percent = 55;
+                        document.getElementById('step-strategy').classList.add('done');
+                        document.getElementById('step-script').classList.add('done');
+                        document.getElementById('step-thumbnail').classList.add('active');
+                    } else if (currentStep.includes('seo') || currentStep.includes('optimizing')) {
+                        percent = 75;
+                        document.getElementById('step-strategy').classList.add('done');
+                        document.getElementById('step-script').classList.add('done');
+                        document.getElementById('step-thumbnail').classList.add('done');
+                        document.getElementById('step-seo').classList.add('active');
+                    } else {
+                        percent = 90;
+                        document.getElementById('step-strategy').classList.add('done');
+                        document.getElementById('step-script').classList.add('done');
+                        document.getElementById('step-thumbnail').classList.add('done');
+                        document.getElementById('step-seo').classList.add('done');
+                        document.getElementById('step-production').classList.add('active');
+                    }
+                }
+
+                progressBar.style.width = `${percent}%`;
+
+                // Start polling if not already running
+                if (!pollingInterval) {
+                    pollingInterval = setInterval(checkGenerationStatus, 2000);
+                }
+            } else if (data.status === 'completed') {
+                badge.classList.add('badge-completed');
+                badge.textContent = 'Completed';
+                title.textContent = `Completed: ${data.title || 'New Story'}`;
+                subtitle.textContent = 'Content created successfully and scheduled for publication!';
+                etaBox.style.display = 'none';
+                spinner.style.display = 'none';
+                progressContainer.style.display = 'block';
+                progressBar.style.width = '100%';
+                stepsContainer.style.display = 'grid';
+                
+                updateStepStatus('step-strategy', 'completed');
+                updateStepStatus('step-script', 'completed');
+                updateStepStatus('step-thumbnail', 'completed');
+                updateStepStatus('step-seo', 'completed');
+                updateStepStatus('step-production', 'completed');
+
+                if (pollingInterval) {
+                    clearInterval(pollingInterval);
+                    pollingInterval = null;
+                }
+                if (countdownInterval) {
+                    clearInterval(countdownInterval);
+                    countdownInterval = null;
+                }
+                
+                // Refresh main stats
+                setTimeout(loadDashboard, 3000);
+            } else if (data.status === 'failed') {
+                badge.classList.add('badge-failed');
+                badge.textContent = 'Failed';
+                title.textContent = 'Generation Failed';
+                subtitle.textContent = 'The pipeline encountered an error.';
+                etaBox.style.display = 'none';
+                spinner.style.display = 'none';
+                progressContainer.style.display = 'none';
+                stepsContainer.style.display = 'none';
+                
+                errorBox.style.display = 'block';
+                errorBox.innerHTML = `<strong>Error details:</strong> ${data.error || 'Unknown pipeline failure.'}`;
+
+                if (pollingInterval) {
+                    clearInterval(pollingInterval);
+                    pollingInterval = null;
+                }
+                if (countdownInterval) {
+                    clearInterval(countdownInterval);
+                    countdownInterval = null;
                 }
             }
         }
         
-        function viewAnalytics() {
-            window.open('/analytics', '_blank');
+        function updateImageModelList() {
+            const provider = document.getElementById('image-model-provider').value;
+            const modelSelect = document.getElementById('image-model-name');
+            modelSelect.innerHTML = '';
+            
+            if (provider === 'gemini') {
+                modelSelect.innerHTML = `
+                    <option value="imagen-4.0-fast-generate-001">Google Imagen 4 Fast</option>
+                    <option value="google/gemini-2.5-flash-image">Gemini 2.5 Flash Image</option>
+                    <option value="imagen-4.0-generate-001">Imagen 4</option>
+                `;
+            } else if (provider === 'openai') {
+                modelSelect.innerHTML = `
+                    <option value="gpt-image-1-mini">GPT Image 1 Mini</option>
+                    <option value="gpt-image-2">GPT Image 2</option>
+                `;
+            } else if (provider === 'openrouter') {
+                modelSelect.innerHTML = `
+                    <option value="bytedance-seed/seedream-4.5">Bytedance Seedream</option>
+                    <option value="x-ai/grok-imagine-image-quality">Grok Imagine</option>
+                `;
+            }
         }
         
-        function viewSchedule() {
-            window.open('/schedule', '_blank');
-        }
+        // ─── TTS Settings Panel Functions ─────────────────────────────
         
+        const ttsVoiceOptions = {
+            edge_tts: [
+                { value: 'id-ID-GadisNeural', label: 'Gadis Neural (Perempuan \ud83c\uddee\ud83c\udde9)' },
+                { value: 'id-ID-ArdiNeural', label: 'Ardi Neural (Laki-laki \ud83c\uddee\ud83c\udde9)' }
+            ],
+            openai: [
+                { value: 'nova', label: 'Nova (Warm, Friendly ⭐)' },
+                { value: 'marin', label: 'Marin' },
+                { value: 'cedar', label: 'Cedar' }
+            ],
+            elevenlabs: [],
+            local: []
+        };
+
+        async function loadTTSConfig() {
+            try {
+                const response = await fetch('/api/tts-config');
+                if (!response.ok) return;
+                const config = await response.json();
+                
+                const providerSelect = document.getElementById('tts-provider-select');
+                if (providerSelect && config.provider) {
+                    providerSelect.value = config.provider;
+                }
+                
+                updateTTSVoiceOptions();
+                
+                // Set current voice value after options are populated
+                const voiceSelect = document.getElementById('tts-voice-select');
+                if (voiceSelect && config.voice) {
+                    voiceSelect.value = config.voice;
+                }
+                
+                // Set local URL if present
+                const localUrlInput = document.getElementById('tts-local-url');
+                if (localUrlInput && config.localUrl) {
+                    localUrlInput.value = config.localUrl;
+                }
+                
+                // Set ElevenLabs fields if present
+                const elKeyInput = document.getElementById('tts-elevenlabs-key');
+                if (elKeyInput && config.hasElevenLabsKey) {
+                    elKeyInput.value = '********';
+                }
+                const elVoiceIdInput = document.getElementById('tts-elevenlabs-voice-id');
+                if (elVoiceIdInput && config.elevenLabsVoiceId) {
+                    elVoiceIdInput.value = config.elevenLabsVoiceId;
+                }
+                const elModelSelect = document.getElementById('tts-elevenlabs-model');
+                if (elModelSelect && config.elevenLabsModel) {
+                    elModelSelect.value = config.elevenLabsModel;
+                }
+                
+                // Set OpenAI fields if present
+                const openaiModelSelect = document.getElementById('tts-openai-model');
+                if (openaiModelSelect && config.openaiModel) {
+                    openaiModelSelect.value = config.openaiModel;
+                }
+                const openaiKeyInput = document.getElementById('tts-openai-key');
+                if (openaiKeyInput && config.hasOpenAiKey) {
+                    openaiKeyInput.value = '********';
+                }
+                
+                // Update active badge
+                const badge = document.getElementById('tts-active-badge');
+                if (badge) {
+                    const providerLabels = {
+                        edge_tts: '\ud83d\udfe2 Edge TTS (Free)',
+                        openai: '\ud83d\udfe2 OpenAI TTS',
+                        elevenlabs: '\ud83d\udfe2 ElevenLabs',
+                        local: '\ud83d\udfe2 Local API'
+                    };
+                    badge.textContent = providerLabels[config.provider] || config.provider;
+                    badge.style.color = config.available[config.provider] ? '#34d399' : '#f87171';
+                    badge.style.background = config.available[config.provider] 
+                        ? 'rgba(52,211,153,0.1)' 
+                        : 'rgba(248,113,113,0.1)';
+                }
+            } catch (err) {
+                const badge = document.getElementById('tts-active-badge');
+                if (badge) badge.textContent = '\u26a0\ufe0f Offline';
+            }
+        }
+
+        function updateTTSVoiceOptions() {
+            const provider = document.getElementById('tts-provider-select').value;
+            const voiceSelect = document.getElementById('tts-voice-select');
+            const elevenlabsConfig = document.getElementById('tts-elevenlabs-config');
+            const openaiConfig = document.getElementById('tts-openai-config');
+            const localConfig = document.getElementById('tts-local-config');
+            
+            // Show/hide conditional config panels
+            elevenlabsConfig.style.display = provider === 'elevenlabs' ? 'block' : 'none';
+            if (openaiConfig) openaiConfig.style.display = provider === 'openai' ? 'block' : 'none';
+            localConfig.style.display = provider === 'local' ? 'block' : 'none';
+            
+            // Populate voice options using DOM API (not innerHTML) for XSS safety
+            voiceSelect.replaceChildren();
+            
+            const options = ttsVoiceOptions[provider];
+            if (options && options.length > 0) {
+                voiceSelect.disabled = false;
+                options.forEach(opt => {
+                    const optEl = document.createElement('option');
+                    optEl.value = opt.value;
+                    optEl.textContent = opt.label;
+                    voiceSelect.appendChild(optEl);
+                });
+            } else {
+                voiceSelect.disabled = false;
+                const optEl = document.createElement('option');
+                optEl.value = 'default';
+                optEl.textContent = provider === 'elevenlabs' 
+                    ? 'Uses Voice ID below \u2193' 
+                    : 'Custom voice (enter in server config)';
+                voiceSelect.appendChild(optEl);
+            }
+        }
+
+        async function saveTTSConfig() {
+            const saveBtn = document.getElementById('tts-save-btn');
+            const statusEl = document.getElementById('tts-save-status');
+            saveBtn.disabled = true;
+            statusEl.textContent = 'Saving...';
+            statusEl.style.color = '#94a3b8';
+            
+            try {
+                const provider = document.getElementById('tts-provider-select').value;
+                const voice = document.getElementById('tts-voice-select').value;
+                
+                const body = { provider, voice };
+                
+                // Include ElevenLabs config if selected
+                if (provider === 'elevenlabs') {
+                    const keyVal = document.getElementById('tts-elevenlabs-key').value;
+                    if (keyVal && keyVal !== '********') {
+                        body.elevenLabsApiKey = keyVal;
+                    }
+                    body.elevenLabsVoiceId = document.getElementById('tts-elevenlabs-voice-id').value;
+                    body.elevenLabsModel = document.getElementById('tts-elevenlabs-model').value;
+                }
+                
+                // Include OpenAI config if selected
+                if (provider === 'openai') {
+                    const openaiKeyVal = document.getElementById('tts-openai-key')?.value;
+                    if (openaiKeyVal && openaiKeyVal !== '********') {
+                        body.openaiApiKey = openaiKeyVal;
+                    }
+                    const openaiModelEl = document.getElementById('tts-openai-model');
+                    if (openaiModelEl) {
+                        body.openaiModel = openaiModelEl.value;
+                    }
+                }
+                
+                // Include local URL if selected
+                if (provider === 'local') {
+                    body.localUrl = document.getElementById('tts-local-url').value;
+                }
+                
+                const response = await fetch('/api/tts-config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    statusEl.textContent = '\u2705 Saved successfully!';
+                    statusEl.style.color = '#34d399';
+                    loadTTSConfig(); // Refresh badge
+                } else {
+                    statusEl.textContent = '\u274c ' + (result.error || 'Save failed');
+                    statusEl.style.color = '#f87171';
+                }
+            } catch (err) {
+                statusEl.textContent = '\u274c Network error';
+                statusEl.style.color = '#f87171';
+            } finally {
+                saveBtn.disabled = false;
+                setTimeout(() => { statusEl.textContent = ''; }, 4000);
+            }
+        }
+
+        async function testTTSVoice() {
+            const testBtn = document.getElementById('tts-test-btn');
+            const playerContainer = document.getElementById('tts-test-player-container');
+            const audioEl = document.getElementById('tts-test-audio');
+            const infoEl = document.getElementById('tts-test-info');
+            
+            testBtn.disabled = true;
+            testBtn.textContent = '\u23f3 Generating...';
+            playerContainer.style.display = 'none';
+            
+            try {
+                // Save current config first so the test uses the selected provider
+                await saveTTSConfig();
+                
+                const response = await fetch('/api/tts-test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    audioEl.src = result.audioUrl;
+                    infoEl.textContent = 'Provider: ' + result.provider + ' | Voice: ' + result.voice;
+                    playerContainer.style.display = 'block';
+                    audioEl.play();
+                } else {
+                    infoEl.textContent = '\u274c Test failed: ' + (result.error || 'Unknown error');
+                    playerContainer.style.display = 'block';
+                }
+            } catch (err) {
+                infoEl.textContent = '\u274c Network error: Could not reach server';
+                playerContainer.style.display = 'block';
+            } finally {
+                testBtn.disabled = false;
+                testBtn.textContent = '\ud83d\udd0a Test Voice';
+            }
+        }
+
+        async function triggerContentGeneration() {
+            if (confirm('Generate content now? This will launch the background generation pipeline to compile a new story video.')) {
+                try {
+                    const imageProvider = document.getElementById('image-model-provider').value;
+                    const imageModel = document.getElementById('image-model-name').value;
+                    const videoFormat = document.getElementById('video-format').value;
+                    const videoType = document.getElementById('video-type').value;
+                    
+                    const response = await fetch('/generate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            topic: null, 
+                            style: 'story',
+                            imageProvider: imageProvider,
+                            imageModel: imageModel,
+                            videoFormat: videoFormat,
+                            videoType: videoType
+                        })
+                    });
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        alert('Background content generation pipeline started successfully!');
+                        checkGenerationStatus();
+                    } else {
+                        alert('Failed to start generation: ' + result.error);
+                    }
+                } catch (error) {
+                    alert('Request failed. Please check if your server is running.');
+                }
+            }
+        }
+        function switchMainTab(tab) {
+            // Since Analytics and Schedule now open in new tabs, we only handle Dashboard tab styles
+            document.getElementById('nav-btn-dashboard').className = 'btn active';
+            const dashboardView = document.getElementById('dashboard-view');
+            if (dashboardView) dashboardView.style.display = 'block';
+        }
+
+        
+        // Hide analytics and schedule by default on load
+        document.addEventListener('DOMContentLoaded', () => {
+            switchMainTab('dashboard');
+            loadTTSConfig();
+        });
+
         function refreshDashboard() {
             loadDashboard();
         }
         
-        // Auto-refresh every 30 seconds
+        // Auto-refresh stats every 30 seconds
         setInterval(refreshDashboard, 30000);
         
         // Load dashboard on page load
         loadDashboard();
+        loadTTSConfig();
+
+        // Content Pipeline JS Logic
+        let activePipelineTab = 'queue';
+        let pipelineData = [];
+
+        function switchPipelineTab(tab) {
+            activePipelineTab = tab;
+            
+            // Toggle active tab class
+            const buttons = document.querySelectorAll('.pipeline-tabs .tab-btn');
+            buttons.forEach(btn => {
+                if (btn.getAttribute('onclick').includes(tab)) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+            
+            // Toggle active section visibility
+            if (tab === 'queue') {
+                document.getElementById('pipeline-queue-section').style.display = 'block';
+                document.getElementById('pipeline-published-section').style.display = 'none';
+            } else {
+                document.getElementById('pipeline-queue-section').style.display = 'none';
+                document.getElementById('pipeline-published-section').style.display = 'block';
+            }
+            
+            renderPipeline();
+        }
+
+        async function loadChannels(forceRefresh = false) {
+            const channelListEl = document.getElementById('channel-list');
+            const currentNameEl = document.getElementById('current-channel-name');
+            
+            if (forceRefresh) {
+                channelListEl.classList.add('loading');
+                channelListEl.innerHTML = 'Refreshing channels from YouTube...';
+            }
+
+            try {
+                const url = forceRefresh ? '/youtube/channels?forceRefresh=true' : '/youtube/channels';
+                const response = await fetch(url);
+                if (!response.ok) {
+                    let errMsg = 'Check YouTube API credentials.';
+                    try {
+                        const errData = await response.json();
+                        if (errData.error) errMsg = errData.error;
+                    } catch(e) {}
+                    channelListEl.classList.remove('loading');
+                    channelListEl.innerHTML = `<p style="color:#f87171;">⚠️ Could not load channels. ${errMsg}</p>`;
+                    return;
+                }
+                const data = await response.json();
+                const { channels, selectedChannelId, selectedChannelName } = data;
+
+                channelListEl.classList.remove('loading');
+
+                // Update "currently uploading to" label — use stored name first, then API lookup, then fallback
+                if (currentNameEl) {
+                    if (selectedChannelName) {
+                        currentNameEl.textContent = selectedChannelName;
+                    } else if (selectedChannelId && channels) {
+                        const found = channels.find(c => c.id === selectedChannelId);
+                        currentNameEl.textContent = found ? found.title : selectedChannelId;
+                    } else {
+                        currentNameEl.textContent = 'Not set';
+                    }
+                }
+
+                // If no API channels returned, just show the hardcoded active channel badge
+                if (!channels || channels.length === 0) {
+                    channelListEl.innerHTML = selectedChannelId
+                        ? `<div class="channel-item selected">
+                              <div class="channel-avatar-placeholder">📺</div>
+                              <div class="channel-info">
+                                  <strong>${selectedChannelName || selectedChannelId}</strong>
+                                  <span>${selectedChannelId} &nbsp;•&nbsp; Hardcoded upload destination</span>
+                              </div>
+                              <button class="channel-select-btn selected-btn" disabled>✅ Active</button>
+                           </div>`
+                        : '<p style="color:#94a3b8;">No channels found on this account.</p>';
+                    return;
+                }
+
+                // Render API-listed channels
+                channelListEl.innerHTML = channels.map(ch => {
+                    const isSelected = ch.id === selectedChannelId;
+                    const avatarHtml = ch.thumbnail
+                        ? `<img class="channel-avatar" src="${ch.thumbnail}" alt="${ch.title}" onerror="this.style.display='none';this.nextSibling.style.display='flex'"><div class="channel-avatar-placeholder" style="display:none;">📺</div>`
+                        : `<div class="channel-avatar-placeholder">📺</div>`;
+                    const subsK = Number(ch.subscriberCount) >= 1000 ? (ch.subscriberCount / 1000).toFixed(1) + 'K' : ch.subscriberCount;
+                    return `
+                        <div class="channel-item ${isSelected ? 'selected' : ''}" id="channel-item-${ch.id}">
+                            ${avatarHtml}
+                            <div class="channel-info">
+                                <strong>${ch.title}</strong>
+                                <span>${ch.customUrl ? '@' + ch.customUrl.replace('@','') : ch.id} &nbsp;•&nbsp; ${subsK} subscribers &nbsp;•&nbsp; ${ch.videoCount} videos</span>
+                            </div>
+                            <button class="channel-select-btn ${isSelected ? 'selected-btn' : ''}"
+                                id="select-btn-${ch.id}"
+                                onclick="selectChannel('${ch.id}', '${ch.title.replace(/'/g,'&#39;')}')">
+                                ${isSelected ? '✅ Selected' : 'Select'}
+                            </button>
+                        </div>`;
+                }).join('');
+
+                // If the selected channel is NOT in the API list (Brand Account), show it as a pinned card on top
+                if (selectedChannelId && !channels.find(c => c.id === selectedChannelId)) {
+                    const pinnedCard = `
+                        <div class="channel-item selected" id="channel-item-${selectedChannelId}" style="border-color:rgba(52,211,153,0.5); margin-bottom:4px;">
+                            <div class="channel-avatar-placeholder">📺</div>
+                            <div class="channel-info">
+                                <strong>${selectedChannelName || selectedChannelId}</strong>
+                                <span>${selectedChannelId} &nbsp;•&nbsp; <span style="color:#34d399;">Active upload destination</span></span>
+                            </div>
+                            <button class="channel-select-btn selected-btn" disabled>✅ Active</button>
+                        </div>`;
+                    channelListEl.innerHTML = pinnedCard + channelListEl.innerHTML;
+                }
+
+            } catch (error) {
+                channelListEl.classList.remove('loading');
+                channelListEl.innerHTML = '<p style="color:#f87171;">⚠️ Could not load channels. Check YouTube API credentials.</p>';
+            }
+        }
+
+
+        async function selectChannel(channelId, channelTitle) {
+            const statusEl = document.getElementById('channel-select-status');
+            const currentNameEl = document.getElementById('current-channel-name');
+
+            try {
+                // Update UI immediately
+                document.querySelectorAll('.channel-item').forEach(el => el.classList.remove('selected'));
+                document.querySelectorAll('.channel-select-btn').forEach(btn => {
+                    btn.classList.remove('selected-btn');
+                    btn.textContent = 'Select';
+                });
+                const selectedItem = document.getElementById('channel-item-' + channelId);
+                const selectedBtn = document.getElementById('select-btn-' + channelId);
+                if (selectedItem) selectedItem.classList.add('selected');
+                if (selectedBtn) { selectedBtn.classList.add('selected-btn'); selectedBtn.textContent = '✅ Selected'; }
+                if (currentNameEl) currentNameEl.textContent = channelTitle;
+
+                const response = await fetch('/youtube/select-channel', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ channelId, channelName: channelTitle })
+                });
+
+                if (!response.ok) throw new Error('Server error: ' + response.status);
+
+                if (statusEl) {
+                    statusEl.style.display = 'block';
+                    statusEl.style.color = '#34d399';
+                    statusEl.innerHTML = `✅ Channel selected: <strong>${channelTitle}</strong>. All new video uploads will go to this channel.`;
+                    setTimeout(() => { statusEl.style.display = 'none'; }, 5000);
+                }
+            } catch (error) {
+                if (statusEl) {
+                    statusEl.style.display = 'block';
+                    statusEl.style.color = '#f87171';
+                    statusEl.textContent = '❌ Failed to save channel: ' + error.message;
+                }
+            }
+        }
+
+        async function selectChannelManual() {
+            const channelId = (document.getElementById('manual-channel-id')?.value || '').trim();
+            const channelTitle = (document.getElementById('manual-channel-title')?.value || '').trim() || channelId;
+            const statusEl = document.getElementById('channel-select-status');
+
+            if (!channelId || !channelId.startsWith('UC')) {
+                if (statusEl) {
+                    statusEl.style.display = 'block';
+                    statusEl.style.color = '#fbbf24';
+                    statusEl.textContent = '⚠️ Please enter a valid Channel ID (starts with UC...). Find it via YouTube → Your Channel → About.';
+                }
+                return;
+            }
+
+            try {
+                const response = await fetch('/youtube/select-channel', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ channelId })
+                });
+
+                if (!response.ok) throw new Error('Server error: ' + response.status);
+
+                const currentNameEl = document.getElementById('current-channel-name');
+                if (currentNameEl) currentNameEl.textContent = channelTitle;
+
+                if (statusEl) {
+                    statusEl.style.display = 'block';
+                    statusEl.style.color = '#34d399';
+                    statusEl.innerHTML = `✅ Channel set to <strong>${channelTitle}</strong> (${channelId}). All new video uploads will go to this channel.`;
+                    setTimeout(() => { statusEl.style.display = 'none'; }, 6000);
+                }
+
+                // Clear inputs
+                document.getElementById('manual-channel-id').value = '';
+                document.getElementById('manual-channel-title').value = '';
+            } catch (error) {
+                if (statusEl) {
+                    statusEl.style.display = 'block';
+                    statusEl.style.color = '#f87171';
+                    statusEl.textContent = '❌ Failed to save channel: ' + error.message;
+                }
+            }
+        }
+
+        async function loadPipelineData() {
+
+            try {
+                const response = await fetch('/publish-history');
+                pipelineData = await response.json();
+                renderPipeline();
+            } catch (error) {
+                console.error('Failed to load content pipeline data:', error);
+                document.getElementById('pipeline-queue-list').innerHTML = `<div class="log-entry error">⚠️ Failed to load content pipeline: ${error.message}</div>`;
+                document.getElementById('pipeline-published-list').innerHTML = `<div class="log-entry error">⚠️ Failed to load publication history: ${error.message}</div>`;
+            }
+        }
+
+        function renderPipeline() {
+            const queueList = document.getElementById('pipeline-queue-list');
+            const publishedList = document.getElementById('pipeline-published-list');
+            
+            if (queueList) queueList.classList.remove('loading');
+            if (publishedList) publishedList.classList.remove('loading');
+            
+            // Filter queue and published items
+            let queueItems = pipelineData.filter(item => item.status !== 'published');
+            let publishedItems = pipelineData.filter(item => item.status === 'published');
+            
+            // Sort queue items (Pipeline): Soonest to be published first (ASC)
+            queueItems.sort((a, b) => {
+                const dateA = new Date(a.publish_time || a.publishTime || a.created_at || a.createdAt).getTime();
+                const dateB = new Date(b.publish_time || b.publishTime || b.created_at || b.createdAt).getTime();
+                return dateA - dateB;
+            });
+
+            // Sort published items (History): Most recently published first (DESC)
+            publishedItems.sort((a, b) => {
+                const dateA = new Date(a.publish_time || a.publishTime || a.published_at || a.publishedAt || a.created_at || a.createdAt).getTime();
+                const dateB = new Date(b.publish_time || b.publishTime || b.published_at || b.publishedAt || b.created_at || b.createdAt).getTime();
+                return dateB - dateA;
+            });
+            
+            // Update dashboard metric cards
+            const contentCountEl = document.getElementById('content-count');
+            const publishedCountEl = document.getElementById('published-count');
+            const metricsTotalEl = document.getElementById('metrics-total-content');
+            if (contentCountEl) contentCountEl.textContent = pipelineData.length.toString();
+            if (publishedCountEl) publishedCountEl.textContent = publishedItems.length.toString();
+            if (metricsTotalEl) metricsTotalEl.textContent = pipelineData.length.toString();
+            
+            // 1. Render Queue List
+            if (queueList) {
+                if (queueItems.length === 0) {
+                    queueList.innerHTML = `
+                        <div style="text-align: center; padding: 30px; color: #64748b; font-style: italic;">
+                            📅 No scheduled or queued content in the pipeline. Click "Generate Content Now" above to create some!
+                        </div>
+                    `;
+                } else {
+                    queueList.innerHTML = `
+                        <div class="pipeline-table-container">
+                            <table class="pipeline-table">
+                                <thead>
+                                    <tr>
+                                        <th>Video Title</th>
+                                        <th>Estimated Publish Time</th>
+                                        <th>Status</th>
+                                        <th style="text-align: right;">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${queueItems.map(item => `
+                                        <tr>
+                                            <td>
+                                                <div class="pipeline-title" title="${item.title || 'Untitled Story'}">${item.title || 'Untitled Story'}</div>
+                                            </td>
+                                            <td>
+                                                <span style="color: #cbd5e1;">${new Date(item.publish_time || item.publishTime).toLocaleString()}</span>
+                                            </td>
+                                            <td>
+                                                <span class="pipeline-badge badge-${item.status}">${item.status}</span>
+                                            </td>
+                                            <td style="text-align: right; display: flex; justify-content: flex-end; gap: 8px;">
+                                                <button class="btn btn-sm btn-outline" onclick="previewVideo('${item.id}')">
+                                                    👁️ Preview
+                                                </button>
+                                                <button class="btn btn-sm" onclick="manualPublishVideo('${item.production_id || item.productionId}', this)">
+                                                    ⚡ Publish Now
+                                                </button>
+                                                <button class="btn btn-sm btn-outline" style="color: #ef4444; border-color: #ef4444;" onclick="promptDeleteVideo('${item.id}')">
+                                                    🗑️ Delete
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+                }
+            }
+            
+            // 2. Render Published List
+            if (publishedList) {
+                if (publishedItems.length === 0) {
+                    publishedList.innerHTML = `
+                        <div style="text-align: center; padding: 30px; color: #64748b; font-style: italic;">
+                            📺 No published videos found yet in the history.
+                        </div>
+                    `;
+                } else {
+                    publishedList.innerHTML = `
+                        <div class="pipeline-table-container">
+                            <table class="pipeline-table">
+                                <thead>
+                                    <tr>
+                                        <th>Video Title</th>
+                                        <th>Publication Date</th>
+                                        <th>Status</th>
+                                        <th style="text-align: right;">Links</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${publishedItems.map(item => `
+                                        <tr>
+                                            <td>
+                                                <div class="pipeline-title" title="${item.title || 'Untitled Story'}">${item.title || 'Untitled Story'}</div>
+                                            </td>
+                                            <td>
+                                                <span style="color: #cbd5e1;">${new Date(item.published_at || item.publishedAt || item.publish_time).toLocaleString()}</span>
+                                            </td>
+                                            <td>
+                                                <span class="pipeline-badge badge-published">Published</span>
+                                            </td>
+                                            <td style="text-align: right;">
+                                                <a href="${item.youtube_url || item.youtubeUrl || '#'}" target="_blank" class="btn btn-sm btn-outline" style="text-decoration: none; padding: 6px 12px; display: inline-flex; align-items: center; gap: 4px;">
+                                                    📺 Watch
+                                                </a>
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+                }
+            }
+        }
+
+        function getMediaUrl(path) {
+            if (!path) return '';
+            if (path.includes('/data/videos/')) {
+                return '/data/videos/' + path.split('/data/videos/')[1];
+            } else if (path.includes('/uploads/thumbnails/')) {
+                return '/uploads/thumbnails/' + path.split('/uploads/thumbnails/')[1];
+            } else if (path.includes('/data/')) {
+                return '/data/' + path.split('/data/')[1];
+            }
+            return path;
+        }
+
+        function previewVideo(id) {
+            const item = pipelineData.find(i => i.id === id);
+            if (!item) return;
+
+            document.getElementById('preview-title').textContent = item.title || 'Video Preview';
+            const videoEl = document.getElementById('preview-video');
+            const thumbEl = document.getElementById('preview-thumbnail');
+            const noMediaEl = document.getElementById('preview-no-media');
+
+            let hasMedia = false;
+            videoEl.style.display = 'none';
+            thumbEl.style.display = 'none';
+            noMediaEl.style.display = 'none';
+
+            if (item.metadata && item.metadata.video && item.metadata.video.path) {
+                videoEl.src = getMediaUrl(item.metadata.video.path);
+                videoEl.style.display = 'block';
+                hasMedia = true;
+            }
+            
+            if (item.metadata && item.metadata.thumbnail && item.metadata.thumbnail.path) {
+                thumbEl.src = getMediaUrl(item.metadata.thumbnail.path);
+                if (!hasMedia) {
+                    thumbEl.style.display = 'block';
+                    hasMedia = true;
+                }
+            }
+            
+            if (!hasMedia) {
+                noMediaEl.style.display = 'block';
+            }
+
+            const modal = document.getElementById('preview-modal');
+            modal.style.display = 'flex';
+        }
+
+        let currentDeleteId = null;
+        let currentDeleteTitle = null;
+        let currentDeleteProductionId = null;
+
+        function promptDeleteVideo(id) {
+            const item = pipelineData.find(i => i.id === id);
+            if (!item) return;
+            currentDeleteId = id;
+            currentDeleteTitle = item.title;
+            currentDeleteProductionId = item.production_id || item.productionId;
+            document.getElementById('delete-feedback').value = '';
+            document.getElementById('delete-modal').style.display = 'flex';
+        }
+
+        async function confirmDeleteVideo() {
+            if (!currentDeleteId) return;
+            const btn = document.getElementById('btn-confirm-delete');
+            const originalText = btn.textContent;
+            btn.textContent = '⏳ Deleting...';
+            btn.disabled = true;
+
+            try {
+                const feedback = document.getElementById('delete-feedback').value;
+                const response = await fetch('/schedule/' + currentDeleteId, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        feedback, 
+                        videoTitle: currentDeleteTitle, 
+                        productionId: currentDeleteProductionId 
+                    })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    document.getElementById('delete-modal').style.display = 'none';
+                    loadPipelineData();
+                } else {
+                    alert('Failed to delete: ' + (result.error || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Request failed.');
+            } finally {
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        async function manualPublishVideo(contentId, btnElement) {
+            if (!confirm('Are you sure you want to publish this video to YouTube immediately?')) return;
+            
+            const originalText = btnElement.innerHTML;
+            btnElement.disabled = true;
+            btnElement.innerHTML = '⏳ Publishing...';
+            
+            try {
+                const response = await fetch(`/publish/${contentId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('Video published successfully!');
+                    loadPipelineData();
+                    loadDashboard();
+                } else {
+                    alert('Failed to publish: ' + (result.error || 'Unknown error'));
+                    btnElement.disabled = false;
+                    btnElement.innerHTML = originalText;
+                }
+            } catch (error) {
+                alert('Request failed. Please check if your server is running.');
+                btnElement.disabled = false;
+                btnElement.innerHTML = originalText;
+            }
+        }
     </script>
+
+    <!-- Preview Modal -->
+    <div id="preview-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center; padding: 20px;">
+        <div style="background: #1e293b; border-radius: 12px; max-width: 800px; width: 100%; max-height: 90vh; overflow-y: auto; padding: 24px; position: relative;">
+            <button onclick="document.getElementById('preview-modal').style.display='none'; document.getElementById('preview-video').pause();" style="position: absolute; top: 16px; right: 16px; background: none; border: none; color: #cbd5e1; font-size: 24px; cursor: pointer;">&times;</button>
+            <h2 id="preview-title" style="margin-top: 0; color: #f8fafc; font-size: 1.2rem; margin-bottom: 16px;">Video Preview</h2>
+            
+            <div style="margin-bottom: 16px; background: #000; border-radius: 8px; overflow: hidden; display: flex; justify-content: center; align-items: center; min-height: 200px;">
+                <video id="preview-video" controls style="width: 100%; max-height: 400px; display: none;"></video>
+                <img id="preview-thumbnail" style="width: 100%; max-height: 400px; object-fit: contain; display: none;" />
+                <div id="preview-no-media" style="color: #94a3b8; display: none;">No media available to preview</div>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                <div class="stat-card" style="margin: 0; padding: 12px;">
+                    <div style="color: #94a3b8; font-size: 0.8rem; margin-bottom: 4px;">Thumbnail</div>
+                    <button class="btn btn-sm btn-outline" onclick="document.getElementById('preview-video').style.display='none'; document.getElementById('preview-video').pause(); document.getElementById('preview-thumbnail').style.display='block';">View Thumbnail</button>
+                </div>
+                <div class="stat-card" style="margin: 0; padding: 12px;">
+                    <div style="color: #94a3b8; font-size: 0.8rem; margin-bottom: 4px;">Video</div>
+                    <button class="btn btn-sm btn-outline" onclick="document.getElementById('preview-thumbnail').style.display='none'; document.getElementById('preview-video').style.display='block';">View Video</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Modal -->
+    <div id="delete-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center; padding: 20px;">
+        <div style="background: #1e293b; border-radius: 12px; max-width: 500px; width: 100%; padding: 24px;">
+            <h2 style="margin-top: 0; color: #f87171; display: flex; align-items: center; gap: 8px;">⚠️ Confirm Deletion</h2>
+            <p style="color: #cbd5e1; margin-bottom: 20px;">Are you sure you want to delete this scheduled video? This action cannot be undone.</p>
+            
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; color: #94a3b8; font-size: 0.9rem; margin-bottom: 8px;">Optional Feedback (Why is it bad?)</label>
+                <textarea id="delete-feedback" placeholder="e.g., Pacing too slow, wrong images used..." style="width: 100%; background: #0f172a; border: 1px solid #334155; border-radius: 8px; color: #f8fafc; padding: 12px; min-height: 100px; font-family: inherit; resize: vertical; box-sizing: border-box;"></textarea>
+                <div style="color: #64748b; font-size: 0.8rem; margin-top: 4px;">This feedback helps our AI agents improve future videos.</div>
+            </div>
+            
+            <div style="display: flex; justify-content: flex-end; gap: 12px;">
+                <button class="btn btn-outline" onclick="document.getElementById('delete-modal').style.display='none'">Cancel</button>
+                <button class="btn" style="background: #ef4444; color: white;" id="btn-confirm-delete" onclick="confirmDeleteVideo()">Yes, Delete It</button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>

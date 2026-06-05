@@ -41,6 +41,7 @@ class SimpleAuth {
       console.log(chalk.cyan('\n🔗 Please visit this URL to authorize the application:'));
       console.log(chalk.blue(authUrl));
       console.log(chalk.yellow('\nCopy the URL, visit it in your browser, and authorize the application.'));
+      console.log(chalk.red.bold('⚠️  CRITICAL: When selecting a Google Account, you MUST select the specific YouTube Channel (Brand Account) you want to upload to (e.g. Cerita Singkatku). Do NOT select your main email account unless you want videos uploaded there!'));
       console.log(chalk.yellow('Then copy the authorization code that appears and paste it below.'));
       
       // Get the authorization code from user

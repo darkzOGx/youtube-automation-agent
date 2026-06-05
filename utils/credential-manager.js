@@ -4,7 +4,8 @@ const { google } = require('googleapis');
 const inquirer = require('inquirer');
 const chalk = require('chalk');
 const { Logger } = require('./logger');
-
+const { Configuration, OpenAIApi } = require('openai');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 class CredentialManager {
   constructor() {
     this.logger = new Logger('CredentialManager');
@@ -12,6 +13,7 @@ class CredentialManager {
     this.tokensPath = path.join(__dirname, '..', 'config', 'tokens.json');
     this.credentials = {};
     this.tokens = {};
+    this.activeYoutubeIndex = 0;
   }
 
   async initialize() {
@@ -29,6 +31,9 @@ class CredentialManager {
     try {
       const data = await fs.readFile(this.credentialsPath, 'utf8');
       this.credentials = JSON.parse(data);
+      if (this.credentials.youtube && !Array.isArray(this.credentials.youtube)) {
+        this.credentials.youtube = [this.credentials.youtube];
+      }
     } catch (error) {
       this.credentials = {};
     }
@@ -38,6 +43,9 @@ class CredentialManager {
     try {
       const data = await fs.readFile(this.tokensPath, 'utf8');
       this.tokens = JSON.parse(data);
+      if (this.tokens.youtube && !Array.isArray(this.tokens.youtube)) {
+        this.tokens.youtube = [this.tokens.youtube];
+      }
     } catch (error) {
       this.tokens = {};
     }
@@ -80,25 +88,31 @@ class CredentialManager {
       }
     ]);
 
-    this.credentials.youtube = {
+    if (!Array.isArray(this.credentials.youtube)) {
+      this.credentials.youtube = [];
+    }
+
+    this.credentials.youtube.push({
       client_id: answers.clientId,
       client_secret: answers.clientSecret,
       redirect_uris: [answers.redirectUri]
-    };
+    });
 
     await this.saveCredentials();
     
-    // Authenticate and get tokens
-    await this.authenticateYouTube();
+    // Authenticate and get tokens for the newly added credential
+    const newIndex = this.credentials.youtube.length - 1;
+    await this.authenticateYouTube(newIndex);
     
     console.log(chalk.green('✅ YouTube credentials configured successfully!'));
   }
 
-  async authenticateYouTube() {
+  async authenticateYouTube(index = 0) {
+    const creds = this.credentials.youtube[Number(index)];
     const oauth2Client = new google.auth.OAuth2(
-      this.credentials.youtube.client_id,
-      this.credentials.youtube.client_secret,
-      this.credentials.youtube.redirect_uris[0]
+      creds.client_id,
+      creds.client_secret,
+      creds.redirect_uris[0]
     );
 
     const scopes = [
@@ -128,7 +142,10 @@ class CredentialManager {
     const { tokens } = await oauth2Client.getToken(code);
     oauth2Client.setCredentials(tokens);
 
-    this.tokens.youtube = tokens;
+    if (!Array.isArray(this.tokens.youtube)) {
+      this.tokens.youtube = [];
+    }
+    this.tokens.youtube[Number(index)] = tokens;
     await this.saveTokens();
 
     console.log(chalk.green('✅ YouTube authentication completed!'));
@@ -138,15 +155,38 @@ class CredentialManager {
     if (!this.credentials.youtube || !this.tokens.youtube) {
       throw new Error('YouTube credentials not configured');
     }
+    
+    // Ensure index is within bounds
+    if (this.activeYoutubeIndex >= this.credentials.youtube.length) {
+      this.activeYoutubeIndex = 0;
+    }
+
+    const creds = this.credentials.youtube[Number(this.activeYoutubeIndex)];
+    const tokens = this.tokens.youtube[Number(this.activeYoutubeIndex)];
+
+    if (!creds || !tokens) {
+      throw new Error(`YouTube credentials not configured for index ${this.activeYoutubeIndex}`);
+    }
 
     const oauth2Client = new google.auth.OAuth2(
-      this.credentials.youtube.client_id,
-      this.credentials.youtube.client_secret,
-      this.credentials.youtube.redirect_uris[0]
+      creds.client_id,
+      creds.client_secret,
+      creds.redirect_uris[0]
     );
 
-    oauth2Client.setCredentials(this.tokens.youtube);
+    oauth2Client.setCredentials(tokens);
     return oauth2Client;
+  }
+
+  switchToNextYouTubeAuth() {
+    if (!Array.isArray(this.credentials.youtube) || this.credentials.youtube.length <= 1) {
+      this.logger.warn('No alternative YouTube credentials available for fallback.');
+      return false;
+    }
+    
+    this.activeYoutubeIndex = (this.activeYoutubeIndex + 1) % this.credentials.youtube.length;
+    this.logger.info(`Switched YouTube API credentials to index ${this.activeYoutubeIndex} (Fallback)`);
+    return true;
   }
 
   getYouTubeClient() {
@@ -378,23 +418,22 @@ class CredentialManager {
       // Files might not exist yet
     }
 
-    const requiredCredentials = ['youtube', 'openai'];
-    const missing = [];
+    const hasYouTube = !!this.credentials.youtube;
+    const hasAI = !!(this.credentials.openai || this.credentials.gemini);
 
-    for (const service of requiredCredentials) {
-      if (!this.credentials[service]) {
-        missing.push(service);
-      }
+    if (!hasYouTube) {
+      console.log(chalk.yellow('\n⚠️  Missing YouTube API credentials in config/credentials.json'));
+      return false;
     }
 
-    if (missing.length > 0) {
-      console.log(chalk.yellow(`\n⚠️  Missing credentials for: ${missing.join(', ')}`));
+    if (!hasAI) {
+      console.log(chalk.yellow('\n⚠️  Missing AI API credentials (neither OpenAI nor Gemini found)'));
       return false;
     }
 
     // Validate YouTube tokens
     if (!this.tokens.youtube) {
-      console.log(chalk.yellow('\n⚠️  YouTube authentication required'));
+      console.log(chalk.yellow('\n⚠️  YouTube authentication required. Please run: npm run credentials:setup'));
       return false;
     }
 
@@ -407,6 +446,7 @@ class CredentialManager {
     const results = {
       youtube: false,
       openai: false,
+      gemini: false,
       azureSpeech: false
     };
 
@@ -425,9 +465,8 @@ class CredentialManager {
     }
 
     // Test OpenAI API
-    if (this.credentials.openai) {
+    if (this.credentials.openai && this.credentials.openai.apiKey && !this.credentials.openai.apiKey.includes('YOUR_OPENAI_API_KEY')) {
       try {
-        const { Configuration, OpenAIApi } = require('openai');
         const configuration = new Configuration({
           apiKey: this.credentials.openai.apiKey,
         });
@@ -439,6 +478,23 @@ class CredentialManager {
       } catch (error) {
         console.log(chalk.red('❌ OpenAI API connection failed'));
         this.logger.error('OpenAI API test failed:', error);
+      }
+    }
+
+    // Test Gemini API
+    if (this.credentials.gemini && this.credentials.gemini.apiKey) {
+      try {
+        const genAI = new GoogleGenerativeAI(this.credentials.gemini.apiKey);
+        const model = genAI.getGenerativeModel({ 
+          model: 'gemini-2.5-flash',
+          systemInstruction: 'You are a testing assistant verifying API connectivity.'
+        });
+        await model.generateContent('ping');
+        results.gemini = true;
+        console.log(chalk.green('✅ Google Gemini API connection successful'));
+      } catch (error) {
+        console.log(chalk.red('❌ Google Gemini API connection failed'));
+        this.logger.error('Gemini API test failed:', error);
       }
     }
 
@@ -494,26 +550,76 @@ class CredentialManager {
   }
 
   async setupTTSService() {
-    const { service } = await inquirer.prompt([
-      {
-        type: 'list',
-        name: 'service',
-        message: 'Select your preferred Text-to-Speech service:',
-        choices: [
-          { name: 'Azure Speech Services (Recommended)', value: 'azure' },
-          { name: 'Google Cloud TTS', value: 'google' },
-          { name: 'AWS Polly', value: 'aws' },
-          { name: 'Skip TTS Setup', value: 'skip' }
-        ]
-      }
-    ]);
+    const { service } = await inquirer.prompt([{
+      type: 'list',
+      name: 'service',
+      message: 'Select your preferred Text-to-Speech service:',
+      choices: [
+        { name: '🆓 Microsoft Edge Neural TTS (Free, Default — no setup needed)', value: 'edge_tts' },
+        { name: '⭐ OpenAI TTS (Recommended, ~$0.04/video, uses your OpenAI key)', value: 'openai' },
+        { name: '💎 ElevenLabs (Premium Quality, Voice Cloning)', value: 'elevenlabs' },
+        { name: '🖥️  Local/Custom API Server (F5-TTS, XTTS v2, etc.)', value: 'local' },
+      ]
+    }]);
 
-    if (service === 'azure') {
-      await this.setupAzureSpeechCredentials();
-    } else if (service !== 'skip') {
-      console.log(chalk.yellow(`\n⚠️  ${service.toUpperCase()} TTS setup not implemented yet.`));
-      console.log(chalk.gray('You can manually configure it later in config/credentials.json'));
+    if (!this.credentials.tts) {
+      this.credentials.tts = {};
     }
+    this.credentials.tts.provider = service;
+
+    if (service === 'edge_tts') {
+      const { voice } = await inquirer.prompt([{
+        type: 'list',
+        name: 'voice',
+        message: 'Select Edge TTS voice:',
+        choices: [
+          { name: 'Gadis Neural (Perempuan, Indonesian)', value: 'id-ID-GadisNeural' },
+          { name: 'Ardi Neural (Laki-laki, Indonesian)', value: 'id-ID-ArdiNeural' }
+        ],
+        default: 'id-ID-GadisNeural'
+      }]);
+      this.credentials.tts.voice = voice;
+    } else if (service === 'openai') {
+      const { voice } = await inquirer.prompt([{
+        type: 'list',
+        name: 'voice',
+        message: 'Select OpenAI TTS voice:',
+        choices: [
+          { name: 'Nova (Warm, Friendly — best for kids)', value: 'nova' },
+          { name: 'Shimmer (Soft, Gentle)', value: 'shimmer' },
+          { name: 'Alloy (Neutral, Balanced)', value: 'alloy' },
+          { name: 'Fable (Storytelling)', value: 'fable' },
+          { name: 'Echo (Clear, Confident)', value: 'echo' },
+          { name: 'Onyx (Deep, Warm)', value: 'onyx' }
+        ],
+        default: 'nova'
+      }]);
+      this.credentials.tts.voice = voice;
+      console.log(chalk.gray('  ℹ️  OpenAI TTS uses your existing OpenAI API key.'));
+    } else if (service === 'elevenlabs') {
+      const answers = await inquirer.prompt([
+        { type: 'password', name: 'apiKey', message: 'Enter ElevenLabs API Key:', validate: i => i.length > 0 || 'API key is required' },
+        { type: 'input', name: 'voiceId', message: 'Enter ElevenLabs Voice ID:', validate: i => i.length > 0 || 'Voice ID is required' }
+      ]);
+      if (!this.credentials.elevenLabs) {
+        this.credentials.elevenLabs = {};
+      }
+      this.credentials.elevenLabs.apiKey = answers.apiKey;
+      this.credentials.elevenLabs.voiceId = answers.voiceId;
+    } else if (service === 'local') {
+      const { url } = await inquirer.prompt([{
+        type: 'input',
+        name: 'url',
+        message: 'Enter Local TTS Server URL:',
+        default: 'http://localhost:8000',
+        validate: i => i.startsWith('http') || 'URL must start with http:// or https://'
+      }]);
+      this.credentials.tts.localUrl = url;
+      console.log(chalk.gray('  ℹ️  For SSH Reverse Tunnel: ssh -R 8000:localhost:8000 user@server'));
+    }
+
+    await this.saveCredentials();
+    console.log(chalk.green('✅ TTS service configured successfully!'));
   }
 }
 

@@ -1,4 +1,5 @@
 const { Logger } = require('../utils/logger');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 class SEOOptimizerAgent {
   constructor(db, credentials) {
@@ -6,6 +7,24 @@ class SEOOptimizerAgent {
     this.credentials = credentials;
     this.logger = new Logger('SEOOptimizer');
     this.keywordDatabase = new Map();
+    
+    // Support either raw credentials JSON or the CredentialManager instance
+    const rawCredentials = credentials.credentials || credentials;
+    
+    // Initialize Gemini AI
+    const geminiKey = rawCredentials?.gemini?.apiKey || process.env.GEMINI_API_KEY;
+    if (geminiKey) {
+      try {
+        this.genAI = new GoogleGenerativeAI(geminiKey);
+        this.gemini = this.genAI.getGenerativeModel({
+          model: 'gemini-2.5-flash',
+          systemInstruction: 'You are a YouTube SEO specialist for Indonesian children\'s storytelling channels.'
+        });
+        this.logger.info('Google Gemini service initialized for SEOOptimizer');
+      } catch (error) {
+        this.logger.error('Failed to initialize Google Gemini for SEOOptimizer:', error);
+      }
+    }
   }
 
   async initialize() {
@@ -25,7 +44,7 @@ class SEOOptimizerAgent {
     }
   }
 
-  async optimize(script, strategy) {
+  async optimize(script, strategy, analyticsData = {}) {
     try {
       this.logger.info(`Optimizing SEO for: ${script.title}`);
       
@@ -36,7 +55,7 @@ class SEOOptimizerAgent {
       const description = await this.generateDescription(script, strategy);
       
       // Extract and optimize tags
-      const tags = await this.generateTags(script, strategy);
+      const tags = await this.generateTags(script, strategy, analyticsData);
       
       // Generate hashtags
       const hashtags = await this.generateHashtags(strategy);
@@ -50,19 +69,25 @@ class SEOOptimizerAgent {
       // Calculate SEO score
       const seoScore = await this.calculateSEOScore(title, description, tags);
       
+      // Generate AB Testing alternative titles
+      const abTitles = this.generateABTitles(title, strategy);
+      
       const seoData = {
         title,
+        abTitles,
         description,
         tags,
         hashtags,
         chapters,
         endScreen,
         seoScore,
+        pinnedComment: script.callToAction?.comment || `Bagaimana pendapat kalian tentang kisah ini? Tulis di kolom komentar ya! 👇`,
+        communityPost: `Halo Adik-adik dan Ayah Bunda! 🎉\n\nDongeng baru yang sangat seru tentang "${title}" sudah tayang lho! Yuk temani waktu bersantai sambil menonton petualangan luar biasa ini. Jangan lupa tinggalkan komentar ya!\n\nLink: [Video URL]`,
         metadata: {
           primaryKeyword: strategy.keywords[0],
           secondaryKeywords: strategy.keywords.slice(1, 5),
           targetLength: this.calculateOptimalLength(strategy.contentType),
-          language: 'en',
+          language: 'id',
           category: this.selectCategory(strategy)
         },
         createdAt: new Date().toISOString()
@@ -81,40 +106,58 @@ class SEOOptimizerAgent {
 
   async optimizeTitle(originalTitle, strategy) {
     // YouTube title limit: 100 characters, optimal: 60-70
-    let optimizedTitle = originalTitle;
-    
-    // Add power words if not present
-    const powerWords = ['Ultimate', 'Complete', 'Essential', 'Proven', 'Secret', 'Amazing', 'Powerful'];
-    const hasPowerWord = powerWords.some(word => 
-      originalTitle.toLowerCase().includes(word.toLowerCase())
-    );
-    
-    if (!hasPowerWord && originalTitle.length < 60) {
-      const randomPowerWord = powerWords[Math.floor(Math.random() * powerWords.length)];
-      optimizedTitle = `${randomPowerWord} ${originalTitle}`;
+    // For Indonesian children's story channel — do NOT inject English power words or year.
+    let optimizedTitle = originalTitle.trim();
+
+    // Remove any accidental year already appended (e.g. "(2025)" or "(2026)")
+    optimizedTitle = optimizedTitle.replace(/\s*\(\d{4}\)\s*$/, '').trim();
+
+    // Clean up forbidden/awkward words (case-insensitive) anywhere in the title
+    const forbiddenPatterns = [
+      /\bResmi\b/gi,
+      /\bLangsung\b/gi,
+      /\bSiaran\b/gi,
+      /\bLive\b/gi,
+      /\bTerbaik\b/gi,
+      /\bUltimate\b/gi,
+      /\bComplete\b/gi,
+      /\bEssential\b/gi,
+      /\bProven\b/gi,
+      /\bSecret\b/gi,
+      /\bAmazing\b/gi,
+      /\bPowerful\b/gi
+    ];
+
+    for (const pattern of forbiddenPatterns) {
+      optimizedTitle = optimizedTitle.replace(pattern, '');
     }
-    
-    // Add year if relevant and not present
-    const currentYear = new Date().getFullYear();
-    if (!optimizedTitle.includes(currentYear.toString()) && optimizedTitle.length < 70) {
-      optimizedTitle = `${optimizedTitle} (${currentYear})`;
-    }
-    
-    // Ensure primary keyword is in title
-    const primaryKeyword = strategy.keywords[0];
-    if (primaryKeyword && !optimizedTitle.toLowerCase().includes(primaryKeyword.toLowerCase())) {
-      optimizedTitle = `${optimizedTitle} - ${primaryKeyword}`;
-    }
-    
-    // Truncate if too long
+
+    // Clean up multiple spaces and trailing/leading spaces or double spaces
+    optimizedTitle = optimizedTitle.replace(/\s+/g, ' ').trim();
+
+    // Truncate if too long (100 char YouTube limit)
     if (optimizedTitle.length > 100) {
       optimizedTitle = optimizedTitle.substring(0, 97) + '...';
     }
-    
-    // Capitalize properly
-    optimizedTitle = this.titleCase(optimizedTitle);
-    
+
     return optimizedTitle;
+  }
+
+  generateABTitles(primaryTitle, strategy) {
+    const titles = [primaryTitle];
+    const baseWord = strategy.topic.split(' ')[0] || 'Kisah';
+    
+    titles.push(`Kisah Menarik: ${primaryTitle}`);
+    titles.push(`${primaryTitle} - Dongeng ${baseWord} Lucu`);
+    
+    return titles;
+  }
+
+
+  calculateTextDuration(text) {
+    if (!text) return 15;
+    const words = text.split(/\s+/).length;
+    return Math.max(5, Math.ceil(words / 2.5)); // ~150 words per minute
   }
 
   titleCase(str) {
@@ -129,16 +172,115 @@ class SEOOptimizerAgent {
   }
 
   async generateDescription(script, strategy) {
+    if (!this.gemini) {
+      this.logger.warn('Gemini AI not initialized. Falling back to simple description.');
+      return this.generateFallbackDescription(script, strategy);
+    }
+    
+    try {
+      this.logger.info(`Generating LLM-powered SEO description for: ${script.title}`);
+      
+      const prompt = `
+Generate a YouTube description in Bahasa Indonesia.
+
+Requirements:
+- Target audience: parents with children aged 2-8 years.
+- Tone: warm, educational, family-friendly.
+- Length: 250-500 words.
+- First 2 sentences must contain the most important search keywords naturally.
+- Focus on search intent from Indonesian parents.
+
+Important keywords that may be used naturally:
+- dongeng anak
+- cerita anak Indonesia
+- dongeng sebelum tidur
+- cerita moral anak
+- animasi anak
+- video edukasi anak
+- cerita pengantar tidur
+- dongeng bahasa Indonesia
+
+Do NOT keyword stuff.
+Do NOT sound robotic.
+Do NOT repeat the title excessively.
+
+Output format:
+1. SEO opening paragraph
+2. What children will learn
+3. Moral lesson
+4. Timestamp section
+5. Soft subscribe CTA
+6. Relevant hashtags
+
+Story title:
+${script.title}
+
+Story topic:
+${strategy.topic}
+
+Story summary:
+${script.introduction || 'Kisah edukatif pengantar tidur untuk anak.'}
+
+Story sections:
+${JSON.stringify(script.mainContent?.sections?.map(s => s.title) || [])}
+`;
+      
+      const result = await this.gemini.generateContent(prompt);
+      let text = result.response.text();
+      
+      // Cleanup markdown code blocks if present
+      text = text.replace(/^```[a-z]*\n/gm, '').replace(/```$/gm, '').trim();
+      
+      // Add standard links and footer
+      const websiteUrl = process.env.WEBSITE_URL;
+      const socialLinks = process.env.SOCIAL_LINKS;
+      if (websiteUrl || socialLinks) {
+        text += '\n\n🔗 TAUTAN BERMANFAAT:\n';
+        if (websiteUrl) text += `• Situs Web: ${websiteUrl}\n`;
+        if (socialLinks) text += `• Media Sosial: ${socialLinks}\n`;
+      }
+      
+      const businessEmail = process.env.BUSINESS_EMAIL;
+      if (businessEmail) {
+        text += '\n📧 HUBUNGI KAMI / KERJASAMA:\n';
+        text += `${businessEmail}\n`;
+      }
+      
+      text += '\n---\n';
+      text += '🎵 Musik: YouTube Audio Library | © ' + new Date().getFullYear() + ' Hak Cipta Dilindungi\n';
+      text += '⚠️ Video ini bertujuan untuk hiburan edukatif dan merangsang imajinasi kreatif anak-anak.\n\n';
+      
+      // Merge with system-generated tags
+      const systemHashtags = await this.generateHashtags(strategy);
+      text += systemHashtags.join(' ') + '\n';
+      
+      return text;
+      
+    } catch (error) {
+      this.logger.error('Failed to generate SEO description with LLM:', error);
+      return this.generateFallbackDescription(script, strategy);
+    }
+  }
+
+  async generateFallbackDescription(script, strategy) {
     // YouTube description limit: 5000 characters, first 125 shown in search
     
     let description = '';
     
     // First 125 characters - most important for SEO
-    const hook = `${script.title} - In this video, you'll discover ${strategy.angle.toLowerCase()}.`;
+    const hook = `${script.title} - Dalam video dongeng anak ini, mari kita berpetualang bersama kisah manis tentang ${strategy.topic}!`;
     description += hook + '\n\n';
     
+    // Call to Action (Subscribe) - Moved to top
+    description += `👇 JANGAN LUPA KLIK SUBSCRIBE UNTUK DONGENG BARU SETIAP HARI!\n`;
+    if (process.env.CHANNEL_URL) {
+      description += `Berlangganan: ${process.env.CHANNEL_URL}\n\n`;
+    } else {
+      description += `Berlangganan channel kami untuk pembaruan cerita animasi seru lainnya.\n\n`;
+    }
+    
     // Video overview
-    description += '📺 WHAT YOU\'LL LEARN:\n';
+    description += '📺 APA YANG AKAN KAMU TEMUKAN:\n';
     if (script.mainContent && script.mainContent.sections) {
       script.mainContent.sections.slice(0, 5).forEach(section => {
         if (section.title) {
@@ -149,72 +291,68 @@ class SEOOptimizerAgent {
     description += '\n';
     
     // Timestamps/Chapters
-    description += '⏱️ TIMESTAMPS:\n';
-    description += '00:00 Introduction\n';
-    let timestamp = 20;
+    description += '⏱️ BAB WAKTU (TIMESTAMPS):\n';
+    description += '00:00 Awal Mula Kisah\n';
+    let timestamp = 20; // Intro duration
     if (script.mainContent && script.mainContent.sections) {
       script.mainContent.sections.forEach(section => {
         const minutes = Math.floor(timestamp / 60);
         const seconds = timestamp % 60;
-        description += `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')} ${section.title || 'Section'}\n`;
-        timestamp += section.duration || 60;
+        description += `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')} ${section.title || 'Bagian Kisah'}\n`;
+        
+        let sectionText = '';
+        if (typeof section.content === 'string') sectionText = section.content;
+        else if (Array.isArray(section.content)) sectionText = section.content.join(' ');
+        
+        timestamp += this.calculateTextDuration(sectionText);
       });
     }
     description += '\n';
     
     // Keywords paragraph (SEO optimized)
-    description += '📝 ABOUT THIS VIDEO:\n';
-    description += `This comprehensive guide on ${strategy.topic} covers everything you need to know. `;
-    description += `Whether you're a beginner or advanced, you'll find valuable insights about ${strategy.keywords.slice(0, 3).join(', ')}. `;
-    description += `Perfect for ${strategy.targetAudience}.\n\n`;
+    description += '📝 TENTANG DONGENG INI:\n';
+    description += `Video ini adalah cerita kartun anak edukatif yang mengajarkan nilai moral yang baik melalui kisah ${strategy.topic}. `;
+    description += `Sangat cocok ditonton sebagai dongeng anak sebelum tidur bahasa Indonesia untuk menemani malam si buah hati. `;
+    description += `Semoga cerita animasi anak ini menghibur dan bermanfaat bagi balita, anak-anak, dan keluarga!\n\n`;
     
-    // Links section
-    description += '🔗 USEFUL LINKS:\n';
-    description += `• Subscribe: [Your Channel URL]\n`;
-    description += `• Website: ${process.env.WEBSITE_URL || '[Your Website]'}\n`;
-    description += `• Social Media: ${process.env.SOCIAL_LINKS || '[Your Social Media]'}\n\n`;
-    
-    // Related videos
-    description += '📹 RELATED VIDEOS:\n';
-    description += '• [Related Video 1]\n';
-    description += '• [Related Video 2]\n';
-    description += '• [Related Video 3]\n\n';
-    
-    // Equipment/Tools (if applicable)
-    if (strategy.contentType === 'Tutorial') {
-      description += '🛠️ TOOLS & RESOURCES MENTIONED:\n';
-      description += '• [Tool/Resource 1]\n';
-      description += '• [Tool/Resource 2]\n\n';
+    // Links section (Dynamic, no placeholders)
+    const websiteUrl = process.env.WEBSITE_URL;
+    const socialLinks = process.env.SOCIAL_LINKS;
+    if (websiteUrl || socialLinks) {
+      description += '🔗 TAUTAN BERMANFAAT:\n';
+      if (websiteUrl) description += `• Situs Web: ${websiteUrl}\n`;
+      if (socialLinks) description += `• Media Sosial: ${socialLinks}\n`;
+      description += '\n';
     }
     
-    // Contact/Business
-    description += '📧 BUSINESS INQUIRIES:\n';
-    description += `${process.env.BUSINESS_EMAIL || '[Your Business Email]'}\n\n`;
+    // Contact/Business (Dynamic)
+    const businessEmail = process.env.BUSINESS_EMAIL;
+    if (businessEmail) {
+      description += '📧 HUBUNGI KAMI / KERJASAMA:\n';
+      description += `${businessEmail}\n\n`;
+    }
     
-    // Tags/Hashtags
-    description += '🏷️ TAGS:\n';
+    // Footer: Condense Disclaimer, Copyright, Music, and Hashtags
+    description += '---\n';
+    description += '🎵 Musik: YouTube Audio Library | © ' + new Date().getFullYear() + ' Hak Cipta Dilindungi\n';
+    description += '⚠️ Video ini bertujuan untuk hiburan edukatif dan merangsang imajinasi kreatif anak-anak.\n\n';
+    
     const hashtags = await this.generateHashtags(strategy);
-    description += hashtags.join(' ') + '\n\n';
-    
-    // Disclaimer if needed
-    description += '⚠️ DISCLAIMER:\n';
-    description += 'This video is for educational purposes only.\n\n';
-    
-    // Copyright
-    description += `© ${new Date().getFullYear()} All Rights Reserved\n`;
-    
-    // Music credits if applicable
-    description += '\n🎵 MUSIC:\n';
-    description += 'Background music from YouTube Audio Library\n';
+    description += hashtags.join(' ') + '\n';
     
     return description;
   }
 
-  async generateTags(script, strategy) {
+  async generateTags(script, strategy, analyticsData = {}) {
     const tags = new Set();
     
     // Add primary keywords
     strategy.keywords.forEach(keyword => tags.add(keyword));
+    
+    // Add top performing historical keywords
+    if (analyticsData.topKeywords) {
+      analyticsData.topKeywords.slice(0, 5).forEach(kw => tags.add(kw));
+    }
     
     // Add topic variations
     const topic = strategy.topic.toLowerCase();
@@ -222,16 +360,16 @@ class SEOOptimizerAgent {
     tags.add(topic.replace(/\s+/g, ''));
     tags.add(topic.replace(/\s+/g, '_'));
     
-    // Add content type tags
-    const contentTypeTags = {
-      'Tutorial': ['how to', 'tutorial', 'guide', 'step by step', 'learn'],
-      'Explainer': ['explained', 'what is', 'understanding', 'explanation'],
-      'Review': ['review', 'comparison', 'vs', 'best', 'top'],
-      'List': ['top 10', 'best', 'list', 'countdown'],
-      'Story': ['story', 'journey', 'experience', 'case study']
-    };
+    // Add content type tags — Indonesian children's story specific
+    const contentTypeTags = new Map([
+      ['Tutorial', ['cara', 'panduan', 'langkah demi langkah', 'pelajaran', 'belajar']],
+      ['Explainer', ['penjelasan', 'apa itu', 'mengenal', 'edukasi anak']],
+      ['Review', ['ulasan', 'rekomendasi']],
+      ['List', ['terbaik', 'pilihan', 'daftar']],
+      ['Story', ['dongeng', 'kisah', 'cerita', 'fabel', 'petualangan']]
+    ]);
     
-    const typeTags = contentTypeTags[strategy.contentType] || [];
+    const typeTags = contentTypeTags.get(strategy.contentType) || ['dongeng', 'cerita anak'];
     typeTags.forEach(tag => tags.add(tag));
     
     // Add year tags
@@ -299,35 +437,28 @@ class SEOOptimizerAgent {
   }
 
   getNicheTags(niche) {
-    const nicheTags = {
-      'technology': ['tech', 'technology', 'innovation', 'future tech', 'tech news'],
-      'gaming': ['gaming', 'gameplay', 'walkthrough', 'lets play', 'game review'],
-      'education': ['educational', 'learning', 'study tips', 'online learning', 'edtech'],
-      'business': ['business tips', 'entrepreneurship', 'startup', 'business strategy', 'success'],
-      'lifestyle': ['lifestyle', 'life hacks', 'daily routine', 'productivity', 'self improvement'],
-      'health': ['health tips', 'fitness', 'healthy living', 'wellness', 'nutrition'],
-      'entertainment': ['entertainment', 'fun', 'viral', 'trending', 'must watch'],
-      'general': ['video', 'youtube', 'content', 'new', 'latest']
-    };
-    
-    return nicheTags[niche] || nicheTags.general;
+    // For Indonesian children's story channel, always use relevant Indonesian tags
+    const baseTags = [
+      'dongeng anak', 'cerita anak', 'dongeng bahasa Indonesia',
+      'cerita sebelum tidur', 'dongeng pengantar tidur',
+      'cerita anak Indonesia', 'dongeng fabel', 'animasi anak',
+      'video anak', 'youtube anak'
+    ];
+    return baseTags;
   }
 
   generateLongTailKeywords(strategy) {
+    const topic = strategy.topic;
+    const topicLower = topic.toLowerCase();
+    // Indonesian children's story long-tail keywords
     const longTailTemplates = [
-      `how to ${strategy.topic}`,
-      `${strategy.topic} for beginners`,
-      `${strategy.topic} tutorial`,
-      `best ${strategy.topic}`,
-      `${strategy.topic} tips and tricks`,
-      `${strategy.topic} step by step`,
-      `${strategy.topic} guide ${new Date().getFullYear()}`,
-      `${strategy.topic} explained simply`,
-      `everything about ${strategy.topic}`,
-      `${strategy.topic} mistakes to avoid`
+      `dongeng ${topicLower}`,
+      `cerita anak ${topicLower}`,
+      `${topicLower} anak-anak`,
+      `cerita sebelum tidur ${topicLower}`,
+      `dongeng anak Indonesia`,
     ];
-    
-    return longTailTemplates.slice(0, 5);
+    return longTailTemplates;
   }
 
   prioritizeTags(tags, strategy) {
@@ -362,47 +493,27 @@ class SEOOptimizerAgent {
   async generateHashtags(strategy) {
     const hashtags = [];
     
-    // Primary hashtag
+    // Primary hashtag (Topic specific)
     const primaryHashtag = `#${strategy.topic.replace(/\s+/g, '')}`;
     hashtags.push(primaryHashtag);
     
-    // Content type hashtag
-    hashtags.push(`#${strategy.contentType.toLowerCase()}`);
-    
-    // Trending hashtags
-    const trendingHashtags = [
-      '#youtube',
-      '#youtuber',
-      '#subscribe',
-      '#video',
-      '#viral',
-      '#trending',
-      '#new'
+    // Specific educational kids hashtags
+    const specificHashtags = [
+      '#DongengAnak', 
+      '#CeritaAnakIndonesia', 
+      '#DongengSebelumTidur',
+      '#AnimasiAnak',
+      '#KartunEdukasi'
     ];
     
-    // Niche hashtags
-    const niche = this.identifyNiche(strategy);
-    const nicheHashtags = {
-      'technology': ['#tech', '#technology', '#innovation'],
-      'gaming': ['#gaming', '#gamer', '#games'],
-      'education': ['#education', '#learning', '#study'],
-      'business': ['#business', '#entrepreneur', '#success'],
-      'lifestyle': ['#lifestyle', '#life', '#daily'],
-      'health': ['#health', '#fitness', '#wellness'],
-      'entertainment': ['#entertainment', '#fun', '#funny']
-    };
+    // Add up to 4 specific tags to keep total max 5 (YouTube best practice is 3-5)
+    for (let i = 0; i < 4 && i < specificHashtags.length; i++) {
+      if (!hashtags.includes(specificHashtags[i])) {
+        hashtags.push(specificHashtags[i]);
+      }
+    }
     
-    const selectedNicheHashtags = nicheHashtags[niche] || [];
-    hashtags.push(...selectedNicheHashtags.slice(0, 2));
-    
-    // Add 2-3 trending hashtags
-    hashtags.push(...trendingHashtags.slice(0, 3));
-    
-    // Year hashtag
-    hashtags.push(`#${new Date().getFullYear()}`);
-    
-    // Limit to 15 hashtags (YouTube recommendation)
-    return hashtags.slice(0, 15);
+    return hashtags.slice(0, 5);
   }
 
   async generateChapters(script) {
@@ -431,7 +542,11 @@ class SEOOptimizerAgent {
           seconds: currentTime
         });
         
-        currentTime += section.duration || 60;
+        let sectionText = '';
+        if (typeof section.content === 'string') sectionText = section.content;
+        else if (Array.isArray(section.content)) sectionText = section.content.join(' ');
+        
+        currentTime += this.calculateTextDuration(sectionText);
       });
     }
     
@@ -504,15 +619,15 @@ class SEOOptimizerAgent {
   }
 
   calculateOptimalLength(contentType) {
-    const optimalLengths = {
-      'Tutorial': '10-15 minutes',
-      'Explainer': '5-10 minutes',
-      'Review': '8-12 minutes',
-      'List': '8-15 minutes',
-      'Story': '10-20 minutes'
-    };
+    const optimalLengths = new Map([
+      ['Tutorial', '10-15 minutes'],
+      ['Explainer', '5-10 minutes'],
+      ['Review', '8-12 minutes'],
+      ['List', '8-15 minutes'],
+      ['Story', '10-20 minutes']
+    ]);
     
-    return optimalLengths[contentType] || '8-12 minutes';
+    return optimalLengths.get(contentType) || '8-12 minutes';
   }
 
   selectCategory(strategy) {

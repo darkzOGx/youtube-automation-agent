@@ -1,4 +1,5 @@
 const { Logger } = require('../utils/logger');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 class ScriptWriterAgent {
   constructor(db, credentials) {
@@ -6,6 +7,24 @@ class ScriptWriterAgent {
     this.credentials = credentials;
     this.logger = new Logger('ScriptWriter');
     this.templates = this.loadTemplates();
+
+    // Support either raw credentials JSON or the CredentialManager instance
+    const rawCredentials = credentials.credentials || credentials;
+
+    // Initialize Gemini AI
+    const geminiKey = rawCredentials.gemini?.apiKey || process.env.GEMINI_API_KEY;
+    if (geminiKey) {
+      try {
+        this.genAI = new GoogleGenerativeAI(geminiKey);
+        this.gemini = this.genAI.getGenerativeModel({
+          model: 'gemini-2.5-flash',
+          systemInstruction: 'You are an expert Indonesian children\'s fairy tale writer. You create wholesome, safe, educational stories for kids aged 3-8 in Bahasa Indonesia. Always produce valid JSON output only. Never include violent, scary, or inappropriate content.'
+        });
+        this.logger.info('Google Gemini service initialized for ScriptWriter');
+      } catch (error) {
+        this.logger.error('Failed to initialize Google Gemini for ScriptWriter:', error);
+      }
+    }
   }
 
   async initialize() {
@@ -43,22 +62,220 @@ class ScriptWriterAgent {
     };
   }
 
+  parseJsonFromText(text) {
+    try {
+      const start = text.indexOf('{');
+      const end = text.lastIndexOf('}');
+      if (start !== -1 && end !== -1 && end >= start) {
+        return JSON.parse(text.substring(start, end + 1));
+      }
+      return JSON.parse(text);
+    } catch (e) {
+      this.logger.error(`JSON Parse Error. Raw text: ${text}`);
+      throw e;
+    }
+  }
+
+  async generateOutline(strategy) {
+    this.logger.info('Step 1: Generating Outline...');
+    const prompt = `You are an expert Indonesian children's fairy tale writer. Create a story outline strictly in Bahasa Indonesia based on this topic and angle:
+Topic: "${strategy.topic}"
+Angle: "${strategy.angle}"
+Video Type: "${strategy.videoType || 'long'}"
+
+CRITICAL RULES:
+1. ALL TEXT MUST BE IN BAHASA INDONESIA. Do not use English.
+2. The title MUST be natural Bahasa Indonesia, like a real dongeng title.
+3. DO NOT add years or words like "Resmi", "Ultimate", "Terbaik".
+${strategy.videoType === 'short' ? '4. THIS IS A YOUTUBE SHORT. Keep the outline EXTREMELY concise. Maximum 1-2 very short chapters.' : ''}
+
+Provide the output in valid JSON format:
+{
+  "title": "Judul dongeng",
+  "chapters": [
+    {"chapterNumber": 1, "description": "Story beat 1 dalam Bahasa Indonesia"},
+    {"chapterNumber": 2, "description": "Story beat 2 dalam Bahasa Indonesia"}
+  ],
+  "moralLesson": "Pesan moral cerita"
+}`;
+    return this.executeGeminiWithRetry(prompt, true);
+  }
+
+  async executeGeminiWithRetry(prompt, isJson = false, retries = 3) {
+    const modelsToTry = [
+      'gemini-2.5-flash',
+      'gemini-2.5-flash-lite',
+      'gemini-3.1-flash-lite'
+    ];
+    
+    let lastError = null;
+    
+    for (let i = 0; i < retries; i++) {
+      const modelName = modelsToTry[i % modelsToTry.length];
+      this.logger.info(`Attempting Gemini generation using model: ${modelName} (Attempt ${i + 1}/${retries})`);
+      
+      try {
+        const currentModel = this.genAI.getGenerativeModel({
+          model: modelName,
+          systemInstruction: 'You are an expert Indonesian children\'s fairy tale writer. You create wholesome, safe, educational stories for kids aged 3-8 in Bahasa Indonesia. Always produce valid JSON output only. Never include violent, scary, or inappropriate content.'
+        });
+        
+        const result = await currentModel.generateContent(prompt);
+        return isJson ? this.parseJsonFromText(result.response.text()) : result.response.text();
+      } catch (error) {
+        lastError = error;
+        if (error.message.includes('503') || error.message.includes('429')) {
+          this.logger.warn(`Gemini API busy (503/429) on ${modelName}. Retrying in 5 seconds...`);
+          await new Promise(resolve => setTimeout(resolve, 5000));
+        } else if (error.message.includes('404') || error.message.includes('not found')) {
+          this.logger.warn(`Model ${modelName} not found or unsupported. Trying next model...`);
+        } else {
+          throw error;
+        }
+      }
+    }
+    throw new Error(`Gemini API exhausted all retries. Last error: ${lastError.message}`);
+  }
+
+  async writeDraft(outline, strategy) {
+    this.logger.info('Step 2: Writing Draft...');
+    const prompt = `You are an expert Indonesian children's fairy tale writer. Write a full story draft STRICTLY in Bahasa Indonesia based on this outline:
+Title: ${outline.title}
+Chapters: ${JSON.stringify(outline.chapters)}
+Video Type: ${strategy.videoType || 'long'}
+
+CRITICAL RULE: ALL DIALOGUE AND NARRATION MUST BE IN BAHASA INDONESIA.
+${strategy.videoType === 'short' ? 'CRITICAL SHORTS RULE: This is a YouTube Short! The ENTIRE draft must be MAX 150 words. It must take LESS THAN 60 SECONDS to read aloud. Keep sentences punchy and action-packed.' : ''}
+
+Provide the output in valid JSON format:
+{
+  "hook": "Kalimat pembuka yang menarik untuk anak-anak (Bahasa Indonesia)",
+  "introduction": "Sapaan hangat (misal: Halo adik-adik!) dan perkenalan dunia",
+  "sections": [
+    {
+      "title": "Judul Bab 1",
+      "content": "Satu paragraf cerita yang indah (3-4 kalimat dalam Bahasa Indonesia)."
+    }
+  ],
+}
+`;
+    return this.executeGeminiWithRetry(prompt, true);
+  }
+
+  async polishForKids(draft, outline) {
+    this.logger.info('Step 3: Polishing for Kids & Formatting...');
+    const prompt = `You are a child psychologist and editor. Review and polish this story draft for kids aged 3-8 in Bahasa Indonesia. Ensure language is simple, engaging, and safe.
+Draft: ${JSON.stringify(draft)}
+
+CRITICAL RULES:
+1. ALL TEXT MUST BE IN BAHASA INDONESIA. Do not use English.
+2. Provide EXACTLY 1-3 English keywords for sound effects in the "sfx_keywords" array.
+
+Provide the final output in valid JSON format EXACTLY matching this structure:
+{
+  "title": "${outline.title}",
+  "hook": {
+    "text": "Kalimat pembuka yang sudah disempurnakan (Bahasa Indonesia)"
+  },
+  "introduction": {
+    "greeting": "Halo Adik-adik hebat!",
+    "topicIntro": "Pengenalan topik yang menarik",
+    "valueProposition": "Pesan kenapa cerita ini seru",
+    "credibility": "Kalimat pendongeng (Misal: Bersama Kakak, mari kita...)"
+  },
+  "sections": [
+    {
+      "title": "Judul Bab",
+      "content": "Satu paragraf cerita yang sudah disempurnakan.",
+      "duration": 45,
+      "sfx_keywords": ["MANDATORY: 1-3 English keywords, e.g., 'magic', 'wind', 'laugh', 'birds', 'footsteps']
+    }
+  ],
+  "conclusion": {
+    "recap": ["Poin ringkasan 1", "Poin ringkasan 2"],
+    "finalThought": "Pesan terakhir"
+  },
+  "cta": {
+    "subscribe": "Jangan lupa subscribe ya!",
+    "like": "Tekan tombol like jika kalian suka!",
+    "comment": "Pertanyaan interaktif untuk dijawab di komentar"
+  }
+}`;
+    return this.executeGeminiWithRetry(prompt, true);
+  }
+
   async generateScript(strategy) {
     try {
       this.logger.info(`Generating script for: ${strategy.topic}`);
-      
-      const template = this.templates[strategy.contentType.toLowerCase()] || this.templates.explainer;
-      
-      // Generate script components
-      const hook = await this.generateHook(strategy);
-      const introduction = await this.generateIntroduction(strategy);
-      const mainContent = await this.generateMainContent(strategy, template);
-      const conclusion = await this.generateConclusion(strategy);
-      const cta = await this.generateCTA(strategy);
+
+      const contentTypeKey = strategy.contentType.toLowerCase();
+      const allowedTypes = Object.keys(this.templates);
+      const template = allowedTypes.includes(contentTypeKey) ? this.templates[contentTypeKey] : this.templates.explainer;
+
+      let hook, introduction, mainContent, conclusion, cta, title;
+      let generatedViaGemini = false;
+
+      if (this.gemini) {
+        try {
+          this.logger.info('Invoking Google Gemini Multi-Agent Pipeline for script generation...');
+
+          const outline = await this.generateOutline(strategy);
+          const draft = await this.writeDraft(outline, strategy);
+          const parsed = await this.polishForKids(draft, outline);
+
+          title = parsed.title;
+          hook = {
+            type: 'statement',
+            text: parsed.hook.text,
+            duration: '0:00-0:05'
+          };
+          introduction = {
+            greeting: parsed.introduction.greeting,
+            topicIntro: parsed.introduction.topicIntro,
+            valueProposition: parsed.introduction.valueProposition,
+            credibility: parsed.introduction.credibility,
+            duration: '0:05-0:20'
+          };
+          mainContent = {
+            sections: parsed.sections,
+            totalDuration: parsed.sections.reduce((t, s) => t + (s.duration || 45), 0)
+          };
+          conclusion = {
+            type: 'conclusion',
+            title: 'Wrapping Up',
+            recap: parsed.conclusion.recap,
+            finalThought: parsed.conclusion.finalThought,
+            duration: '30 seconds'
+          };
+          cta = {
+            type: 'call_to_action',
+            subscribe: parsed.cta.subscribe,
+            like: parsed.cta.like,
+            comment: parsed.cta.comment,
+            nextVideo: 'Tonton video dongeng seru lainnya ya!',
+            duration: '15 seconds'
+          };
+
+          generatedViaGemini = true;
+          this.logger.info('Gemini script generation and parsing successful');
+        } catch (err) {
+          this.logger.error('Gemini script generation failed, falling back to static templates:', err);
+        }
+      }
+
+      if (!generatedViaGemini) {
+        // Fallback to static templates
+        title = await this.generateTitle(strategy);
+        hook = await this.generateHook(strategy);
+        introduction = await this.generateIntroduction(strategy);
+        mainContent = await this.generateMainContent(strategy, template);
+        conclusion = await this.generateConclusion(strategy);
+        cta = await this.generateCTA(strategy);
+      }
 
       // Assemble complete script
       const script = {
-        title: await this.generateTitle(strategy),
+        title,
         hook,
         introduction,
         mainContent,
@@ -71,16 +288,17 @@ class ScriptWriterAgent {
         metadata: {
           strategy: strategy,
           generatedAt: new Date().toISOString(),
-          version: '1.0'
+          version: '1.0',
+          aiGenerated: generatedViaGemini
         }
       };
 
       // Format for readability
       script.fullScript = this.formatFullScript(script);
-      
+
       // Save to database
       await this.db.saveScript(script);
-      
+
       this.logger.info(`Script generated: ${script.title}`);
       return script;
     } catch (error) {
@@ -90,54 +308,43 @@ class ScriptWriterAgent {
   }
 
   async generateTitle(strategy) {
-    const templates = [
-      `${strategy.angle}`,
-      `${strategy.topic}: The Complete Guide`,
-      `Everything You Need to Know About ${strategy.topic}`,
-      `${strategy.topic} in ${new Date().getFullYear()}: What's Changed?`,
-      `The Truth About ${strategy.topic} (Shocking Results)`,
-      `How to Master ${strategy.topic} in 30 Days`,
-      `${strategy.topic}: Beginner to Expert Guide`
-    ];
+    const types = {
+      explainer: `Apa itu ${strategy.topic}? (Penjelasan Lengkap)`,
+      tutorial: `Cara Mudah ${strategy.topic} Untuk Anak`,
+      review: `Review Menarik tentang ${strategy.topic}`,
+      story: `Dongeng Seru: ${strategy.topic}`
+    };
 
-    // Select based on content type
-    if (strategy.contentType === 'Tutorial') {
-      return `How to ${strategy.topic}: Step-by-Step Guide`;
-    } else if (strategy.contentType === 'List') {
-      return `Top 10 ${strategy.topic} Tips You Need to Know`;
-    } else if (strategy.contentType === 'Review') {
-      return `${strategy.topic} Review: Is It Worth It?`;
-    }
-
-    return templates[Math.floor(Math.random() * templates.length)];
+    const typeKey = (strategy.contentType || 'story').toLowerCase();
+    return types[typeKey] || types.story;
   }
 
   async generateHook(strategy) {
     const hooks = [
       {
         type: 'question',
-        text: `Have you ever wondered ${this.generateQuestionAbout(strategy.topic)}?`
+        text: `Pernahkah kalian membayangkan ${this.generateQuestionAbout(strategy.topic)}?`
       },
       {
         type: 'statistic',
-        text: `Did you know that ${this.generateStatistic(strategy.topic)}?`
+        text: `Tahukah kalian bahwa ${this.generateStatistic(strategy.topic)}?`
       },
       {
         type: 'statement',
-        text: `${strategy.topic} is about to change everything, and here's why...`
+        text: `${strategy.topic} akan membawamu ke petualangan seru, ini alasannya...`
       },
       {
         type: 'challenge',
-        text: `Most people think they understand ${strategy.topic}, but they're completely wrong.`
+        text: `Banyak yang belum tahu rahasia di balik ${strategy.topic}...`
       },
       {
         type: 'promise',
-        text: `In the next few minutes, you'll learn exactly how to master ${strategy.topic}.`
+        text: `Hari ini, kita akan masuk ke dunia ajaib ${strategy.topic}.`
       }
     ];
 
-    const selected = hooks[Math.floor(Math.random() * hooks.length)];
-    
+    const selected = hooks.at(Math.floor(Math.random() * hooks.length));
+
     return {
       type: selected.type,
       text: selected.text,
@@ -147,48 +354,48 @@ class ScriptWriterAgent {
 
   generateQuestionAbout(topic) {
     const questions = [
-      `why ${topic} is becoming so important`,
-      `how ${topic} actually works`,
-      `what makes ${topic} different from everything else`,
-      `why experts are talking about ${topic}`,
-      `how ${topic} could change your life`
+      `apa rahasia di balik cerita ini`,
+      `bagaimana keajaiban itu terjadi`,
+      `siapa pahlawan sebenarnya di kisah ini`,
+      `mengapa tempat ini sangat misterius`,
+      `bagaimana akhir dari petualangan seru ini`
     ];
-    
-    return questions[Math.floor(Math.random() * questions.length)];
+
+    return questions.at(Math.floor(Math.random() * questions.length));
   }
 
   generateStatistic(topic) {
     const stats = [
-      `90% of people don't understand ${topic} correctly`,
-      `${topic} has grown by 300% in the last year alone`,
-      `experts predict ${topic} will be worth billions by 2030`,
-      `only 1 in 10 people are using ${topic} effectively`,
-      `${topic} can save you hours every single day`
+      `ada banyak keajaiban yang tersembunyi di sini`,
+      `cerita ini sudah diceritakan turun temurun`,
+      `banyak anak hebat yang menyukai cerita ini`,
+      `petualangan ini sangat mendebarkan`,
+      `kisah ini menyimpan pesan rahasia yang luar biasa`
     ];
-    
-    return stats[Math.floor(Math.random() * stats.length)];
+
+    return stats.at(Math.floor(Math.random() * stats.length));
   }
 
   async generateIntroduction(strategy) {
     return {
-      greeting: "Hey everyone, welcome back to the channel!",
-      topicIntro: `Today, we're diving deep into ${strategy.topic}.`,
-      valueProposition: `By the end of this video, you'll understand exactly ${this.getValueProposition(strategy)}.`,
-      credibility: this.getCredibilityStatement(strategy),
+      greeting: "Halo Adik-adik hebat! Selamat datang di cerita hari ini!",
+      topicIntro: `Hari ini, Kakak akan mendongengkan kisah seru tentang ${strategy.topic}.`,
+      valueProposition: `Setelah mendengar cerita ini, kalian pasti akan belajar hal baru yang luar biasa.`,
+      credibility: `Bersama Kakak, mari kita jelajahi dunia penuh keajaiban!`,
       duration: '0:05-0:20'
     };
   }
 
   getValueProposition(strategy) {
-    const propositions = {
-      'Tutorial': `how to implement ${strategy.topic} step by step`,
-      'Explainer': `what ${strategy.topic} is and why it matters`,
-      'List': `the most important things about ${strategy.topic}`,
-      'Review': `whether ${strategy.topic} is right for you`,
-      'Story': `the incredible journey of ${strategy.topic}`
-    };
-    
-    return propositions[strategy.contentType] || `everything about ${strategy.topic}`;
+    const propositionsMap = new Map([
+      ['Tutorial', `how to implement ${strategy.topic} step by step`],
+      ['Explainer', `what ${strategy.topic} is and why it matters`],
+      ['List', `the most important things about ${strategy.topic}`],
+      ['Review', `whether ${strategy.topic} is right for you`],
+      ['Story', `the incredible journey of ${strategy.topic}`]
+    ]);
+
+    return propositionsMap.get(strategy.contentType) || `everything about ${strategy.topic}`;
   }
 
   getCredibilityStatement(strategy) {
@@ -199,19 +406,19 @@ class ScriptWriterAgent {
       "Drawing from real-world experience",
       "Using proven methods and strategies"
     ];
-    
-    return statements[Math.floor(Math.random() * statements.length)];
+
+    return statements.at(Math.floor(Math.random() * statements.length));
   }
 
   async generateMainContent(strategy, template) {
     const sections = [];
-    
+
     for (const section of template.structure) {
       if (!['hook', 'introduction', 'cta'].includes(section)) {
         sections.push(await this.generateSection(section, strategy));
       }
     }
-    
+
     return {
       sections,
       totalDuration: this.calculateSectionsDuration(sections)
@@ -219,41 +426,88 @@ class ScriptWriterAgent {
   }
 
   async generateSection(sectionType, strategy) {
-    const sectionGenerators = {
-      problem: () => this.generateProblemSection(strategy),
-      solution_steps: () => this.generateSolutionSteps(strategy),
-      demonstration: () => this.generateDemonstration(strategy),
-      explanation: () => this.generateExplanation(strategy),
-      examples: () => this.generateExamples(strategy),
-      list_items: () => this.generateListItems(strategy),
-      pros: () => this.generatePros(strategy),
-      cons: () => this.generateCons(strategy),
-      comparison: () => this.generateComparison(strategy),
-      implications: () => this.generateImplications(strategy)
-    };
+    const generatorsMap = new Map([
+      ['hook', () => this.generateHook(strategy)],
+      ['introduction', () => this.generateIntroduction(strategy)],
+      ['problem', () => this.generateProblem(strategy)],
+      ['solution_steps', () => this.generateSolutionSteps(strategy)],
+      ['demonstration', () => this.generateDemonstration(strategy)],
+      ['recap', () => this.generateRecap(strategy)],
+      ['cta', () => this.generateCTA(strategy)],
+      ['question', () => this.generateQuestion(strategy)],
+      ['background', () => this.generateBackground(strategy)],
+      ['explanation', () => this.generateExplanation(strategy)],
+      ['examples', () => this.generateExamples(strategy)],
+      ['summary', () => this.generateSummary(strategy)],
+      ['list_items', () => this.generateListItems(strategy)],
+      ['pros', () => this.generatePros(strategy)],
+      ['cons', () => this.generateCons(strategy)],
+      ['comparison', () => this.generateComparison(strategy)],
+      ['implications', () => this.generateImplications(strategy)]
+    ]);
 
-    const generator = sectionGenerators[sectionType];
-    
+    const generator = generatorsMap.get(sectionType) || null;
+
     if (generator) {
       return await generator();
     }
-    
+
     return this.generateGenericSection(sectionType, strategy);
+  }
+
+  async generateProblem(strategy) {
+    return this.generateProblemSection(strategy);
+  }
+
+  async generateQuestion(strategy) {
+    return {
+      type: 'question',
+      title: 'Pertanyaan Seru untuk Teman-Teman',
+      content: `Nah, apakah teman-teman hebat pernah bermimpi indah tentang ${strategy.topic} atau melakukan kebaikan hari ini? Ceritakan pengalaman seru kalian di kolom komentar di bawah ya! Kakak sangat ingin membacanya!`,
+      duration: 30
+    };
+  }
+
+  async generateBackground(strategy) {
+    return {
+      type: 'background',
+      title: `Awal Mula Kisah ${strategy.topic}`,
+      content: `Dahulu kala, di sebuah hutan yang sangat indah dan penuh keajaiban, hiduplah dunia dongeng ${strategy.topic}. Semua makhluk di sana hidup dengan rukun, saling berbagi senyuman, kehangatan, dan cinta kasih setiap harinya.`,
+      duration: 60
+    };
+  }
+
+  async generateRecap(strategy) {
+    return {
+      type: 'recap',
+      title: 'Pesan Indah Dongeng Hari Ini',
+      content: `Mari kita ingat kembali pesan indah hari ini, anak-anak pintar. Melalui petualangan tentang ${strategy.topic}, kita belajar bahwa kebaikan hati, keberanian, dan suka menolong adalah harta yang paling berharga di dunia ini.`,
+      duration: 45
+    };
+  }
+
+  async generateSummary(strategy) {
+    return {
+      type: 'summary',
+      title: 'Pelukan Hangat Penutup Cerita',
+      content: `Singkatnya, kisah tentang ${strategy.topic} mengajarkan kita untuk selalu menjadi anak yang baik, jujur, dan berani. Sekarang, saatnya memejamkan mata indahmu, tersenyum manis, dan bersiap untuk petualangan mimpi yang indah. Selamat tidur, sayang.`,
+      duration: 45
+    };
   }
 
   async generateProblemSection(strategy) {
     return {
       type: 'problem',
-      title: 'The Challenge',
+      title: 'Tantangan Kecil Sahabat Kita',
       content: [
-        `Many people struggle with ${strategy.topic}.`,
-        `The main issues are:`,
-        `1. Lack of clear information`,
-        `2. Complexity and confusion`,
-        `3. Not knowing where to start`,
-        `But don't worry, we're going to solve all of these today.`
+        `Terkadang, sahabat kecil kita mengalami sedikit kesulitan tentang ${strategy.topic}.`,
+        `Beberapa rintangan yang mereka hadapi adalah:`,
+        `1. Rasa takut atau ragu untuk mencoba hal baru`,
+        `2. Bingung dan tidak tahu harus meminta bantuan kepada siapa`,
+        `3. Tersesat di tengah petualangan yang menantang`,
+        `Namun jangan khawatir, dengan keberanian dan persahabatan, kita pasti bisa melewati semua ini bersama-sama!`
       ],
-      visuals: ['Problem illustration', 'Statistics graphic'],
+      visuals: ['Ilustrasi tantangan karakter', 'Ekspresi petualangan yang seru'],
       duration: 30
     };
   }
@@ -261,7 +515,7 @@ class ScriptWriterAgent {
   async generateSolutionSteps(strategy) {
     const steps = [];
     const numSteps = 3 + Math.floor(Math.random() * 3); // 3-5 steps
-    
+
     for (let i = 1; i <= numSteps; i++) {
       steps.push({
         number: i,
@@ -270,10 +524,10 @@ class ScriptWriterAgent {
         tip: this.generateProTip(strategy.topic)
       });
     }
-    
+
     return {
       type: 'solution_steps',
-      title: 'The Solution',
+      title: 'Solusinya',
       steps,
       duration: steps.length * 45
     };
@@ -281,43 +535,43 @@ class ScriptWriterAgent {
 
   generateStepTitle(topic, stepNumber) {
     const titles = [
-      'Research and Preparation',
-      'Setting Up the Foundation',
-      'Implementation and Execution',
-      'Testing and Optimization',
-      'Scaling and Automation'
+      'Memulai Petualangan Indah',
+      'Menemukan Sahabat Baru',
+      'Menghadapi Rintangan Bersama',
+      'Menemukan Kunci Keajaiban',
+      'Merayakan Kebaikan Hati'
     ];
-    
-    return titles[stepNumber - 1] || `Advanced ${topic} Techniques`;
+
+    return titles.at(stepNumber - 1) || `Bagian Indah Kisah ${topic}`;
   }
 
   generateStepDescription(topic, stepNumber) {
-    return `This step involves understanding the key aspects of ${topic} and how to apply them effectively. Pay special attention to the details here, as they make all the difference.`;
+    return `Langkah petualangan indah ini mengajarkan kita tentang bagaimana memahami makna ${topic} yang sesungguhnya. Mari kita amati baik-baik bagaimana sahabat kecil kita menyebarkan kasih sayang kepada sekitarnya.`;
   }
 
   generateProTip(topic) {
     const tips = [
-      `Pro tip: Start small and scale gradually`,
-      `Remember: Consistency is more important than perfection`,
-      `Quick tip: Document everything as you go`,
-      `Expert advice: Focus on one aspect at a time`,
-      `Insider secret: This works best when combined with regular practice`
+      `Tips Kebaikan: Mulailah dari hal kecil, seperti tersenyum manis kepada ibumu hari ini.`,
+      `Ingat ya sayang: Selalu berbagi adalah cara terbaik untuk melipatgandakan kebahagiaan.`,
+      `Pesan Indah: Berbicara dengan sopan dan lembut akan membuat hatimu terasa sangat damai.`,
+      `Saran Kakak: Fokuslah membantu satu sahabatmu hari ini, itu sudah sangat berharga.`,
+      `Rahasia Ajaib: Doa dan senyuman tulus adalah sihir terindah yang ada di dunia ini.`
     ];
-    
-    return tips[Math.floor(Math.random() * tips.length)];
+
+    return tips.at(Math.floor(Math.random() * tips.length));
   }
 
   async generateDemonstration(strategy) {
     return {
       type: 'demonstration',
-      title: 'Live Demo',
+      title: 'Mari Bermain Bersama',
       content: [
-        `Now let me show you exactly how this works.`,
-        `[Screen recording or visual demonstration]`,
-        `As you can see, the process is straightforward once you understand the basics.`,
-        `The key is to follow the steps exactly as shown.`
+        `Sekarang, mari kita lihat bagaimana indahnya keajaiban ini bekerja dalam dunia nyata.`,
+        `[Ilustrasi karakter tersenyum hangat dan menari gembira]`,
+        `Seperti yang bisa teman-teman lihat, melakukan kebaikan itu sangatlah mudah dan membuat hati kita gembira.`,
+        `Kuncinya adalah selalu peduli dan menyayangi sesama makhluk hidup.`
       ],
-      visuals: ['Screen recording', 'Step-by-step graphics'],
+      visuals: ['Tarian kebaikan karakter', 'Animasi pelangi yang indah'],
       duration: 120
     };
   }
@@ -325,15 +579,15 @@ class ScriptWriterAgent {
   async generateExplanation(strategy) {
     return {
       type: 'explanation',
-      title: 'Deep Dive',
+      title: 'Menyelami Rahasia Keajaiban',
       content: [
-        `Let's break down ${strategy.topic} into its core components.`,
-        `First, we need to understand the fundamental principles.`,
-        `The science behind this is fascinating...`,
-        `[Detailed explanation with visuals]`,
-        `This is why ${strategy.topic} works so effectively.`
+        `Mari kita intip bersama apa saja rahasia indah di balik ${strategy.topic}.`,
+        `Pertama, kita harus tahu bahwa segalanya berawal dari hati yang tulus.`,
+        `Mengapa keajaiban ini begitu luar biasa? Karena kasih sayang memiliki kekuatan besar...`,
+        `[Visual peri kecil menyebarkan serbuk bintang emas]`,
+        `Itulah mengapa kisah ${strategy.topic} terasa sangat hangat dan memeluk hati kita.`
       ],
-      visuals: ['Diagrams', 'Infographics', 'Charts'],
+      visuals: ['Diagram bintang ajaib', 'Visualisasi mimpi indah', 'Peta hutan dongeng'],
       duration: 90
     };
   }
@@ -341,15 +595,15 @@ class ScriptWriterAgent {
   async generateExamples(strategy) {
     return {
       type: 'examples',
-      title: 'Real-World Examples',
+      title: 'Kisah Kebaikan Nyata',
       content: [
-        `Let's look at some real examples of ${strategy.topic} in action.`,
-        `Example 1: [Specific case study]`,
-        `Example 2: [Another relevant example]`,
-        `Example 3: [Third compelling example]`,
-        `These examples show the versatility and power of ${strategy.topic}.`
+        `Mari kita dengarkan beberapa cerita pendek kebaikan tentang ${strategy.topic} dalam kehidupan sehari-hari.`,
+        `Cerita 1: [Si kelinci yang membagikan wortelnya kepada burung pipit yang lapar]`,
+        `Cerita 2: [Si gajah yang menyeberangkan semut kecil melewati genangan air]`,
+        `Cerita 3: [Kucing kecil yang memeluk temannya saat sedang bersedih]`,
+        `Semua kisah manis ini membuktikan bahwa ${strategy.topic} membuat dunia menjadi tempat yang sangat indah.`
       ],
-      visuals: ['Case study graphics', 'Before/after comparisons'],
+      visuals: ['Gambar hewan lucu bertolong-tolongan', 'Ilustrasi senyuman penuh kasih'],
       duration: 75
     };
   }
@@ -357,7 +611,7 @@ class ScriptWriterAgent {
   async generateListItems(strategy) {
     const items = [];
     const numItems = 5 + Math.floor(Math.random() * 6); // 5-10 items
-    
+
     for (let i = 1; i <= numItems; i++) {
       items.push({
         number: numItems - i + 1, // Countdown for engagement
@@ -366,10 +620,10 @@ class ScriptWriterAgent {
         impact: this.generateImpactStatement()
       });
     }
-    
+
     return {
       type: 'list_items',
-      title: `Top ${numItems} Things About ${strategy.topic}`,
+      title: `Hal Terbaik Tentang ${strategy.topic}`,
       items,
       duration: items.length * 30
     };
@@ -377,47 +631,47 @@ class ScriptWriterAgent {
 
   generateListItemTitle(topic, index) {
     const titles = [
-      `The Hidden Power of ${topic}`,
-      `Why ${topic} Matters More Than You Think`,
-      `The Surprising Truth About ${topic}`,
-      `How ${topic} Can Transform Your Approach`,
-      `The ${topic} Secret Nobody Talks About`,
-      `Mastering ${topic} in Record Time`,
-      `The Ultimate ${topic} Hack`,
-      `${topic}: The Game Changer`,
-      `Breaking Down ${topic} Myths`,
-      `The Future of ${topic}`
+      `Kekuatan Rahasia Kebaikan ${topic}`,
+      `Mengapa ${topic} Begitu Istimewa Bagi Sahabat Hutan`,
+      `Kejutan Manis di Balik Rahasia ${topic}`,
+      `Bagaimana ${topic} Mengubah Hari yang Sedih Menjadi Ceria`,
+      `Bisikan Ajaib ${topic} yang Belum Pernah Terdengar`,
+      `Menjadi Sahabat Sejati dengan ${topic}`,
+      `Sihir Kasih Sayang Terbesar dari ${topic}`,
+      `Bagaimana ${topic} Membawa Kebahagiaan bagi Kita`,
+      `Menepis Rasa Takut Bersama Misteri ${topic}`,
+      `Masa Depan Hutan Dongeng yang Penuh Warna Bersama ${topic}`
     ];
-    
-    return titles[index - 1] || `Advanced ${topic} Technique #${index}`;
+
+    return titles.at(index - 1) || `Teknik Kebaikan Ajaib #${index} dari ${topic}`;
   }
 
   generateListItemDescription(topic) {
-    return `This aspect of ${topic} is crucial because it fundamentally changes how we approach the subject. Understanding this will give you a significant advantage.`;
+    return `Bagian indah tentang ${topic} ini sangat istimewa karena memberikan pelukan hangat bagi siapa saja yang mendengarnya. Memahami hal ini akan membuat hatimu dipenuhi dengan kebahagiaan yang melimpah.`;
   }
 
   generateImpactStatement() {
     const impacts = [
-      'This alone can save you hours',
-      'Game-changing for beginners',
-      'Essential for long-term success',
-      'Often overlooked but critical',
-      'The difference between success and failure'
+      'Hal sederhana ini bisa membuat senyuman terindah di wajah ibumu',
+      'Sangat ajaib untuk membuat malam tidurmu menjadi sangat nyenyak',
+      'Penting sekali agar mimpi indah selalu hadir menemanimu',
+      'Sering terlupakan, padahal pelukan hangat sangatlah berharga',
+      'Ini adalah kunci ajaib untuk membuka pintu taman kebahagiaan'
     ];
-    
-    return impacts[Math.floor(Math.random() * impacts.length)];
+
+    return impacts.at(Math.floor(Math.random() * impacts.length));
   }
 
   async generatePros(strategy) {
     return {
       type: 'pros',
-      title: 'The Benefits',
+      title: 'Manfaat Senyuman dan Kebaikan',
       points: [
-        'Easy to get started',
-        'Cost-effective solution',
-        'Proven results',
-        'Scalable approach',
-        'Community support'
+        'Membuat hati terasa sangat gembira dan damai',
+        'Mendapatkan banyak sahabat baru yang baik hati',
+        'Mimpi indah yang nyenyak setiap malam',
+        'Menyebarkan kehangatan ke seluruh penjuru rumah',
+        'Mendapatkan pelukan manis dari orang tersayang'
       ],
       duration: 45
     };
@@ -426,51 +680,83 @@ class ScriptWriterAgent {
   async generateCons(strategy) {
     return {
       type: 'cons',
-      title: 'Things to Consider',
+      title: 'Apa yang Terjadi Jika Kita Cemberut',
       points: [
-        'Learning curve at the beginning',
-        'Requires consistent effort',
-        'Results may vary',
-        'Some technical knowledge helpful'
+        'Hari terasa sepi dan kurang berwarna',
+        'Sahabat kecil kita merasa sedikit sedih',
+        'Bunga-bunga ajaib layu kekurangan kasih sayang',
+        'Pelangi enggan muncul menampakkan diri',
+        'Mimpi indah tertunda karena hati sedang gelisah'
       ],
-      duration: 30
+      duration: 45
     };
   }
 
   async generateComparison(strategy) {
     return {
       type: 'comparison',
-      title: 'How It Compares',
-      content: `Compared to alternatives, ${strategy.topic} stands out because of its unique approach and proven effectiveness.`,
-      comparisonPoints: [
-        'More efficient than traditional methods',
-        'Better ROI than competitors',
-        'Easier to implement',
-        'More sustainable long-term'
-      ],
-      duration: 60
+      title: 'Dua Sisi Hati yang Hangat',
+      content: `Mari kita bandingkan indahnya hati yang suka menolong dengan hati yang sedang merajuk. Hati yang menolong bagaikan taman bunga yang mekar di pagi hari, sedangkan hati yang merajuk seperti malam yang gelap tanpa bintang. Kita tentu ingin menjadi taman bunga yang indah, bukan?`,
+      duration: 45
     };
   }
 
   async generateImplications(strategy) {
     return {
       type: 'implications',
-      title: 'What This Means',
-      content: [
-        `The implications of ${strategy.topic} are far-reaching.`,
-        'This will change how we think about the industry.',
-        'Early adopters will have a significant advantage.',
-        'The potential for growth is enormous.'
-      ],
+      title: 'Keajaiban Masa Depan Kita',
+      content: `Ketika kita memilih menyebarkan ${strategy.topic} hari ini, seluruh dunia dongeng akan bersinar semakin terang. Pohon-pohon akan bernyanyi merdu, burung-burung berkicau riang, dan pelukan hangat akan selalu menunggumu di rumah.`,
       duration: 45
     };
   }
 
   generateGenericSection(sectionType, strategy) {
+    const textMap = {
+      'setup': [
+        `Pada suatu hari yang cerah, dimulailah kisah menakjubkan tentang ${strategy.topic}. Semua tampak tenang dan damai, siap untuk sebuah petualangan baru.`,
+        `Di sebuah tempat yang jauh dan ajaib, dimulailah kisah ${strategy.topic}. Mari kita ikuti awal mula cerita yang seru ini!`,
+        `Kisah kita kali ini bercerita tentang ${strategy.topic}. Matahari bersinar cerah menyambut hari yang penuh dengan keajaiban.`
+      ],
+      'conflict': [
+        `Namun, tiba-tiba ada sesuatu yang tidak biasa terjadi. Sahabat kita dihadapkan pada sebuah tantangan yang membutuhkan keberanian.`,
+        `Oh tidak! Sebuah rintangan tak terduga muncul di tengah jalan. Saatnya mengumpulkan semua semangat dan keberanian!`,
+        `Tiba-tiba, suasana berubah. Ada ujian kecil yang harus dilewati oleh para pahlawan kita dalam kisah ${strategy.topic} ini.`
+      ],
+      'journey': [
+        `Dengan hati yang teguh, perjalanan pun dimulai. Setiap langkah dalam petualangan ${strategy.topic} ini membawa banyak kejutan berharga.`,
+        `Bersama-sama, mereka melangkah maju tanpa ragu. Perjalanan ini dipenuhi dengan pemandangan indah dan hal-hal baru.`,
+        `Meski jalan terasa panjang, semangat mereka tidak pernah padam. Mereka terus berjalan menyusuri petualangan yang mendebarkan.`
+      ],
+      'climax': [
+        `Tantangan terbesar akhirnya datang! Ini adalah saat yang paling mendebarkan. Akankah semua berhasil dilalui dengan hati yang tulus?`,
+        `Puncak petualangan telah tiba! Jantung berdebar kencang menunggu apa yang akan terjadi selanjutnya dalam kisah ${strategy.topic} ini.`,
+        `Ini dia momen yang paling menegangkan! Semua keberanian dan persahabatan akan diuji sekarang juga.`
+      ],
+      'resolution': [
+        `Hore! Berkat kebaikan hati dan kerja sama, rintangan pun berhasil dilewati. Semuanya kembali dipenuhi dengan tawa bahagia.`,
+        `Syukurlah, semuanya berakhir dengan indah. Masalah telah teratasi dan senyuman kembali menghiasi wajah mereka.`,
+        `Akhirnya, awan gelap pun berlalu. Kemenangan kecil ini dirayakan dengan penuh sukacita oleh semua orang.`
+      ],
+      'lesson': [
+        `Dari petualangan ${strategy.topic} hari ini, kita belajar bahwa keberanian dan cinta kasih selalu bisa mengalahkan rintangan apa pun.`,
+        `Kisah ini mengajarkan kita sebuah rahasia penting: bersikap baik kepada sesama adalah keajaiban yang paling hebat.`,
+        `Pesan manis dari cerita ini adalah selalu percaya pada diri sendiri dan jangan pernah takut untuk berbuat kebaikan.`
+      ]
+    };
+
+    const defaultTexts = [
+      `Kisah ${strategy.topic} ini membawa pesan manis tentang indahnya berbagi kebaikan dengan sesama.`,
+      `Petualangan ${strategy.topic} ini penuh dengan keajaiban yang tak terduga.`,
+      `Mari kita terus mengingat pelajaran berharga dari kisah ${strategy.topic} hari ini.`
+    ];
+    
+    const options = textMap[sectionType] || defaultTexts;
+    const selectedContent = options[Math.floor(Math.random() * options.length)];
+    
     return {
       type: sectionType,
       title: sectionType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-      content: `This section covers important aspects of ${strategy.topic} that you need to know.`,
+      content: selectedContent,
       duration: 60
     };
   }
@@ -478,16 +764,12 @@ class ScriptWriterAgent {
   async generateConclusion(strategy) {
     return {
       type: 'conclusion',
-      title: 'Wrapping Up',
+      title: 'Pesan Terakhir',
       recap: [
-        `So that's everything you need to know about ${strategy.topic}.`,
-        'We covered the key points:',
-        '- The fundamentals and why they matter',
-        '- Practical steps to get started',
-        '- Real-world applications and examples',
-        '- Tips for long-term success'
+        `Ingat selalu ya pesan dari ${strategy.topic}`,
+        `Jadilah anak yang pemberani dan baik hati.`
       ],
-      finalThought: `Remember, ${strategy.topic} is a journey, not a destination. Keep learning and improving!`,
+      finalThought: 'Sampai jumpa di cerita seru berikutnya!',
       duration: '30 seconds'
     };
   }
@@ -495,39 +777,39 @@ class ScriptWriterAgent {
   async generateCTA(strategy) {
     return {
       type: 'call_to_action',
-      subscribe: "If you found this helpful, make sure to subscribe and hit the notification bell!",
-      like: "Give this video a thumbs up if you learned something new.",
-      comment: `Let me know in the comments: What's your experience with ${strategy.topic}?`,
-      nextVideo: "Check out this related video for more insights.",
+      subscribe: "Jangan lupa subscribe dan nyalakan loncengnya ya!",
+      like: "Klik tombol like jika cerita hari ini membuatmu tersenyum.",
+      comment: `Tuliskan pesan atau pengalamanmu tentang ${strategy.topic} di kolom komentar ya!`,
+      nextVideo: "Tonton video dongeng seru lainnya, sampai jumpa!",
       duration: '15 seconds'
     };
   }
 
   formatFullScript(script) {
     let fullScript = '';
-    
+
     // Title
     fullScript += `TITLE: ${script.title}\n\n`;
     fullScript += '═'.repeat(50) + '\n\n';
-    
+
     // Hook
     fullScript += `[${script.hook.duration}] HOOK\n`;
     fullScript += `${script.hook.text}\n\n`;
-    
+
     // Introduction
     fullScript += `[${script.introduction.duration}] INTRODUCTION\n`;
     fullScript += `${script.introduction.greeting}\n`;
     fullScript += `${script.introduction.topicIntro}\n`;
     fullScript += `${script.introduction.valueProposition}\n`;
     fullScript += `${script.introduction.credibility}\n\n`;
-    
+
     // Main Content
     fullScript += 'MAIN CONTENT\n';
     fullScript += '─'.repeat(30) + '\n\n';
-    
+
     for (const section of script.mainContent.sections) {
       fullScript += `[${this.formatDuration(section.duration)}] ${section.title.toUpperCase()}\n`;
-      
+
       if (Array.isArray(section.content)) {
         section.content.forEach(line => {
           fullScript += `${line}\n`;
@@ -551,35 +833,35 @@ class ScriptWriterAgent {
       } else {
         fullScript += `${section.content}\n`;
       }
-      
+
       if (section.visuals) {
         fullScript += `\n[VISUALS: ${section.visuals.join(', ')}]\n`;
       }
-      
+
       fullScript += '\n';
     }
-    
+
     // Conclusion
     fullScript += `[${script.conclusion.duration}] CONCLUSION\n`;
     script.conclusion.recap.forEach(line => {
       fullScript += `${line}\n`;
     });
     fullScript += `\n${script.conclusion.finalThought}\n\n`;
-    
+
     // Call to Action
     fullScript += `[${script.callToAction.duration}] CALL TO ACTION\n`;
     fullScript += `${script.callToAction.subscribe}\n`;
     fullScript += `${script.callToAction.like}\n`;
     fullScript += `${script.callToAction.comment}\n`;
     fullScript += `${script.callToAction.nextVideo}\n\n`;
-    
+
     // Metadata
     fullScript += '═'.repeat(50) + '\n';
     fullScript += `ESTIMATED DURATION: ${script.duration}\n`;
     fullScript += `TONE: ${script.tone}\n`;
     fullScript += `PACING: ${script.pacing}\n`;
     fullScript += `KEYWORDS: ${script.keywords.join(', ')}\n`;
-    
+
     return fullScript;
   }
 
@@ -587,10 +869,10 @@ class ScriptWriterAgent {
     const totalSeconds = mainContent.sections.reduce((total, section) => {
       return total + (section.duration || 60);
     }, 0);
-    
+
     // Add hook, intro, conclusion, CTA
     const fullDuration = totalSeconds + 5 + 15 + 30 + 15;
-    
+
     return this.formatDuration(fullDuration);
   }
 

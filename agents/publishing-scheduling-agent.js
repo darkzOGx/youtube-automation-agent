@@ -1,5 +1,6 @@
 const { google } = require('googleapis');
 const fs = require('fs').promises;
+const standardFs = require('fs');
 const path = require('path');
 const { Logger } = require('../utils/logger');
 
@@ -10,6 +11,32 @@ class PublishingSchedulingAgent {
     this.logger = new Logger('PublishingScheduling');
     this.youtube = null;
     this.publishQueue = [];
+  }
+
+  async executeWithFallback(operation) {
+    let maxTries = this.credentials.credentials.youtube ? this.credentials.credentials.youtube.length : 1;
+    let tries = 0;
+    let lastError = null;
+
+    while (tries < maxTries) {
+      try {
+        return await operation();
+      } catch (error) {
+        lastError = error;
+        if (error.code === 403 && (error.message.toLowerCase().includes('quota') || error.message.toLowerCase().includes('exceeded'))) {
+          this.logger.warn(`Quota exceeded on YouTube API (Account ${this.credentials.activeYoutubeIndex}).`);
+          
+          if (tries < maxTries - 1 && this.credentials.switchToNextYouTubeAuth()) {
+            this.logger.info(`Attempting fallback to next account...`);
+            this.youtube = this.credentials.getYouTubeClient();
+            tries++;
+            continue;
+          }
+        }
+        throw error;
+      }
+    }
+    throw lastError;
   }
 
   async initialize() {
@@ -54,7 +81,12 @@ class PublishingSchedulingAgent {
           seo: productionData.seo,
           thumbnail: productionData.assets.thumbnail,
           video: productionData.assets.finalVideo,
-          captions: productionData.assets.captions
+          captions: productionData.assets.captions,
+          models: {
+            imageModel: productionData.script?.imageModel || 'imagen-4.0-generate-001',
+            imageProvider: productionData.script?.imageProvider || 'gemini',
+            textModel: 'Gemini API (Flash/Lite)'
+          }
         },
         createdAt: new Date().toISOString()
       };
@@ -109,11 +141,37 @@ class PublishingSchedulingAgent {
   async uploadToYouTube(scheduleEntry) {
     const { metadata } = scheduleEntry;
     
+    if (metadata.video.simulated || (metadata.video.path && metadata.video.path.endsWith('.json'))) {
+      this.logger.info(`[Simulation] Simulating YouTube upload for simulated video: ${metadata.video.path}`);
+      
+      // Simulate network latency
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      const mockVideoId = `yt_${Math.random().toString(36).substring(2, 11)}`;
+      return {
+        id: mockVideoId,
+        snippet: {
+          title: metadata.seo.title,
+          description: metadata.seo.description
+        }
+      };
+    }
+    
+    // Check if it's a short video
+    const isShort = metadata.strategy && metadata.strategy.videoType === 'short';
+    let finalTitle = metadata.seo.title;
+    let finalDescription = metadata.seo.description;
+    
+    if (isShort) {
+      if (!finalTitle.toLowerCase().includes('#shorts')) finalTitle += ' #shorts';
+      if (!finalDescription.toLowerCase().includes('#shorts')) finalDescription += '\n\n#shorts #youtubeshorts';
+    }
+
     // Prepare video metadata
     const videoMetadata = {
       snippet: {
-        title: metadata.seo.title,
-        description: metadata.seo.description,
+        title: finalTitle,
+        description: finalDescription,
         tags: metadata.seo.tags,
         categoryId: metadata.seo.metadata.category.toString(),
         defaultLanguage: metadata.seo.metadata.language,
@@ -121,19 +179,36 @@ class PublishingSchedulingAgent {
       },
       status: {
         privacyStatus: process.env.DEFAULT_PRIVACY_STATUS || 'public',
-        publishAt: scheduleEntry.publishTime,
         selfDeclaredMadeForKids: false
       }
     };
+
+    // If a specific channel is selected (for accounts with multiple channels), add it
+    const selectedChannelId = this.credentials?.credentials?.channel?.selectedChannelId;
+    if (selectedChannelId) {
+      videoMetadata.snippet.channelId = selectedChannelId;
+      this.logger.info(`Uploading to selected channel: ${selectedChannelId}`);
+    }
+
+    
+    // Only schedule if privacy status is private and publish time is in the future
+    if (videoMetadata.status.privacyStatus === 'private' && scheduleEntry.publishTime) {
+      const publishTime = new Date(scheduleEntry.publishTime);
+      if (publishTime > new Date()) {
+        videoMetadata.status.publishAt = scheduleEntry.publishTime;
+      }
+    }
     
     // Upload video file
-    const videoUpload = await this.youtube.videos.insert({
-      part: 'snippet,status',
-      requestBody: videoMetadata,
-      media: {
-        body: await this.getVideoStream(metadata.video.path)
-      }
-    });
+    const videoUpload = await this.executeWithFallback(async () => 
+      this.youtube.videos.insert({
+        part: 'snippet,status',
+        requestBody: videoMetadata,
+        media: {
+          body: await this.getVideoStream(metadata.video.path)
+        }
+      })
+    );
     
     const videoId = videoUpload.data.id;
     this.logger.info(`Video uploaded with ID: ${videoId}`);
@@ -148,27 +223,81 @@ class PublishingSchedulingAgent {
       await this.uploadCaptions(videoId, metadata.captions.path);
     }
     
+    // Post Top-Level Comment
+    if (metadata.seo && metadata.seo.pinnedComment) {
+      await this.postTopLevelComment(videoId, metadata.seo.pinnedComment);
+    }
+    
     return videoUpload.data;
   }
 
+  async postTopLevelComment(videoId, commentText) {
+    try {
+      this.logger.info(`Posting top-level comment for video: ${videoId}`);
+      await this.youtube.commentThreads.insert({
+        part: 'snippet',
+        requestBody: {
+          snippet: {
+            videoId: videoId,
+            topLevelComment: {
+              snippet: {
+                textOriginal: commentText
+              }
+            }
+          }
+        }
+      });
+      this.logger.success('Top-level comment posted successfully');
+    } catch (error) {
+      this.logger.warn(`Could not post top-level comment (might need channel owner scopes): ${error.message}`);
+    }
+  }
+
+  /**
+   * Validates and resolves a file path, ensuring it is within the project directory.
+   * Prevents path traversal attacks (OWASP).
+   * @param {string} filePath - The path to validate
+   * @returns {string} The resolved, safe path
+   * @throws {Error} If the path is outside the allowed base directory
+   */
+  validatePath(filePath) {
+    // Restrict all file processing to the project directory only
+    const basePath = path.resolve(path.join(__dirname, '..'));
+    // Normalize path, removing any '..'
+    const fullPath = path.normalize(path.resolve(filePath || ''));
+    // Verify the fullPath is contained within our basePath
+    if (!fullPath.startsWith(basePath)) {
+      this.logger.error(`Path traversal attempt blocked: ${filePath}`);
+      throw new Error('Invalid file path: outside project directory');
+    }
+    return fullPath;
+  }
+
   async getVideoStream(videoPath) {
-    // In a real implementation, this would return a file stream
-    // For now, we'll simulate it
+    const safePath = this.validatePath(videoPath);
+
+    if (standardFs.existsSync(safePath) && safePath.endsWith('.mp4')) { // nosemgrep: path-traversal - validated by validatePath()
+      this.logger.info(`Creating real file read stream for video upload: ${safePath}`);
+      return standardFs.createReadStream(safePath); // nosemgrep: path-traversal - validated by validatePath()
+    }
+    
+    // Fallback simulation
     return JSON.stringify({
       message: 'Video stream would be provided here',
-      path: videoPath,
+      path: safePath,
       timestamp: new Date().toISOString()
     });
   }
 
   async uploadThumbnail(videoId, thumbnailPath) {
     try {
-      const thumbnailBuffer = await fs.readFile(thumbnailPath);
+      const safePath = this.validatePath(thumbnailPath);
+      const thumbnailStream = standardFs.createReadStream(safePath); // nosemgrep: path-traversal - validated by validatePath()
       
       await this.youtube.thumbnails.set({
         videoId: videoId,
         media: {
-          body: thumbnailBuffer
+          body: thumbnailStream
         }
       });
       
@@ -180,7 +309,8 @@ class PublishingSchedulingAgent {
 
   async uploadCaptions(videoId, captionsPath) {
     try {
-      const captionsContent = await fs.readFile(captionsPath, 'utf8');
+      const safePath = this.validatePath(captionsPath);
+      const captionsContent = await fs.readFile(safePath, 'utf8'); // nosemgrep: path-traversal - validated by validatePath()
       
       await this.youtube.captions.insert({
         part: 'snippet',
@@ -396,7 +526,7 @@ class PublishingSchedulingAgent {
     if (published.length < 2) return 'Insufficient data';
     
     const dates = published.map(p => new Date(p.publishedAt)).sort((a, b) => a - b);
-    const totalDays = (dates[dates.length - 1] - dates[0]) / (1000 * 60 * 60 * 24);
+    const totalDays = (dates.at(-1) - dates.at(0)) / (1000 * 60 * 60 * 24);
     const frequency = published.length / totalDays;
     
     if (frequency >= 1) return `${frequency.toFixed(1)} videos per day`;

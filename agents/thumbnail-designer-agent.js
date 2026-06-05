@@ -1,6 +1,8 @@
 const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs').promises;
+const axios = require('axios');
+const { createCanvas, loadImage, registerFont } = require('canvas');
 const { Logger } = require('../utils/logger');
 
 class ThumbnailDesignerAgent {
@@ -25,38 +27,58 @@ class ThumbnailDesignerAgent {
       this.logger.error('Failed to create directories:', error);
     }
   }
-
   async generateThumbnail(script) {
     try {
       this.logger.info(`Generating thumbnail for: ${script.title}`);
+
+      // --- FUTURE DEVELOPMENT: A/B Testing ---
+      // // Variant A
+      // const conceptA = await this.generateConcept(script);
+      // const promptA = await this.createPrompt(conceptA);
+      // const thumbnailPathA = await this.createThumbnail(conceptA, script);
+      // const finalThumbnailA = await this.addTextOverlay(thumbnailPathA, conceptA);
+      // const optimizedThumbnailA = await this.optimizeForYouTube(finalThumbnailA);
+      //
+      // // Variant B
+      // const conceptB = await this.generateConcept(script); // generates a different random concept
+      // const promptB = await this.createPrompt(conceptB);
+      // const thumbnailPathB = await this.createThumbnail(conceptB, script);
+      // const finalThumbnailB = await this.addTextOverlay(thumbnailPathB, conceptB);
+      // const optimizedThumbnailB = await this.optimizeForYouTube(finalThumbnailB);
+      // 
+      // const thumbnailData = {
+      //   path: optimizedThumbnailA,
+      //   variantBPath: optimizedThumbnailB,
+      //   concept: conceptA,
+      //   conceptB: conceptB,
+      //   prompt: promptA,
+      //   dimensions: { width: 1280, height: 720 },
+      //   fileSize: await this.getFileSize(optimizedThumbnailA),
+      //   createdAt: new Date().toISOString()
+      // };
+      // CURRENT: Single thumbnail generation
+      const isShort = script.metadata?.strategy?.videoType === 'short';
+      const width = isShort ? 720 : 1280;
+      const height = isShort ? 1280 : 720;
       
-      // Generate thumbnail concept
       const concept = await this.generateConcept(script);
-      
-      // Create thumbnail prompt for AI generation
-      const prompt = await this.createPrompt(concept);
-      
-      // Generate base thumbnail
-      const thumbnailPath = await this.createThumbnail(concept);
-      
-      // Add text overlay
-      const finalThumbnail = await this.addTextOverlay(thumbnailPath, concept);
-      
-      // Optimize for YouTube
-      const optimizedThumbnail = await this.optimizeForYouTube(finalThumbnail);
-      
+      const prompt = await this.createPrompt(concept, isShort);
+      const thumbnailPath = await this.createThumbnail(concept, script, width, height);
+      const finalThumbnail = await this.addTextOverlay(thumbnailPath, concept, isShort);
+      const optimizedThumbnail = await this.optimizeForYouTube(finalThumbnail, width, height);
+
       const thumbnailData = {
         path: optimizedThumbnail,
         concept,
         prompt,
-        dimensions: { width: 1280, height: 720 },
+        dimensions: { width, height },
         fileSize: await this.getFileSize(optimizedThumbnail),
         createdAt: new Date().toISOString()
       };
-      
+
       // Save to database
       await this.db.saveThumbnail(thumbnailData);
-      
+
       this.logger.info('Thumbnail generated successfully');
       return thumbnailData;
     } catch (error) {
@@ -66,41 +88,41 @@ class ThumbnailDesignerAgent {
   }
 
   async generateConcept(script) {
-    const concepts = {
-      tutorial: {
+    const concepts = new Map([
+      ['tutorial', {
         style: 'clean',
         elements: ['step numbers', 'arrows', 'progress indicators'],
         colors: ['blue', 'white', 'green'],
         emotion: 'helpful'
-      },
-      explainer: {
+      }],
+      ['explainer', {
         style: 'informative',
         elements: ['icons', 'diagrams', 'question marks'],
         colors: ['purple', 'yellow', 'white'],
         emotion: 'curious'
-      },
-      list: {
+      }],
+      ['list', {
         style: 'numbered',
         elements: ['large numbers', 'countdown', 'highlights'],
         colors: ['red', 'yellow', 'black'],
         emotion: 'exciting'
-      },
-      review: {
+      }],
+      ['review', {
         style: 'comparative',
         elements: ['product image', 'rating stars', 'vs symbol'],
         colors: ['orange', 'gray', 'white'],
         emotion: 'analytical'
-      },
-      story: {
+      }],
+      ['story', {
         style: 'dramatic',
         elements: ['faces', 'emotion', 'journey path'],
         colors: ['dark blue', 'gold', 'white'],
         emotion: 'intriguing'
-      }
-    };
+      }]
+    ]);
 
-    const baseConcept = concepts[script.metadata?.strategy?.contentType?.toLowerCase()] || concepts.explainer;
-    
+    const baseConcept = concepts.get(script.metadata?.strategy?.contentType?.toLowerCase()) || concepts.get('explainer');
+
     return {
       title: this.formatThumbnailTitle(script.title),
       style: baseConcept.style,
@@ -128,40 +150,40 @@ class ThumbnailDesignerAgent {
   }
 
   extractPrimaryText(title) {
-    // Extract most impactful words
-    const impactWords = ['ultimate', 'complete', 'secret', 'truth', 'how', 'why', 'best', 'top', 'guide', 'master'];
+    // Extract most impactful children story words in Indonesian
+    const impactWords = ['ajaib', 'rahasia', 'kisah', 'dongeng', 'seru', 'indah', 'hebat', 'pintar', 'sahabat', 'petualangan'];
     const titleWords = title.toLowerCase().split(' ');
-    
+
     const foundImpactWords = titleWords.filter(word => impactWords.includes(word));
-    
+
     if (foundImpactWords.length > 0) {
       return foundImpactWords[0].toUpperCase();
     }
-    
+
     // Extract numbers if present
     const numbers = title.match(/\d+/);
     if (numbers) {
       return numbers[0];
     }
-    
-    // Use first significant word
-    return titleWords.find(word => word.length > 4)?.toUpperCase() || 'WATCH';
+
+    // Use first significant word or fallback
+    return titleWords.find(word => word.length > 4)?.toUpperCase() || 'DONGENG';
   }
 
   generateSecondaryText(script) {
     if (script.metadata && script.metadata.strategy) {
       const strategy = script.metadata.strategy;
-      
+
       if (strategy.contentType === 'Tutorial') {
-        return 'STEP BY STEP';
+        return 'BELAJAR BERSAMA';
       } else if (strategy.contentType === 'List') {
-        return 'YOU WON\'T BELIEVE #1';
+        return 'MIMPI INDAH';
       } else if (strategy.contentType === 'Review') {
-        return 'HONEST REVIEW';
+        return 'CERITA SERU';
       }
     }
-    
-    return 'MUST WATCH';
+
+    return 'TONTON SEKARANG';
   }
 
   selectComposition() {
@@ -172,8 +194,8 @@ class ThumbnailDesignerAgent {
       'golden-ratio',
       'symmetrical'
     ];
-    
-    return compositions[Math.floor(Math.random() * compositions.length)];
+
+    return compositions.at(Math.floor(Math.random() * compositions.length));
   }
 
   selectEffects() {
@@ -186,128 +208,212 @@ class ThumbnailDesignerAgent {
     };
   }
 
-  async createPrompt(concept) {
-    const prompt = `Create a YouTube thumbnail with the following specifications:
+  async createPrompt(concept, isShort) {
+    const prompt = `Create a youtube thumbnail background image with the following specifications:
     Style: ${concept.style}
-    Primary Text: "${concept.primaryText}"
-    Secondary Text: "${concept.secondaryText}"
     Color Scheme: ${concept.colors.primary}, ${concept.colors.secondary}, ${concept.colors.accent}
     Elements to include: ${concept.elements.join(', ')}
     Emotional tone: ${concept.emotion}
     Composition: ${concept.composition}
     
-    The thumbnail should be eye-catching, professional, and optimized for high click-through rate.
-    Resolution: 1280x720px
-    Format: High contrast, bold text, clear imagery`;
-    
+    The image must be a clean BACKGROUND ONLY. DO NOT include any text, letters, words, logos, or watermarks.
+    Leave space on the left or top for text to be added later.
+    Resolution: ${isShort ? '720x1280px' : '1280x720px'}
+    Format: High contrast, clear imagery`;
+
     return prompt;
   }
 
-  async createThumbnail(concept) {
-    // Create a base thumbnail using Sharp
-    const width = 1280;
-    const height = 720;
-    
+  async createThumbnail(concept, script, width, height) {
     const outputPath = path.join(__dirname, '..', 'uploads', 'thumbnails', `thumbnail_${Date.now()}.png`);
-    
-    // Create gradient background
-    const svg = `
-      <svg width="${width}" height="${height}">
-        <defs>
-          <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" style="stop-color:${this.hexToRgb(concept.colors.primary)};stop-opacity:1" />
-            <stop offset="100%" style="stop-color:${this.hexToRgb(concept.colors.secondary)};stop-opacity:1" />
-          </linearGradient>
-        </defs>
-        <rect width="${width}" height="${height}" fill="url(#gradient)" />
-      </svg>
-    `;
-    
-    await sharp(Buffer.from(svg))
-      .resize(width, height)
-      .png()
-      .toFile(outputPath);
+    try {
+      const promptText = `Cute children's book cartoon scene: ${script.title}, vibrant colors, epic fantasy lighting, extremely eye-catching, no text, no words, no letters, clear focus, ${width}:${height} aspect ratio`;
+      
+      const imageProvider = script.imageProvider || 'gemini';
+      const imageModel = script.imageModel || 'imagen-4.0-fast-generate-001';
+      
+      const geminiKey = this.credentials?.credentials?.gemini?.apiKey;
+      // Note: Assume keys are properly extracted from this.credentials if needed
+      const openaiKey = this.credentials?.credentials?.openai?.apiKey;
+      const openRouterKey = this.credentials?.credentials?.openrouter?.apiKey;
+
+      if (imageProvider === 'openai' && openaiKey && openaiKey !== 'YOUR_OPENAI_API_KEY') {
+        this.logger.info(`Generating base AI thumbnail via OpenAI (${imageModel})...`);
+        const { OpenAI } = require('openai');
+        const openai = new OpenAI({ apiKey: openaiKey });
+        const response = await openai.images.generate({
+          model: imageModel,
+          prompt: promptText,
+          n: 1,
+          size: "1792x1024",
+          quality: "hd",
+          style: "natural"
+        });
+        const imageUrl = response.data[0].url;
+        const imgRes = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+        await fs.writeFile(outputPath, imgRes.data);
+      } else if (imageProvider === 'openrouter' && openRouterKey && openRouterKey !== 'YOUR_OPENROUTER_API_KEY') {
+        this.logger.info(`Generating base AI thumbnail via OpenRouter (${imageModel})...`);
+        const response = await axios.post(
+          'https://openrouter.ai/api/v1/chat/completions',
+          {
+            model: imageModel,
+            messages: [{ role: 'user', content: promptText }]
+          },
+          {
+            headers: {
+              'Authorization': `Bearer ${openRouterKey}`,
+              'HTTP-Referer': 'http://localhost:3456',
+              'X-Title': 'Youtube Automation Agent'
+            }
+          }
+        );
+        
+        const message = response.data.choices[0].message;
+        if (message.refusal) {
+            throw new Error(`OpenRouter refused request: ${message.refusal}`);
+        }
+        const content = message.content;
+        const urlMatch = content.match(/https?:\/\/[^\s\)]+/);
+        if (urlMatch) {
+            const imgRes = await axios.get(urlMatch[0], { responseType: 'arraybuffer' });
+            await fs.writeFile(outputPath, imgRes.data);
+        } else {
+            throw new Error(`OpenRouter did not return an image URL. Response: ${content}`);
+        }
+      } else if (imageProvider === 'gemini' && geminiKey) {
+        // Use Gemini Developer API (Imagen)
+        this.logger.info(`Generating base AI thumbnail via Gemini ${imageModel}...`);
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${imageModel}:predict?key=${geminiKey}`;
+        const response = await axios.post(
+          url,
+          {
+            instances: [{ prompt: promptText }],
+            parameters: { sampleCount: 1, aspectRatio: width === 720 ? "9:16" : "16:9" }
+          },
+          { headers: { 'Content-Type': 'application/json' } }
+        );
+        
+        const base64Data = response.data.predictions[0].bytesBase64Encoded;
+        await fs.writeFile(outputPath, Buffer.from(base64Data, 'base64'));
+      } else {
+        // Fallback to pollinations.ai
+        const prompt = encodeURIComponent(promptText);
+        const url = `https://image.pollinations.ai/prompt/${prompt}?width=${width}&height=${height}&nologo=true&seed=${Math.floor(Math.random() * 100000)}`;
+        
+        this.logger.info(`Downloading base AI thumbnail from: ${url}`);
+        const response = await axios.get(url, { responseType: 'arraybuffer' });
+        await fs.writeFile(outputPath, response.data);
+      }
+    } catch (err) {
+      this.logger.warn('Failed to generate AI base thumbnail, falling back to gradient', err);
+      // Fallback: Create gradient background
+      const svg = `
+        <svg width="${width}" height="${height}">
+          <defs>
+            <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" style="stop-color:${this.hexToRgb(concept.colors.primary)};stop-opacity:1" />
+              <stop offset="100%" style="stop-color:${this.hexToRgb(concept.colors.secondary)};stop-opacity:1" />
+            </linearGradient>
+          </defs>
+          <rect width="${width}" height="${height}" fill="url(#gradient)" />
+        </svg>
+      `;
+      
+      await sharp(Buffer.from(svg))
+        .resize(width, height)
+        .png()
+        .toFile(outputPath);
+    }
     
     return outputPath;
   }
 
   hexToRgb(color) {
     // Color name to hex mapping
-    const colors = {
-      'blue': '#0066CC',
-      'red': '#CC0000',
-      'green': '#00CC66',
-      'yellow': '#FFCC00',
-      'purple': '#6600CC',
-      'orange': '#FF6600',
-      'white': '#FFFFFF',
-      'black': '#000000',
-      'gray': '#808080',
-      'dark blue': '#003366',
-      'gold': '#FFD700'
-    };
-    
-    return colors[color] || '#000000';
+    const colors = new Map([
+      ['blue', '#0066CC'],
+      ['red', '#CC0000'],
+      ['green', '#00CC66'],
+      ['yellow', '#FFCC00'],
+      ['purple', '#6600CC'],
+      ['orange', '#FF6600'],
+      ['white', '#FFFFFF'],
+      ['black', '#000000'],
+      ['gray', '#808080'],
+      ['dark blue', '#003366'],
+      ['gold', '#FFD700']
+    ]);
+
+    return colors.get(color) || '#000000';
   }
 
-  async addTextOverlay(imagePath, concept) {
-    const outputPath = path.join(__dirname, '..', 'uploads', 'thumbnails', `thumbnail_final_${Date.now()}.png`);
-    
-    // Create text overlay SVG
-    const textSvg = `
-      <svg width="1280" height="720">
-        <style>
-          .primary { 
-            fill: ${concept.colors.accent === 'white' ? 'white' : 'black'}; 
-            font-size: 120px; 
-            font-weight: bold; 
-            font-family: Arial, sans-serif;
-            text-anchor: middle;
-          }
-          .secondary { 
-            fill: ${concept.colors.accent}; 
-            font-size: 60px; 
-            font-weight: bold; 
-            font-family: Arial, sans-serif;
-            text-anchor: middle;
-          }
-          .shadow {
-            fill: black;
-            opacity: 0.5;
-          }
-        </style>
-        
-        <!-- Shadow -->
-        <text x="642" y="302" class="primary shadow">${concept.primaryText}</text>
-        <text x="642" y="402" class="secondary shadow">${concept.secondaryText}</text>
-        
-        <!-- Main text -->
-        <text x="640" y="300" class="primary">${concept.primaryText}</text>
-        <text x="640" y="400" class="secondary">${concept.secondaryText}</text>
-      </svg>
-    `;
-    
-    const textOverlay = await sharp(Buffer.from(textSvg)).png().toBuffer();
-    
-    await sharp(imagePath)
-      .composite([{
-        input: textOverlay,
-        top: 0,
-        left: 0
-      }])
-      .toFile(outputPath);
-    
-    return outputPath;
+  async addTextOverlay(imagePath, concept, isShort) {
+    try {
+      this.logger.info(`Adding text overlay to thumbnail using Canvas: ${concept.primaryText}`);
+      
+      const width = isShort ? 720 : 1280;
+      const height = isShort ? 1280 : 720;
+      const canvas = createCanvas(width, height);
+      const ctx = canvas.getContext('2d');
+      
+      // Register font if not already registered
+      try {
+        registerFont(path.resolve(__dirname, '../assets/fonts/Bangers-Regular.ttf'), { family: 'Bangers' });
+      } catch (e) {
+        this.logger.warn('Could not register Bangers font, falling back to sans-serif', e);
+      }
+      
+      // Draw base image
+      const image = await loadImage(imagePath);
+      ctx.drawImage(image, 0, 0, width, height);
+      
+      // Configure text style
+      const text = (concept.primaryText || 'CERITA SERU!').toUpperCase();
+      ctx.font = '100px "Bangers", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      
+      const x = width / 2;
+      const y = height * 0.82; // bottom-center
+      
+      // Draw text shadow
+      ctx.shadowColor = 'rgba(0,0,0,0.8)';
+      ctx.shadowBlur = 15;
+      ctx.shadowOffsetX = 8;
+      ctx.shadowOffsetY = 8;
+      
+      // Draw text stroke
+      ctx.lineWidth = 15;
+      ctx.strokeStyle = '#000000';
+      ctx.lineJoin = 'round';
+      ctx.strokeText(text, x, y);
+      
+      // Draw text fill
+      ctx.shadowColor = 'transparent'; // Reset shadow for fill
+      ctx.fillStyle = '#FFD700'; // Gold/Yellow
+      ctx.fillText(text, x, y);
+      
+      // Save canvas to file
+      const outputPath = imagePath.replace(/\\.(jpg|png)$/i, '_text.jpg');
+      const buffer = canvas.toBuffer('image/jpeg', { quality: 0.95 });
+      await fs.writeFile(outputPath, buffer);
+      
+      return outputPath;
+    } catch (error) {
+      this.logger.error('Failed to add text overlay:', error);
+      return imagePath; // Return original on failure
+    }
   }
 
-  async optimizeForYouTube(imagePath) {
+  async optimizeForYouTube(imagePath, width, height) {
     const outputPath = path.join(__dirname, '..', 'uploads', 'thumbnails', `thumbnail_optimized_${Date.now()}.jpg`);
-    
+
     // YouTube optimization: JPEG format, proper compression
     await sharp(imagePath)
-      .resize(1280, 720, {
+      .resize(width, height, {
         fit: 'cover',
-        position: 'centre'
+        position: 'center'
       })
       .jpeg({
         quality: 90,
@@ -315,17 +421,17 @@ class ThumbnailDesignerAgent {
         optimizeScans: true
       })
       .toFile(outputPath);
-    
+
     // Verify file size (YouTube limit is 2MB)
     const stats = await fs.stat(outputPath);
     if (stats.size > 2 * 1024 * 1024) {
       // Re-compress if too large
       await sharp(imagePath)
-        .resize(1280, 720)
+        .resize(width, height)
         .jpeg({ quality: 80 })
         .toFile(outputPath);
     }
-    
+
     return outputPath;
   }
 
@@ -337,7 +443,7 @@ class ThumbnailDesignerAgent {
   async generateABVariants(concept) {
     // Generate multiple thumbnail variants for A/B testing
     const variants = [];
-    
+
     // Variant 1: Different color scheme
     const variant1 = { ...concept };
     variant1.colors = {
@@ -346,30 +452,36 @@ class ThumbnailDesignerAgent {
       accent: concept.colors.accent
     };
     variants.push(await this.createThumbnail(variant1));
-    
-    // Variant 2: Different text
+
+    // Variant 2: Different text 
     const variant2 = { ...concept };
     variant2.primaryText = this.generateAlternativeText(concept.primaryText);
     variants.push(await this.createThumbnail(variant2));
-    
+
     // Variant 3: Different composition
     const variant3 = { ...concept };
     variant3.composition = 'centered';
     variants.push(await this.createThumbnail(variant3));
-    
+
     return variants;
   }
 
   generateAlternativeText(originalText) {
-    const alternatives = {
-      'HOW': 'WHY',
-      'BEST': 'TOP',
-      'GUIDE': 'SECRETS',
-      'TRUTH': 'FACTS',
-      'ULTIMATE': 'COMPLETE'
-    };
-    
-    return alternatives[originalText] || originalText + '!';
+    const alternatives = new Map([
+      ['HOW', 'WHY'],
+      ['BEST', 'TOP'],
+      ['GUIDE', 'SECRETS'],
+      ['TRUTH', 'FACTS'],
+      ['ULTIMATE', 'COMPLETE'],
+      // Indonesian warm children story terms
+      ['AJAIB', 'INDAH'],
+      ['RAHASIA', 'MISTERI'],
+      ['KISAH', 'DONGENG'],
+      ['SERU', 'HEBAT'],
+      ['PINTAR', 'HEBAT']
+    ]);
+
+    return alternatives.get(originalText) || originalText + '!';
   }
 }
 
