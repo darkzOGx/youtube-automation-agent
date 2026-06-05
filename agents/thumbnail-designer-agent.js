@@ -56,20 +56,22 @@ class ThumbnailDesignerAgent {
       //   fileSize: await this.getFileSize(optimizedThumbnailA),
       //   createdAt: new Date().toISOString()
       // };
-      // ---------------------------------------
-
       // CURRENT: Single thumbnail generation
+      const isShort = script.metadata?.strategy?.videoType === 'short';
+      const width = isShort ? 720 : 1280;
+      const height = isShort ? 1280 : 720;
+      
       const concept = await this.generateConcept(script);
-      const prompt = await this.createPrompt(concept);
-      const thumbnailPath = await this.createThumbnail(concept, script);
-      const finalThumbnail = await this.addTextOverlay(thumbnailPath, concept);
-      const optimizedThumbnail = await this.optimizeForYouTube(finalThumbnail);
+      const prompt = await this.createPrompt(concept, isShort);
+      const thumbnailPath = await this.createThumbnail(concept, script, width, height);
+      const finalThumbnail = await this.addTextOverlay(thumbnailPath, concept, isShort);
+      const optimizedThumbnail = await this.optimizeForYouTube(finalThumbnail, width, height);
 
       const thumbnailData = {
         path: optimizedThumbnail,
         concept,
         prompt,
-        dimensions: { width: 1280, height: 720 },
+        dimensions: { width, height },
         fileSize: await this.getFileSize(optimizedThumbnail),
         createdAt: new Date().toISOString()
       };
@@ -206,7 +208,7 @@ class ThumbnailDesignerAgent {
     };
   }
 
-  async createPrompt(concept) {
+  async createPrompt(concept, isShort) {
     const prompt = `Create a youtube thumbnail background image with the following specifications:
     Style: ${concept.style}
     Color Scheme: ${concept.colors.primary}, ${concept.colors.secondary}, ${concept.colors.accent}
@@ -216,26 +218,28 @@ class ThumbnailDesignerAgent {
     
     The image must be a clean BACKGROUND ONLY. DO NOT include any text, letters, words, logos, or watermarks.
     Leave space on the left or top for text to be added later.
-    Resolution: 1280x720px
+    Resolution: ${isShort ? '720x1280px' : '1280x720px'}
     Format: High contrast, clear imagery`;
 
     return prompt;
   }
 
-  async createThumbnail(concept, script) {
-    const width = 1280;
-    const height = 720;
-    
+  async createThumbnail(concept, script, width, height) {
     const outputPath = path.join(__dirname, '..', 'uploads', 'thumbnails', `thumbnail_${Date.now()}.png`);
     try {
-      const promptText = `Cute children's book cartoon scene: ${script.title}, vibrant colors, epic fantasy lighting, extremely eye-catching, no text, no words, no letters, clear focus, 16:9 aspect ratio`;
+      const promptText = `Cute children's book cartoon scene: ${script.title}, vibrant colors, epic fantasy lighting, extremely eye-catching, no text, no words, no letters, clear focus, ${width}:${height} aspect ratio`;
       
       const imageProvider = script.imageProvider || 'gemini';
-      const imageModel = script.imageModel || 'imagen-4.0-generate-001';
+      const imageModel = script.imageModel || 'imagen-4.0-fast-generate-001';
       
       const geminiKey = this.credentials?.credentials?.gemini?.apiKey;
+      // Note: Assume keys are properly extracted from this.credentials if needed
+      const openaiKey = this.credentials?.credentials?.openai?.apiKey;
+      const openRouterKey = this.credentials?.credentials?.openrouter?.apiKey;
+
       if (imageProvider === 'openai' && openaiKey && openaiKey !== 'YOUR_OPENAI_API_KEY') {
         this.logger.info(`Generating base AI thumbnail via OpenAI (${imageModel})...`);
+        const { OpenAI } = require('openai');
         const openai = new OpenAI({ apiKey: openaiKey });
         const response = await openai.images.generate({
           model: imageModel,
@@ -285,7 +289,7 @@ class ThumbnailDesignerAgent {
           url,
           {
             instances: [{ prompt: promptText }],
-            parameters: { sampleCount: 1, aspectRatio: "16:9" }
+            parameters: { sampleCount: 1, aspectRatio: width === 720 ? "9:16" : "16:9" }
           },
           { headers: { 'Content-Type': 'application/json' } }
         );
@@ -344,12 +348,12 @@ class ThumbnailDesignerAgent {
     return colors.get(color) || '#000000';
   }
 
-  async addTextOverlay(imagePath, concept) {
+  async addTextOverlay(imagePath, concept, isShort) {
     try {
       this.logger.info(`Adding text overlay to thumbnail using Canvas: ${concept.primaryText}`);
       
-      const width = 1280;
-      const height = 720;
+      const width = isShort ? 720 : 1280;
+      const height = isShort ? 1280 : 720;
       const canvas = createCanvas(width, height);
       const ctx = canvas.getContext('2d');
       
@@ -402,14 +406,14 @@ class ThumbnailDesignerAgent {
     }
   }
 
-  async optimizeForYouTube(imagePath) {
+  async optimizeForYouTube(imagePath, width, height) {
     const outputPath = path.join(__dirname, '..', 'uploads', 'thumbnails', `thumbnail_optimized_${Date.now()}.jpg`);
 
     // YouTube optimization: JPEG format, proper compression
     await sharp(imagePath)
-      .resize(1280, 720, {
+      .resize(width, height, {
         fit: 'cover',
-        position: 'centre'
+        position: 'center'
       })
       .jpeg({
         quality: 90,
@@ -423,7 +427,7 @@ class ThumbnailDesignerAgent {
     if (stats.size > 2 * 1024 * 1024) {
       // Re-compress if too large
       await sharp(imagePath)
-        .resize(1280, 720)
+        .resize(width, height)
         .jpeg({ quality: 80 })
         .toFile(outputPath);
     }

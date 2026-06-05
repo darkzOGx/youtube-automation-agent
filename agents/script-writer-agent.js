@@ -15,8 +15,8 @@ class ScriptWriterAgent {
     const geminiKey = rawCredentials.gemini?.apiKey || process.env.GEMINI_API_KEY;
     if (geminiKey) {
       try {
-        const genAI = new GoogleGenerativeAI(geminiKey);
-        this.gemini = genAI.getGenerativeModel({
+        this.genAI = new GoogleGenerativeAI(geminiKey);
+        this.gemini = this.genAI.getGenerativeModel({
           model: 'gemini-2.5-flash',
           systemInstruction: 'You are an expert Indonesian children\'s fairy tale writer. You create wholesome, safe, educational stories for kids aged 3-8 in Bahasa Indonesia. Always produce valid JSON output only. Never include violent, scary, or inappropriate content.'
         });
@@ -81,11 +81,13 @@ class ScriptWriterAgent {
     const prompt = `You are an expert Indonesian children's fairy tale writer. Create a story outline strictly in Bahasa Indonesia based on this topic and angle:
 Topic: "${strategy.topic}"
 Angle: "${strategy.angle}"
+Video Type: "${strategy.videoType || 'long'}"
 
 CRITICAL RULES:
 1. ALL TEXT MUST BE IN BAHASA INDONESIA. Do not use English.
 2. The title MUST be natural Bahasa Indonesia, like a real dongeng title.
 3. DO NOT add years or words like "Resmi", "Ultimate", "Terbaik".
+${strategy.videoType === 'short' ? '4. THIS IS A YOUTUBE SHORT. Keep the outline EXTREMELY concise. Maximum 1-2 very short chapters.' : ''}
 
 Provide the output in valid JSON format:
 {
@@ -96,8 +98,43 @@ Provide the output in valid JSON format:
   ],
   "moralLesson": "Pesan moral cerita"
 }`;
-    const result = await this.gemini.generateContent(prompt);
-    return this.parseJsonFromText(result.response.text());
+    return this.executeGeminiWithRetry(prompt, true);
+  }
+
+  async executeGeminiWithRetry(prompt, isJson = false, retries = 3) {
+    const modelsToTry = [
+      'gemini-2.5-flash',
+      'gemini-2.5-flash-lite',
+      'gemini-3.1-flash-lite'
+    ];
+    
+    let lastError = null;
+    
+    for (let i = 0; i < retries; i++) {
+      const modelName = modelsToTry[i % modelsToTry.length];
+      this.logger.info(`Attempting Gemini generation using model: ${modelName} (Attempt ${i + 1}/${retries})`);
+      
+      try {
+        const currentModel = this.genAI.getGenerativeModel({
+          model: modelName,
+          systemInstruction: 'You are an expert Indonesian children\'s fairy tale writer. You create wholesome, safe, educational stories for kids aged 3-8 in Bahasa Indonesia. Always produce valid JSON output only. Never include violent, scary, or inappropriate content.'
+        });
+        
+        const result = await currentModel.generateContent(prompt);
+        return isJson ? this.parseJsonFromText(result.response.text()) : result.response.text();
+      } catch (error) {
+        lastError = error;
+        if (error.message.includes('503') || error.message.includes('429')) {
+          this.logger.warn(`Gemini API busy (503/429) on ${modelName}. Retrying in 5 seconds...`);
+          await new Promise(resolve => setTimeout(resolve, 5000));
+        } else if (error.message.includes('404') || error.message.includes('not found')) {
+          this.logger.warn(`Model ${modelName} not found or unsupported. Trying next model...`);
+        } else {
+          throw error;
+        }
+      }
+    }
+    throw new Error(`Gemini API exhausted all retries. Last error: ${lastError.message}`);
   }
 
   async writeDraft(outline, strategy) {
@@ -105,8 +142,10 @@ Provide the output in valid JSON format:
     const prompt = `You are an expert Indonesian children's fairy tale writer. Write a full story draft STRICTLY in Bahasa Indonesia based on this outline:
 Title: ${outline.title}
 Chapters: ${JSON.stringify(outline.chapters)}
+Video Type: ${strategy.videoType || 'long'}
 
 CRITICAL RULE: ALL DIALOGUE AND NARRATION MUST BE IN BAHASA INDONESIA.
+${strategy.videoType === 'short' ? 'CRITICAL SHORTS RULE: This is a YouTube Short! The ENTIRE draft must be MAX 150 words. It must take LESS THAN 60 SECONDS to read aloud. Keep sentences punchy and action-packed.' : ''}
 
 Provide the output in valid JSON format:
 {
@@ -118,10 +157,9 @@ Provide the output in valid JSON format:
       "content": "Satu paragraf cerita yang indah (3-4 kalimat dalam Bahasa Indonesia)."
     }
   ],
-  "conclusion": "Ringkasan pesan moral cerita"
-}`;
-    const result = await this.gemini.generateContent(prompt);
-    return this.parseJsonFromText(result.response.text());
+}
+`;
+    return this.executeGeminiWithRetry(prompt, true);
   }
 
   async polishForKids(draft, outline) {
@@ -163,8 +201,7 @@ Provide the final output in valid JSON format EXACTLY matching this structure:
     "comment": "Pertanyaan interaktif untuk dijawab di komentar"
   }
 }`;
-    const result = await this.gemini.generateContent(prompt);
-    return this.parseJsonFromText(result.response.text());
+    return this.executeGeminiWithRetry(prompt, true);
   }
 
   async generateScript(strategy) {

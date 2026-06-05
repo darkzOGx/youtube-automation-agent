@@ -13,6 +13,32 @@ class PublishingSchedulingAgent {
     this.publishQueue = [];
   }
 
+  async executeWithFallback(operation) {
+    let maxTries = this.credentials.credentials.youtube ? this.credentials.credentials.youtube.length : 1;
+    let tries = 0;
+    let lastError = null;
+
+    while (tries < maxTries) {
+      try {
+        return await operation();
+      } catch (error) {
+        lastError = error;
+        if (error.code === 403 && (error.message.toLowerCase().includes('quota') || error.message.toLowerCase().includes('exceeded'))) {
+          this.logger.warn(`Quota exceeded on YouTube API (Account ${this.credentials.activeYoutubeIndex}).`);
+          
+          if (tries < maxTries - 1 && this.credentials.switchToNextYouTubeAuth()) {
+            this.logger.info(`Attempting fallback to next account...`);
+            this.youtube = this.credentials.getYouTubeClient();
+            tries++;
+            continue;
+          }
+        }
+        throw error;
+      }
+    }
+    throw lastError;
+  }
+
   async initialize() {
     this.logger.info('Initializing Publishing & Scheduling Agent...');
     await this.setupYouTubeAPI();
@@ -55,7 +81,12 @@ class PublishingSchedulingAgent {
           seo: productionData.seo,
           thumbnail: productionData.assets.thumbnail,
           video: productionData.assets.finalVideo,
-          captions: productionData.assets.captions
+          captions: productionData.assets.captions,
+          models: {
+            imageModel: productionData.script?.imageModel || 'imagen-4.0-generate-001',
+            imageProvider: productionData.script?.imageProvider || 'gemini',
+            textModel: 'Gemini API (Flash/Lite)'
+          }
         },
         createdAt: new Date().toISOString()
       };
@@ -126,11 +157,21 @@ class PublishingSchedulingAgent {
       };
     }
     
+    // Check if it's a short video
+    const isShort = metadata.strategy && metadata.strategy.videoType === 'short';
+    let finalTitle = metadata.seo.title;
+    let finalDescription = metadata.seo.description;
+    
+    if (isShort) {
+      if (!finalTitle.toLowerCase().includes('#shorts')) finalTitle += ' #shorts';
+      if (!finalDescription.toLowerCase().includes('#shorts')) finalDescription += '\n\n#shorts #youtubeshorts';
+    }
+
     // Prepare video metadata
     const videoMetadata = {
       snippet: {
-        title: metadata.seo.title,
-        description: metadata.seo.description,
+        title: finalTitle,
+        description: finalDescription,
         tags: metadata.seo.tags,
         categoryId: metadata.seo.metadata.category.toString(),
         defaultLanguage: metadata.seo.metadata.language,
@@ -159,13 +200,15 @@ class PublishingSchedulingAgent {
     }
     
     // Upload video file
-    const videoUpload = await this.youtube.videos.insert({
-      part: 'snippet,status',
-      requestBody: videoMetadata,
-      media: {
-        body: await this.getVideoStream(metadata.video.path)
-      }
-    });
+    const videoUpload = await this.executeWithFallback(async () => 
+      this.youtube.videos.insert({
+        part: 'snippet,status',
+        requestBody: videoMetadata,
+        media: {
+          body: await this.getVideoStream(metadata.video.path)
+        }
+      })
+    );
     
     const videoId = videoUpload.data.id;
     this.logger.info(`Video uploaded with ID: ${videoId}`);

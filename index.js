@@ -134,10 +134,10 @@ class YouTubeAutomationAgent {
           return res.status(400).json({ success: false, error: 'A content generation task is already running.' });
         }
         
-        const { topic, style, length, imageProvider, imageModel, videoFormat, testMode } = req.body;
+        const { topic, style, length, imageProvider, imageModel, videoFormat, testMode, videoType } = req.body;
         
         // Start background content generation
-        this.runBackgroundGeneration(topic, style, length, imageProvider, imageModel, videoFormat, testMode).catch(err => {
+        this.runBackgroundGeneration(topic, style, length, imageProvider, imageModel, videoFormat, testMode, videoType).catch(err => {
           this.logger.error('Background generation process crashed:', err);
         });
         
@@ -220,14 +220,55 @@ class YouTubeAutomationAgent {
     // List all YouTube channels on the authenticated account (personal + Brand Accounts)
     this.app.get('/youtube/channels', async (req, res) => {
       try {
-        const youtube = this.credentials.getYouTubeClient();
+        const forceRefresh = req.query.forceRefresh === 'true';
+        
+        // Check cache first
+        if (!forceRefresh) {
+          try {
+            const cachedChannels = await this.db.getSetting('cached_youtube_channels');
+            const cacheTimestamp = await this.db.getSetting('cached_youtube_channels_timestamp');
+            
+            if (cachedChannels && cacheTimestamp) {
+              const ageInHours = (new Date() - new Date(cacheTimestamp)) / (1000 * 60 * 60);
+              if (ageInHours < 24) {
+                const parsedChannels = JSON.parse(cachedChannels);
+                const selectedChannelId = this.credentials.credentials?.channel?.selectedChannelId || null;
+                const selectedChannelName = this.credentials.credentials?.channel?.selectedChannelName || null;
+                return res.json({ channels: parsedChannels, selectedChannelId, selectedChannelName, cached: true });
+              }
+            }
+          } catch (e) {
+            this.logger.warn('Failed to read cached channels, fetching fresh:', e.message);
+          }
+        }
 
-        // Get personal channel (mine: true)
-        const mineResponse = await youtube.channels.list({
-          part: 'snippet,statistics',
-          mine: true,
-          maxResults: 50
-        });
+        let youtube = this.credentials.getYouTubeClient();
+
+        let mineResponse;
+        try {
+          // Get personal channel (mine: true)
+          mineResponse = await youtube.channels.list({
+            part: 'snippet,statistics',
+            mine: true,
+            maxResults: 50
+          });
+        } catch (error) {
+          if (error.code === 403 && (error.message.toLowerCase().includes('quota') || error.message.toLowerCase().includes('exceeded'))) {
+            this.logger.warn('Quota exceeded when fetching channels. Attempting fallback...');
+            if (this.credentials.switchToNextYouTubeAuth()) {
+              youtube = this.credentials.getYouTubeClient();
+              mineResponse = await youtube.channels.list({
+                part: 'snippet,statistics',
+                mine: true,
+                maxResults: 50
+              });
+            } else {
+              throw error;
+            }
+          } else {
+            throw error;
+          }
+        }
 
         // Get Brand Account channels managed by this account
         let brandChannels = [];
@@ -265,9 +306,32 @@ class YouTubeAutomationAgent {
         const selectedChannelId = this.credentials.credentials?.channel?.selectedChannelId || null;
         const selectedChannelName = this.credentials.credentials?.channel?.selectedChannelName || null;
 
+        // Save to cache
+        try {
+          await this.db.setSetting('cached_youtube_channels', JSON.stringify(channels));
+          await this.db.setSetting('cached_youtube_channels_timestamp', new Date().toISOString());
+        } catch (e) {
+          this.logger.warn('Failed to save channels cache:', e.message);
+        }
+
         res.json({ channels, selectedChannelId, selectedChannelName });
       } catch (error) {
         this.logger.error('Failed to list YouTube channels:', error.message || error);
+        
+        // Try stale cache fallback if quota exceeded
+        if (error.message && (error.message.toLowerCase().includes('quota') || error.message.toLowerCase().includes('exceeded'))) {
+          try {
+            const cachedChannels = await this.db.getSetting('cached_youtube_channels');
+            if (cachedChannels) {
+              this.logger.info('Returning stale cache for channels due to quota error.');
+              const parsedChannels = JSON.parse(cachedChannels);
+              const selectedChannelId = this.credentials.credentials?.channel?.selectedChannelId || null;
+              const selectedChannelName = this.credentials.credentials?.channel?.selectedChannelName || null;
+              return res.json({ channels: parsedChannels, selectedChannelId, selectedChannelName, cached: true, staleFallback: true });
+            }
+          } catch(e) {}
+        }
+
         if (error.response && error.response.data) {
           this.logger.error('YouTube API Error details:', JSON.stringify(error.response.data));
         }
@@ -298,6 +362,103 @@ class YouTubeAutomationAgent {
       } catch (error) {
         this.logger.error('Failed to select channel:', error);
         res.status(500).json({ error: error.message });
+      }
+    });
+
+    // ─── TTS Configuration API ───────────────────────────────────────
+
+    // GET /api/tts-config — Read current TTS provider configuration
+    this.app.get('/api/tts-config', (req, res) => {
+      try {
+        const info = this.agents.production.aiVideoGenerator.getTTSProviderInfo();
+        res.json(info);
+      } catch (error) {
+        this.logger.error('Failed to get TTS config:', error);
+        res.status(500).json({ error: 'Failed to read TTS configuration' });
+      }
+    });
+
+    // POST /api/tts-config — Save TTS provider configuration (hot-reload)
+    this.app.post('/api/tts-config', async (req, res) => {
+      try {
+        const { provider, voice, localUrl, elevenLabsApiKey, elevenLabsVoiceId, elevenLabsModel, openaiModel, openaiApiKey } = req.body;
+        
+        // Validate provider value against allow-list
+        const validProviders = ['edge_tts', 'openai', 'elevenlabs', 'local'];
+        if (provider && !validProviders.includes(provider)) {
+          return res.status(400).json({ success: false, error: `Invalid TTS provider. Must be one of: ${validProviders.join(', ')}` });
+        }
+        
+        // Update credentials.json with new TTS settings
+        if (!this.credentials.credentials.tts) {
+          this.credentials.credentials.tts = {};
+        }
+        if (provider) this.credentials.credentials.tts.provider = provider;
+        if (voice) this.credentials.credentials.tts.voice = voice;
+        if (localUrl !== undefined) this.credentials.credentials.tts.localUrl = localUrl;
+        if (openaiModel) this.credentials.credentials.tts.openaiModel = openaiModel;
+        
+        if (openaiApiKey !== undefined) {
+          if (!this.credentials.credentials.openai) this.credentials.credentials.openai = {};
+          this.credentials.credentials.openai.apiKey = openaiApiKey;
+        }
+        
+        // Update ElevenLabs credentials if provided
+        if (elevenLabsApiKey !== undefined || elevenLabsVoiceId !== undefined || elevenLabsModel !== undefined) {
+          if (!this.credentials.credentials.elevenLabs) {
+            this.credentials.credentials.elevenLabs = {};
+          }
+          if (elevenLabsApiKey !== undefined) this.credentials.credentials.elevenLabs.apiKey = elevenLabsApiKey;
+          if (elevenLabsVoiceId !== undefined) this.credentials.credentials.elevenLabs.voiceId = elevenLabsVoiceId;
+          if (elevenLabsModel !== undefined) this.credentials.credentials.elevenLabs.modelId = elevenLabsModel;
+        }
+        
+        await this.credentials.saveCredentials();
+        
+        // Hot-reload the video generator's TTS settings (no restart needed)
+        const vg = this.agents.production.aiVideoGenerator;
+        if (provider) vg.ttsProvider = provider;
+        if (voice) vg.ttsVoice = voice;
+        if (localUrl !== undefined) vg.localTtsUrl = localUrl;
+        if (openaiModel) vg.openaiModel = openaiModel;
+        
+        // Handle OpenAI re-init if key changed
+        if (openaiApiKey !== undefined) {
+          const { OpenAI } = require('openai');
+          vg.openai = new OpenAI({ apiKey: openaiApiKey });
+        }
+        if (elevenLabsApiKey !== undefined) vg.elevenLabsApiKey = elevenLabsApiKey;
+        if (elevenLabsVoiceId !== undefined) vg.elevenLabsVoiceId = elevenLabsVoiceId;
+        if (elevenLabsModel !== undefined) vg.elevenLabsModelId = elevenLabsModel;
+
+        this.logger.info(`TTS config updated: provider=${provider || vg.ttsProvider}, voice=${voice || vg.ttsVoice}`);
+        res.json({ success: true, config: vg.getTTSProviderInfo() });
+      } catch (error) {
+        this.logger.error('Failed to save TTS config:', error);
+        res.status(500).json({ success: false, error: 'Failed to save TTS configuration' });
+      }
+    });
+
+    // POST /api/tts-test — Generate a short test audio clip with the current TTS provider
+    this.app.post('/api/tts-test', async (req, res) => {
+      try {
+        const testText = req.body.text || 'Halo anak-anak! Selamat datang di dongeng kita hari ini. Mari kita mulai petualangan seru bersama-sama!';
+        
+        // Sanitize output filename using timestamp only
+        const outputFileName = `tts-test-${Date.now()}.mp3`;
+        const outputPath = path.join(__dirname, 'uploads', outputFileName);
+        
+        await this.agents.production.aiVideoGenerator.generateTTSAudio(testText, outputPath, true);
+        
+        res.json({ 
+          success: true, 
+          audioUrl: `/uploads/${outputFileName}`,
+          provider: this.agents.production.aiVideoGenerator.ttsProvider,
+          voice: this.agents.production.aiVideoGenerator.ttsVoice
+        });
+      } catch (error) {
+        this.logger.error('TTS test failed:', error);
+        res.status(500).json({ success: false, error: error.message || 'TTS test generation failed' });
       }
     });
   }
@@ -345,7 +506,7 @@ class YouTubeAutomationAgent {
     };
   }
 
-  async runBackgroundGeneration(topic = null, style = null, length = 'medium', imageProvider = 'gemini', imageModel = 'imagen-4.0-generate-001', videoFormat = 'slideshow', testMode = false) {
+  async runBackgroundGeneration(topic = null, style = null, length = 'medium', imageProvider = 'gemini', imageModel = 'imagen-4.0-fast-generate-001', videoFormat = 'slideshow', testMode = false, videoType = 'long') {
     this.generationStatus = {
       status: 'generating',
       currentStep: 'Initializing content generation...',
@@ -376,7 +537,10 @@ class YouTubeAutomationAgent {
       if (style) {
         strategy.contentType = style.charAt(0).toUpperCase() + style.slice(1);
       }
-      this.logger.info(`Strategy generated: ${strategy.topic} (${strategy.contentType})`);
+      if (videoType) {
+        strategy.videoType = videoType;
+      }
+      this.logger.info(`Strategy generated: ${strategy.topic} (${strategy.contentType}, ${videoType || 'long'})`);
       
       // Step 2: Script Writing
       this.generationStatus.steps.strategy = 'completed';
@@ -391,14 +555,24 @@ class YouTubeAutomationAgent {
       
       // Step 3: Thumbnail Design
       this.generationStatus.steps.script = 'completed';
-      this.generationStatus.steps.thumbnail = 'processing';
-      this.generationStatus.estimatedSecondsRemaining = 145;
-      this.generationStatus.currentStep = 'Designing custom thumbnail & enhanced prompts...';
-      const thumbnail = await this.agents.thumbnailDesigner.generateThumbnail(script);
-      this.logger.info('Thumbnail generated');
+      
+      let thumbnail = null;
+      if (videoType === 'short') {
+        this.generationStatus.steps.thumbnail = 'skipped';
+        this.generationStatus.currentStep = 'Skipping thumbnail (not needed for Shorts)...';
+        this.logger.info('Skipping thumbnail generation for Shorts');
+      } else {
+        this.generationStatus.steps.thumbnail = 'processing';
+        this.generationStatus.estimatedSecondsRemaining = 145;
+        this.generationStatus.currentStep = 'Designing custom thumbnail & enhanced prompts...';
+        thumbnail = await this.agents.thumbnailDesigner.generateThumbnail(script);
+        this.logger.info('Thumbnail generated');
+      }
       
       // Step 4: SEO Optimization
-      this.generationStatus.steps.thumbnail = 'completed';
+      if (this.generationStatus.steps.thumbnail !== 'skipped') {
+        this.generationStatus.steps.thumbnail = 'completed';
+      }
       this.generationStatus.steps.seo = 'processing';
       this.generationStatus.estimatedSecondsRemaining = 130;
       this.generationStatus.currentStep = 'Optimizing SEO keywords and tags...';
@@ -416,6 +590,7 @@ class YouTubeAutomationAgent {
         thumbnail,
         seo: seoData,
         videoFormat: videoFormat || 'slideshow',
+        videoType: videoType || 'long',
         testMode
       });
       this.logger.info('Production processing complete');

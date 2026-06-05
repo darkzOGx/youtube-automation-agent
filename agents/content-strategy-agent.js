@@ -11,6 +11,20 @@ class ContentStrategyAgent {
     this.contentCalendar = [];
   }
 
+  async executeWithFallback(operation) {
+    try {
+      return await operation(this.credentials.getYouTubeClient());
+    } catch (error) {
+      if (error.code === 403 && (error.message.toLowerCase().includes('quota') || error.message.toLowerCase().includes('exceeded'))) {
+        this.logger.warn('Quota exceeded on YouTube API. Attempting fallback...');
+        if (this.credentials.switchToNextYouTubeAuth()) {
+          return await operation(this.credentials.getYouTubeClient());
+        }
+      }
+      throw error;
+    }
+  }
+
   async initialize() {
     this.logger.info('Initializing Content Strategy Agent...');
     await this.loadHistoricalData();
@@ -46,6 +60,20 @@ class ContentStrategyAgent {
   }
 
   async fetchYouTubeTrends() {
+    try {
+      const cachedData = await this.db.getSetting('cached_youtube_trends_data');
+      const cacheTimestamp = await this.db.getSetting('cached_youtube_trends_timestamp');
+      if (cachedData && cacheTimestamp) {
+        const ageInHours = (new Date() - new Date(cacheTimestamp)) / (1000 * 60 * 60);
+        if (ageInHours < 24) {
+          this.logger.info('Using cached YouTube trends to save API quota');
+          return JSON.parse(cachedData);
+        }
+      }
+    } catch (e) {
+      this.logger.warn('Failed to read trends cache:', e.message);
+    }
+
     const youtube = this.credentials.getYouTubeClient();
     const region = process.env.YOUTUBE_REGION || 'ID';
     
@@ -58,27 +86,26 @@ class ContentStrategyAgent {
       this.logger.info(`Fetching YouTube search trends for niche: "${searchQuery}" in region: ${region}`);
       
       // Step 1: Search for high-view, niche-relevant videos
-      const searchResponse = await youtube.search.list({
+      const searchResponse = await this.executeWithFallback((youtube) => youtube.search.list({
         part: 'snippet',
         q: searchQuery,
         type: 'video',
-        maxResults: 25,
         regionCode: region,
-        relevanceLanguage: region === 'ID' ? 'id' : 'en',
-        order: 'viewCount' // Sort by most viewed in this niche
-      });
+        maxResults: 15,
+        order: 'viewCount', // Sort by view count to find top performers
+        publishedAfter: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString() // Last 30 days
+      }));
 
       const videoIds = searchResponse.data.items.map(item => item.id.videoId).filter(Boolean);
       if (videoIds.length === 0) {
-        this.logger.warn('No niche videos found via search, falling back to popular chart');
-        
-        // Fallback to generic popular chart
-        const fallbackResponse = await youtube.videos.list({
+        this.logger.warn('No recent videos found for this niche. Using broad fallback.');
+        const fallbackResponse = await this.executeWithFallback((youtube) => youtube.videos.list({
           part: 'snippet,statistics',
           chart: 'mostPopular',
-          maxResults: 25,
-          regionCode: region
-        });
+          regionCode: region,
+          videoCategoryId: this.credentials.credentials.channel.defaultCategory || '24', // Entertainment/Kids
+          maxResults: 15
+        }));
         return fallbackResponse.data.items.map(video => ({
           title: video.snippet.title,
           tags: video.snippet.tags || [],
@@ -89,18 +116,27 @@ class ContentStrategyAgent {
       }
 
       // Step 2: Fetch detailed statistics for these specific niche videos
-      const detailsResponse = await youtube.videos.list({
+      const detailsResponse = await this.executeWithFallback((youtube) => youtube.videos.list({
         part: 'snippet,statistics',
         id: videoIds.join(',')
-      });
+      }));
 
-      return detailsResponse.data.items.map(video => ({
+      const finalData = detailsResponse.data.items.map(video => ({
         title: video.snippet.title,
         tags: video.snippet.tags || [],
         viewCount: parseInt(video.statistics.viewCount) || 100000,
         category: video.snippet.categoryId,
         publishedAt: video.snippet.publishedAt
       }));
+
+      try {
+        await this.db.setSetting('cached_youtube_trends_data', JSON.stringify(finalData));
+        await this.db.setSetting('cached_youtube_trends_timestamp', new Date().toISOString());
+      } catch (e) {
+        this.logger.warn('Failed to save trends cache:', e.message);
+      }
+
+      return finalData;
     } catch (error) {
       this.logger.error('Failed to fetch YouTube trends:', error);
       return [];
@@ -108,6 +144,20 @@ class ContentStrategyAgent {
   }
 
   async analyzeCompetitors() {
+    try {
+      const cachedData = await this.db.getSetting('cached_competitor_data');
+      const cacheTimestamp = await this.db.getSetting('cached_competitor_timestamp');
+      if (cachedData && cacheTimestamp) {
+        const ageInHours = (new Date() - new Date(cacheTimestamp)) / (1000 * 60 * 60);
+        if (ageInHours < 24) {
+          this.logger.info('Using cached competitor data to save API quota');
+          return JSON.parse(cachedData);
+        }
+      }
+    } catch (e) {
+      this.logger.warn('Failed to read competitor cache:', e.message);
+    }
+
     const competitorChannels = (process.env.COMPETITOR_CHANNELS || '').split(',');
     const competitorData = [];
 
@@ -128,6 +178,13 @@ class ContentStrategyAgent {
       }
     }
 
+    try {
+      await this.db.setSetting('cached_competitor_data', JSON.stringify(competitorData));
+      await this.db.setSetting('cached_competitor_timestamp', new Date().toISOString());
+    } catch (e) {
+      this.logger.warn('Failed to save competitor cache:', e.message);
+    }
+
     return competitorData;
   }
 
@@ -135,20 +192,21 @@ class ContentStrategyAgent {
     const youtube = this.credentials.getYouTubeClient();
     
     try {
-      const response = await youtube.search.list({
+      const response = await this.executeWithFallback((youtube) => youtube.search.list({
         part: 'snippet',
         channelId: channelId,
-        maxResults: 20,
-        order: 'date',
-        type: 'video'
-      });
+        type: 'video',
+        maxResults: 5,
+        order: 'viewCount'
+      }));
 
       const videoIds = response.data.items.map(item => item.id.videoId).join(',');
+      if (!videoIds) return [];
       
-      const videoDetails = await youtube.videos.list({
-        part: 'statistics,snippet',
+      const videoDetails = await this.executeWithFallback((youtube) => youtube.videos.list({
+        part: 'snippet,statistics',
         id: videoIds
-      });
+      }));
 
       return videoDetails.data.items;
     } catch (error) {

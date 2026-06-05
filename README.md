@@ -192,6 +192,70 @@ TARGET_AUDIENCE=Your target audience
 POSTING_FREQUENCY=daily
 ```
 
+## 🎙️ Text-to-Speech (TTS) Configuration
+
+The system supports **4 TTS providers** with automatic fallback. Choose the one that best fits your needs:
+
+| Provider | Quality | Cost | Setup | Best For |
+|----------|---------|------|-------|----------|
+| **Edge TTS** (Default) | ⭐⭐⭐ Good | Free | Zero config | Getting started quickly |
+| **OpenAI TTS** | ⭐⭐⭐⭐ Great | ~$0.04/video | API Key only | Best value for quality |
+| **ElevenLabs** | ⭐⭐⭐⭐⭐ Best | Freemium | API Key + Voice ID | Premium voice cloning |
+| **Local API** | ⭐⭐⭐⭐⭐ Custom | Free (GPU req.) | Python + GPU | Open-source enthusiasts |
+
+### Option 1: Edge TTS (Default — No Setup Needed)
+Works out of the box. Uses Microsoft's free neural voices for Indonesian.
+```env
+TTS_PROVIDER=edge_tts
+TTS_VOICE=id-ID-GadisNeural
+```
+
+### Option 2: OpenAI TTS (Recommended)
+Warm, natural voices at very low cost (~$0.04 per video). Uses your existing OpenAI API key.
+```env
+TTS_PROVIDER=openai
+TTS_VOICE=nova
+```
+Available voices: `nova` (warm), `shimmer` (soft), `alloy` (neutral), `fable` (storytelling), `echo` (clear), `onyx` (deep).
+
+### Option 3: ElevenLabs (Premium Quality)
+Best for voice cloning — clone any storytelling voice from a short audio sample.
+```env
+TTS_PROVIDER=elevenlabs
+ELEVENLABS_API_KEY=your-key-here
+ELEVENLABS_VOICE_ID=your-voice-id
+```
+
+### Option 4: Local/Custom API Server (Advanced)
+Run open-source TTS models (F5-TTS, XTTS v2, CosyVoice) locally on your GPU for unlimited free generation.
+```env
+TTS_PROVIDER=local
+LOCAL_TTS_URL=http://localhost:8000
+```
+
+#### 🔌 SSH Reverse Port Forwarding (Remote GPU Setup)
+If your app runs on a VPS/server but you want to use your local PC's GPU for TTS:
+
+```
+┌─────────────────────┐      SSH Reverse Tunnel       ┌──────────────────────┐
+│   Ubuntu VPS        │ ←── ssh -R 8000:...:8000 ───  │   Windows PC (GPU)   │
+│   (YouTube Agent)   │                                │   (F5-TTS Server)    │
+│                     │                                │                      │
+│  Agent sends text   │ ──→ localhost:8000/tts ──→     │  GPU processes audio │
+│  to localhost:8000  │ ←── returns MP3 audio ←──      │  and returns MP3     │
+└─────────────────────┘                                └──────────────────────┘
+```
+
+**SSH command (run from your Windows PC):**
+```bash
+ssh -R 8000:localhost:8000 user@your-vps-ip
+```
+
+> **⚠️ Troubleshooting Local TTS on Windows:** If you encounter `ERROR: Failed to build installable wheels for some pyproject.toml based projects (coqui-tts)` when installing XTTS or F5-TTS, it is because **Python 3.12 is not supported**. 
+> **Solution:** Use [Miniconda](https://docs.conda.io/en/latest/miniconda.html) to create a Python 3.10 environment (`conda create -n tts_env python=3.10 -y`) OR use Docker Desktop (`docker run -it -p 8000:8000 --gpus=all daswer123/xtts-api-server:latest`).
+
+> **💡 Tip:** You can also configure TTS directly from the web dashboard at `http://localhost:3456` — no need to edit `.env` manually!
+
 ## 🚦 First Run Tutorial
 
 After setup, here's how to generate your first video:
@@ -440,14 +504,17 @@ The project is being developed in 5 distinct phases. We use this roadmap to trac
 ### Phase 5: Self-Learning & Analytics Loop (✅ Completed)
 - ✅ Analytics Agent to fetch past video performance.
 - ✅ Auto-adjust titles, keywords, and topics based on top performers.
+- ✅ Auto-Fallback API mechanism for high availability against Quota limits.
+
+### Phase 6: UI Enhancements & Stability (🚧 In Progress)
+- ✅ Multi-provider TTS Engine (Edge TTS, OpenAI, ElevenLabs, Local API).
+- ✅ Dashboard TTS Settings Panel with live voice testing.
+- ⏳ Sort Content Pipeline & History by `estimated_publish_time` and `created_date`.
+- ⏳ Address FFmpeg transition artifacts and refine video rendering.
+- ⏳ Implement retry mechanism for Edge TTS timeouts.
 
 ### 🐛 Active Bug Tracker (Known Issues)
-- ✅ **[FIXED]** `videoGenerator is undefined` error during Shorts generation.
-- ✅ **[FIXED]** Repetitive fallback script generation ("mari kita hayati").
-- ⏳ **[PENDING]** Edge TTS occasionally times out on very long scripts.
-- ⏳ **[PENDING]** FFmpeg transition artifacts on some video renders.
-
-*(See [ISSUES.md](ISSUES.md) for the full issue tracker).*
+Please see the dedicated [ISSUES.md](ISSUES.md) file for the full list of active bugs, feature requests, and recently resolved issues.
 
 ## 🤝 Contributing
 

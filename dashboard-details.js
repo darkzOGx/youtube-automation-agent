@@ -218,6 +218,18 @@ function renderScheduleCard(item, index) {
   const tags = seo.tags || [];
   const hashtags = seo.hashtags || [];
   const endScreen = seo.endScreen || {};
+  const models = item.metadata?.models || {};
+  
+  const imageModel = models.imageModel || 'imagen-4.0-generate-001 (legacy)';
+  const textModel = models.textModel || 'Gemini API (Flash/Lite)';
+  
+  let imageCostEst = '$0.03';
+  if (imageModel.includes('fast')) imageCostEst = '$0.03';
+  else if (imageModel.includes('2.5-flash-image')) imageCostEst = '$0.001';
+  else if (imageModel.includes('seedream')) imageCostEst = '$0.005';
+  else if (imageModel.includes('grok')) imageCostEst = '$0.05';
+  
+  const textCostEst = '< $0.001';
   const seoMeta = seo.metadata || {};
   const seoScore = seo.seoScore || 0;
   const publishTime = new Date(item.publish_time || item.publishTime);
@@ -270,6 +282,7 @@ function renderScheduleCard(item, index) {
         ${chapters.length ? `<button class="tab-btn" onclick="switchTab('${cardId}', 'chapters', this)">⏱ Chapters</button>` : ''}
         ${tags.length ? `<button class="tab-btn" onclick="switchTab('${cardId}', 'tags', this)">🏷 Tags</button>` : ''}
         <button class="tab-btn" onclick="switchTab('${cardId}', 'files', this)">📁 Files</button>
+        <button class="tab-btn" onclick="switchTab('${cardId}', 'models', this)">🤖 AI Models</button>
       </div>
 
       <div class="tab-content active" id="${cardId}-overview">
@@ -394,8 +407,29 @@ function renderScheduleCard(item, index) {
             <div class="val">${item.created_at || item.createdAt || '-'}</div>
           </div>
         </div>
+        </div>
       </div>
-
+      
+      <div class="tab-content" id="${cardId}-models">
+        <div class="info-grid">
+          <div class="info-item">
+            <div class="lbl">📝 Narration & Title Generator</div>
+            <div class="val">${escapeHtml(textModel)}</div>
+          </div>
+          <div class="info-item">
+            <div class="lbl">💰 Narration/Title Est. Cost</div>
+            <div class="val" style="color: #34d399; font-weight: 500;">${textCostEst}</div>
+          </div>
+          <div class="info-item">
+            <div class="lbl">🎨 Slides & Thumbnail Generator</div>
+            <div class="val">${escapeHtml(imageModel)}</div>
+          </div>
+          <div class="info-item">
+            <div class="lbl">💰 Visual Assets Est. Cost</div>
+            <div class="val" style="color: #34d399; font-weight: 500;">${imageCostEst} / image</div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>`;
 }

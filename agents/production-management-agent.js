@@ -228,8 +228,10 @@ class ProductionManagementAgent {
   }
 
   async processThumbnail(thumbnail) {
+    if (!thumbnail) return null; // Skip if no thumbnail is provided
+    
     try {
-      if (!thumbnail || !thumbnail.path) {
+      if (!thumbnail.path) {
         throw new Error('Thumbnail path is missing');
       }
 
@@ -309,14 +311,18 @@ class ProductionManagementAgent {
     try {
       const { strategy, script } = productionData;
       
-      // Generate visual assets using DALL-E
-      const visualPrompts = this.createVisualPromptsFromScript(script);
-      const visualAssets = [];
+      // Extract script segments for per-slide generation
+      const segments = this.extractScriptSegments(script);
+      productionData.assets.segments = segments;
       
-      for (const prompt of visualPrompts) {
-        const imageProvider = script.imageProvider || 'gemini';
-        const imageModel = script.imageModel || 'imagen-4.0-generate-001';
-        const assets = await this.aiVideoGenerator.generateVisualAssets(prompt, 'ethereal', 1, imageProvider, imageModel);
+      const visualAssets = [];
+      const imageProvider = script.imageProvider || 'gemini';
+      const imageModel = script.imageModel || 'imagen-4.0-fast-generate-001';
+      const isShort = productionData.strategy?.videoType === 'short';
+      
+      for (const segment of segments) {
+        const assets = await this.aiVideoGenerator.generateVisualAssets(segment.prompt, 'ethereal', 1, imageProvider, imageModel, isShort);
+        segment.imagePath = assets[0];
         visualAssets.push(...assets);
       }
       
@@ -434,11 +440,25 @@ class ProductionManagementAgent {
       const { script } = productionData;
       const audioPath = path.join(__dirname, '..', 'data', 'audio', `${productionData.id}_narration.mp3`);
       
-      // Read the TTS script
+      // Read the TTS script (we keep this for logging, but we will generate per-segment)
       const ttsText = await fs.readFile(productionData.assets.script.ttsPath, 'utf8');
       
-      // Generate audio using AI TTS
-      await this.aiVideoGenerator.generateTTSAudio(ttsText, audioPath);
+      // Generate audio using AI TTS per segment
+      const segments = productionData.assets.segments || this.extractScriptSegments(script);
+      productionData.assets.segments = segments;
+      
+      for (let i = 0; i < segments.length; i++) {
+        const seg = segments[i];
+        const segAudioPath = path.join(__dirname, '..', 'data', 'audio', `${productionData.id}_seg_${i}.mp3`);
+        await this.aiVideoGenerator.generateTTSAudio(seg.text, segAudioPath);
+        seg.audioPath = segAudioPath;
+      }
+      
+      // We will still keep a main audio path if needed, but per-slide assembly will use seg.audioPath
+      // Just write the first segment to audioPath to prevent errors in probing if anything falls back
+      if (segments.length > 0 && segments[0].audioPath) {
+        await fs.copyFile(segments[0].audioPath, audioPath);
+      }
       
       productionData.assets.audio = {
         path: audioPath,
@@ -591,7 +611,8 @@ class ProductionManagementAgent {
         productionData.assets.video.visualAssets || [],
         productionData.assets.audio.path,
         finalVideoPath,
-        videoFormat
+        videoFormat,
+        productionData.assets.segments
       );
       
       // Get file stats
@@ -662,35 +683,119 @@ class ProductionManagementAgent {
     return ready[0] || null;
   }
 
-  // Helper method to create visual prompts from script content
-  createVisualPromptsFromScript(script) {
-    const prompts = [];
+  // Extract segments mapping 1-to-1 audio and visual for perfect synchronization
+  extractScriptSegments(script) {
+    const segments = [];
     
-    // Title prompt
-    prompts.push(`${script.title}, ethereal storytelling, vibrant children storybook illustration`);
+    // Add hook
+    if (script.hook && script.hook.text) {
+      segments.push({
+        type: 'hook',
+        text: script.hook.text,
+        prompt: `${script.title}, ${script.hook.text}, vibrant children storybook illustration`
+      });
+    }
     
-    // Content-based prompts
+    // Add introduction
+    if (script.introduction) {
+      const introText = [
+        script.introduction.greeting,
+        script.introduction.topicIntro,
+        script.introduction.valueProposition,
+        script.introduction.credibility
+      ].filter(Boolean).join('. ');
+      if (introText.length > 5) {
+        segments.push({
+          type: 'intro',
+          text: introText,
+          prompt: `${script.title}, introduction scene, vibrant children storybook illustration`
+        });
+      }
+    }
+    
+    // Add main content
     if (script.mainContent && script.mainContent.sections) {
-      script.mainContent.sections.forEach(section => {
-        if (section.title) {
-          prompts.push(`${section.title}, ethereal dreamscape, vibrant children storybook illustration`);
+      script.mainContent.sections.forEach((section) => {
+        let text = '';
+        if (Array.isArray(section.content)) {
+          text = section.content.filter(line => typeof line === 'string' && !line.startsWith('[')).join(' ');
+        } else if (section.steps) {
+          text = section.steps.map(step => `${step.title}. ${step.description} ${step.tip}`).join(' ');
+        } else if (section.items) {
+          text = section.items.map(item => `${item.title}. ${item.description}`).join(' ');
+        } else if (typeof section.content === 'string') {
+          text = section.content;
         }
-        if (typeof section.content === 'string') {
-          // Extract more prompts from paragraphs so we have more images for shorter transitions
-          const sentences = section.content.split(/[.!?]+/).filter(s => s.trim().length > 20);
-          sentences.slice(0, 2).forEach(s => {
-            prompts.push(`${s.trim()}, vibrant children storybook illustration`);
-          });
+        
+        if (text.length > 5) {
+           const sentences = text.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 5);
+           let currentChunk = [];
+           for (const sentence of sentences) {
+             currentChunk.push(sentence);
+             if (currentChunk.length >= 2) {
+               const chunkText = currentChunk.join(' ');
+               segments.push({
+                 type: 'content',
+                 text: chunkText,
+                 prompt: `${chunkText}, vibrant children storybook illustration`,
+                 sfx_keywords: section.sfx_keywords
+               });
+               currentChunk = [];
+             }
+           }
+           if (currentChunk.length > 0) {
+             const chunkText = currentChunk.join(' ');
+             segments.push({
+               type: 'content',
+               text: chunkText,
+               prompt: `${chunkText}, vibrant children storybook illustration`,
+               sfx_keywords: section.sfx_keywords
+             });
+           }
         }
       });
     }
     
-    // Ensure we have enough prompts for quick transitions
-    while (prompts.length < 8) {
-      prompts.push('ethereal dreamscape, mystical storytelling, vibrant children storybook illustration');
+    // Add conclusion
+    if (script.conclusion) {
+      const recapText = Array.isArray(script.conclusion.recap) ? script.conclusion.recap.join(' ') : '';
+      const concText = `${recapText} ${script.conclusion.finalThought || ''}`.trim();
+      if (concText.length > 5) {
+        segments.push({
+          type: 'conclusion',
+          text: concText,
+          prompt: `Conclusion scene, ${script.title}, happy ending, vibrant children storybook illustration`
+        });
+      }
     }
     
-    return prompts.slice(0, 15); // Increased limit to 15 to fix "gambar terlalu sedikit" issue
+    // Add CTA
+    if (script.callToAction) {
+      const ctaText = [
+        script.callToAction.subscribe,
+        script.callToAction.like,
+        script.callToAction.comment
+      ].filter(Boolean).join('. ');
+      
+      if (ctaText.length > 5) {
+        segments.push({
+          type: 'cta',
+          text: ctaText,
+          prompt: `Subscribe and like button, YouTube UI, happy characters waving goodbye, vibrant children storybook illustration`
+        });
+      }
+    }
+    
+    // Minimum segments fallback just in case script parsing failed entirely
+    if (segments.length === 0) {
+       segments.push({
+         type: 'fallback',
+         text: script.title,
+         prompt: `${script.title}, vibrant children storybook illustration`
+       });
+    }
+    
+    return segments;
   }
 
   // Fallback simulation methods

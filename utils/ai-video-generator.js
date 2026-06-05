@@ -69,21 +69,29 @@ class AIVideoGenerator {
   async generateTTSAudio(text, outputPath) {
     this.logger.info('Generating TTS audio...');
     
-    try {
-      // Try ElevenLabs first (higher quality)
-      if (this.elevenLabsApiKey && this.elevenLabsVoiceId) {
+    // Try ElevenLabs first (higher quality)
+    if (this.elevenLabsApiKey && this.elevenLabsVoiceId) {
+      try {
         return await this.generateElevenLabsTTS(text, outputPath);
+      } catch (e) {
+        this.logger.warn(`ElevenLabs TTS failed (${e.message}), falling back to OpenAI...`);
       }
-      
-      // Fallback to OpenAI TTS
-      if (this.openai) {
+    }
+    
+    // Fallback to OpenAI TTS
+    if (this.openai) {
+      try {
         return await this.generateOpenAITTS(text, outputPath);
+      } catch (e) {
+        this.logger.warn(`OpenAI TTS failed (${e.message}), falling back to Edge TTS...`);
       }
-      
-      // Fallback to Free Microsoft Edge Neural TTS
+    }
+    
+    // Fallback to Free Microsoft Edge Neural TTS
+    try {
       return await this.generateMsEdgeTTS(text, outputPath);
     } catch (error) {
-      this.logger.error('TTS generation failed:', error);
+      this.logger.error('All TTS generation methods failed:', error);
       throw error;
     }
   }
@@ -172,8 +180,8 @@ class AIVideoGenerator {
     return outputPath;
   }
 
-  async generateVisualAssets(prompt, style = "ethereal", count = 1, imageProvider = "gemini", imageModel = "imagen-4.0-generate-001") {
-    this.logger.info(`Generating ${count} visual assets with style: ${style}`);
+  async generateVisualAssets(prompt, style = "ethereal", count = 1, imageProvider = "gemini", imageModel = "imagen-4.0-generate-001", isShort = false) {
+    this.logger.info(`Generating ${count} visual assets with style: ${style} (isShort: ${isShort})`);
     
     try {
       if (!this.openai && !this.gemini) {
@@ -188,7 +196,7 @@ class AIVideoGenerator {
           model: imageModel,
           prompt: enhancedPrompt,
           n: count,
-          size: "1792x1024", // 16:9 aspect ratio for video
+          size: isShort ? "1024x1792" : "1792x1024",
           quality: "hd",
           style: "natural"
         });
@@ -212,7 +220,7 @@ class AIVideoGenerator {
         const enhancedText = geminiResult.response.text().trim().replace(/["']/g, '');
         this.logger.info(`Gemini enhanced prompt: "${enhancedText}"`);
         
-        const finalPrompt = `${enhancedText}, cute children's book cartoon style, vector illustration, vibrant colors, highly detailed, 16:9 aspect ratio`;
+        const finalPrompt = `${enhancedPrompt}, cute children's book cartoon style, vector illustration, vibrant colors, highly detailed, ${isShort ? '9:16' : '16:9'} aspect ratio`;
         const localPaths = [];
         
         for (let i = 0; i < count; i++) {
@@ -256,7 +264,7 @@ class AIVideoGenerator {
                 url,
                 {
                   instances: [{ prompt: finalPrompt }],
-                  parameters: { sampleCount: 1, aspectRatio: "16:9" }
+                  parameters: { sampleCount: 1, aspectRatio: isShort ? "9:16" : "16:9" }
                 },
                 { headers: { 'Content-Type': 'application/json' } }
               );
@@ -266,7 +274,7 @@ class AIVideoGenerator {
             }
           } catch (apiError) {
             this.logger.warn(`API Image generation failed (${imageProvider}), falling back to pollinations.ai: ${apiError.message}`);
-            const fallbackUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt)}?width=1280&height=720&nologo=true&seed=${Math.floor(Math.random() * 100000)}`;
+            const fallbackUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt)}?width=${isShort ? 720 : 1280}&height=${isShort ? 1280 : 720}&nologo=true&seed=${Math.floor(Math.random() * 100000)}`;
             await this.downloadImage(fallbackUrl, imagePath);
           }
           
@@ -332,7 +340,7 @@ class AIVideoGenerator {
     }
   }
 
-  async generateVideo(script, visualAssets, audioPath, outputPath, videoFormat = 'slideshow') {
+  async generateVideo(script, visualAssets, audioPath, outputPath, videoFormat = 'slideshow', segments = null) {
     this.logger.info(`Generating video from assets... Format: ${videoFormat}`);
     
     try {
@@ -346,7 +354,7 @@ class AIVideoGenerator {
       }
       
       // Use reliable FFmpeg slideshow (no Playwright needed)
-      return await this.generateFFmpegSlideshow(script, visualAssets, audioPath, outputPath);
+      return await this.generateFFmpegSlideshow(script, visualAssets, audioPath, outputPath, segments);
     } catch (error) {
       this.logger.error('Video generation failed:', error);
       return await this.simulateVideoGeneration(script, visualAssets, audioPath, outputPath);
@@ -381,147 +389,179 @@ class AIVideoGenerator {
     return outputPath;
   }
 
-  async generateFFmpegSlideshow(script, visualAssets, audioPath, outputPath) {
+  async generateFFmpegSlideshow(script, visualAssets, audioPath, outputPath, segments = null) {
     this.logger.info('Creating FFmpeg slideshow video with AI illustrations...');
-
-    // Filter to only real image files (not .info simulation files)
-    const realImages = (visualAssets || []).filter(p => {
-      return p && typeof p === 'string' && !p.endsWith('.info') && standardFs.existsSync(p);
-    });
-
-    if (realImages.length === 0) {
-      this.logger.warn('No real image assets found, creating text-only slideshow');
-      return await this.generateTextOnlySlideshow(script, audioPath, outputPath);
-    }
 
     const framesDir = path.join(path.dirname(outputPath), `frames_${Date.now()}`);
     await fs.mkdir(framesDir, { recursive: true });
 
     try {
-      // Build slide list: each image gets equal duration
-      let totalDuration = this.calculateScriptDuration(script);
+      const isShort = script.metadata?.strategy?.videoType === 'short';
+      const targetW = isShort ? 720 : 1280;
+      const targetH = isShort ? 1280 : 720;
+      const fps = 25;
       
-      const hasAudio = audioPath && standardFs.existsSync(audioPath);
-      
-      if (hasAudio) {
-        try {
-          // Probe actual audio duration to prevent premature cutoff with -shortest
-          const probeCommand = `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${audioPath}"`;
-          const { stdout } = await execAsync(probeCommand);
-          const probedDuration = parseFloat(stdout.trim());
-          if (!isNaN(probedDuration) && probedDuration > 0) {
-            totalDuration = probedDuration;
-            this.logger.info(`Probed exact audio duration: ${totalDuration}s`);
-          }
-        } catch (e) {
-          this.logger.warn(`Failed to probe audio duration, falling back to estimate. Error: ${e.message}`);
-        }
-      }
-      
-      // Use Math.ceil to ensure visual is slightly longer than audio, so -shortest cuts perfectly at audio end
-      const slideDuration = Math.max(3, Math.ceil(totalDuration / realImages.length));
-      // Step 1: For each image, create a video clip with Ken Burns zoom+pan effect
       const clipPaths = [];
-      const sections = (script.mainContent && script.mainContent.sections) || [];
       const sfxInputs = [];
-
-      for (let i = 0; i < realImages.length; i++) {
-        const imgPath = realImages[i];
+      let totalVideoDuration = 0;
+      let silentVideoPath = path.join(framesDir, 'silent_video.mp4');
+      
+      if (segments && segments.length > 0) {
+        this.logger.info('Using per-segment perfect synchronization logic');
         
-        // Check for SFX
-        if (sections[i] && sections[i].sfx_keywords) {
-           const sfxPath = await this.getSfxFile(sections[i].sfx_keywords);
-           if (sfxPath) {
-              sfxInputs.push({
-                 path: sfxPath,
-                 delayMs: i * slideDuration * 1000
-              });
-              this.logger.info(`Assigned SFX ${path.basename(sfxPath)} for section ${i} at delay ${i * slideDuration}s`);
-           }
+        for (let i = 0; i < segments.length; i++) {
+          const seg = segments[i];
+          const imgPath = seg.imagePath || visualAssets[Math.min(i, visualAssets.length - 1)];
+          if (!imgPath || !standardFs.existsSync(imgPath)) continue;
+          
+          let slideDuration = 4; // minimum fallback
+          if (seg.audioPath && standardFs.existsSync(seg.audioPath)) {
+            try {
+              const probeCmd = `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${seg.audioPath}"`;
+              const { stdout } = await execAsync(probeCmd);
+              const probed = parseFloat(stdout.trim());
+              if (!isNaN(probed) && probed > 0) {
+                slideDuration = probed + 0.3; // exact match + small padding
+              }
+            } catch (e) {
+               this.logger.warn(`Failed to probe audio duration for segment ${i}`);
+            }
+          }
+          
+          const totalFrames = slideDuration * fps;
+          const clipPath = path.join(framesDir, `clip_${i}.mp4`);
+          const safeCmd = `ffmpeg -y -loop 1 -i "${imgPath}" -vf "scale=${targetW}:${targetH}:force_original_aspect_ratio=decrease,pad=${targetW}:${targetH}:(ow-iw)/2:(oh-ih)/2,zoompan=z='min(zoom+0.001,1.08)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${totalFrames}:s=${targetW}x${targetH}:fps=${fps}" -t ${slideDuration} -c:v libx264 -pix_fmt yuv420p -preset fast -r ${fps} "${clipPath}"`;
+          await execAsync(safeCmd);
+          
+          const avClipPath = path.join(framesDir, `avclip_${i}.mp4`);
+          if (seg.audioPath && standardFs.existsSync(seg.audioPath)) {
+             await execAsync(`ffmpeg -y -i "${clipPath}" -i "${seg.audioPath}" -c:v copy -c:a aac -shortest "${avClipPath}"`);
+          } else {
+             await execAsync(`ffmpeg -y -i "${clipPath}" -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -c:v copy -c:a aac -shortest "${avClipPath}"`);
+          }
+          clipPaths.push(avClipPath);
+          
+          if (seg.sfx_keywords) {
+             const sfxPath = await this.getSfxFile(seg.sfx_keywords);
+             if (sfxPath) {
+                sfxInputs.push({ path: sfxPath, delayMs: totalVideoDuration * 1000 });
+             }
+          }
+          totalVideoDuration += slideDuration;
+          this.logger.info(`Created synchronized clip ${i + 1}/${segments.length} (${slideDuration.toFixed(1)}s)`);
         }
         
-        const clipPath = path.join(framesDir, `clip_${i}.mp4`);
-        const fps = 25;
-        const totalFrames = slideDuration * fps;
-
-        // Simpler, more reliable approach: scale image and apply zoompan
-        const safeCmd = `ffmpeg -y -loop 1 -i "${imgPath}" -vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,zoompan=z='min(zoom+0.001,1.08)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${totalFrames}:s=1280x720:fps=${fps}" -t ${slideDuration} -c:v libx264 -pix_fmt yuv420p -preset fast -r ${fps} "${clipPath}"`;
-
-        await execAsync(safeCmd);
-        clipPaths.push(clipPath);
-        this.logger.info(`Created clip ${i + 1}/${realImages.length}`);
+        // Concat AV clips directly
+        const concatListPath = path.join(framesDir, 'concat_list.txt');
+        const listContent = clipPaths.map(p => `file '${path.resolve(p)}'`).join('\n');
+        await fs.writeFile(concatListPath, listContent);
+        
+        const mergedAVPath = path.join(framesDir, 'merged_av.mp4');
+        await execAsync(`ffmpeg -y -f concat -safe 0 -i "${concatListPath}" -c copy "${mergedAVPath}"`);
+        
+        // We will process this merged AV for BGM and SFX
+        silentVideoPath = mergedAVPath; // reuse variable name for next step
+        
+      } else {
+        this.logger.info('Using legacy monolithic synchronization logic');
+        const realImages = (visualAssets || []).filter(p => p && typeof p === 'string' && !p.endsWith('.info') && standardFs.existsSync(p));
+        if (realImages.length === 0) return await this.generateTextOnlySlideshow(script, audioPath, outputPath);
+        
+        let totalDuration = this.calculateScriptDuration(script);
+        if (audioPath && standardFs.existsSync(audioPath)) {
+          try {
+            const probeCommand = `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${audioPath}"`;
+            const { stdout } = await execAsync(probeCommand);
+            const probedDuration = parseFloat(stdout.trim());
+            if (!isNaN(probedDuration) && probedDuration > 0) totalDuration = probedDuration;
+          } catch (e) {}
+        }
+        
+        const slideDuration = Math.max(3, Math.ceil(totalDuration / realImages.length));
+        for (let i = 0; i < realImages.length; i++) {
+          const totalFrames = slideDuration * fps;
+          const clipPath = path.join(framesDir, `clip_${i}.mp4`);
+          const safeCmd = `ffmpeg -y -loop 1 -i "${realImages[i]}" -vf "scale=${targetW}:${targetH}:force_original_aspect_ratio=decrease,pad=${targetW}:${targetH}:(ow-iw)/2:(oh-ih)/2,zoompan=z='min(zoom+0.001,1.08)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${totalFrames}:s=${targetW}x${targetH}:fps=${fps}" -t ${slideDuration} -c:v libx264 -pix_fmt yuv420p -preset fast -r ${fps} "${clipPath}"`;
+          await execAsync(safeCmd);
+          clipPaths.push(clipPath);
+        }
+        
+        const concatListPath = path.join(framesDir, 'concat_list.txt');
+        await fs.writeFile(concatListPath, clipPaths.map(p => `file '${path.resolve(p)}'`).join('\n'));
+        await execAsync(`ffmpeg -y -f concat -safe 0 -i "${concatListPath}" -c copy "${silentVideoPath}"`);
       }
 
-      // Step 2: Concatenate all clips into one silent video
-      const concatListPath = path.join(framesDir, 'concat_list.txt');
-      const listContent = clipPaths.map(p => `file '${path.resolve(p)}'`).join('\n');
-      await fs.writeFile(concatListPath, listContent);
-
-      const silentVideoPath = path.join(framesDir, 'silent_video.mp4');
-      await execAsync(`ffmpeg -y -f concat -safe 0 -i "${concatListPath}" -c copy "${silentVideoPath}"`);
-
-      // Step 3: Add audio track (TTS narration)
-
-
-      if (hasAudio) {
-        let bgmCommand = '';
-        let hasBgm = false;
-        let randomBgm = '';
-        
-        try {
-          const bgmDir = path.join(__dirname, '..', 'assets', 'bgm');
-          const bgmFiles = await fs.readdir(bgmDir).catch(() => []);
-          const validBgm = bgmFiles.filter(f => f.endsWith('.mp3') || f.endsWith('.wav'));
-          
-          if (validBgm.length > 0) {
-            randomBgm = path.join(bgmDir, validBgm[Math.floor(Math.random() * validBgm.length)]);
-            hasBgm = true;
-          }
-        } catch (e) {
-          this.logger.warn(`Failed to process BGM: ${e.message}`);
+      // Add BGM & SFX
+      let bgmCommand = '';
+      let hasBgm = false;
+      let randomBgm = '';
+      try {
+        const bgmDir = path.join(__dirname, '..', 'assets', 'bgm');
+        const bgmFiles = await fs.readdir(bgmDir).catch(() => []);
+        const validBgm = bgmFiles.filter(f => f.endsWith('.mp3') || f.endsWith('.wav'));
+        if (validBgm.length > 0) {
+          randomBgm = path.join(bgmDir, validBgm[Math.floor(Math.random() * validBgm.length)]);
+          hasBgm = true;
         }
-        
-        // Build filter complex for dynamic audio mixing
-        let inputs = ` -i "${silentVideoPath}" -i "${audioPath}"`;
-        if (hasBgm) inputs += ` -stream_loop -1 -i "${randomBgm}"`;
-        
-        sfxInputs.forEach(sfx => {
-           inputs += ` -i "${sfx.path}"`;
-        });
-        
-        let filterComplex = `[1:a]volume=1.0[a1];`;
-        let amixInputs = '[a1]';
-        let mixCount = 1;
-        let inputIndex = 1; // 0 is video, 1 is TTS
-        
-        if (hasBgm) {
-           inputIndex++;
-           filterComplex += `[${inputIndex}:a]volume=0.15[a2];`;
-           amixInputs += '[a2]';
-           mixCount++;
-        }
-        
-        sfxInputs.forEach((sfx, index) => {
-           inputIndex++;
-           const sfxLabel = `sfx${index}`;
-           filterComplex += `[${inputIndex}:a]adelay=${sfx.delayMs}|${sfx.delayMs},volume=0.8[${sfxLabel}];`;
-           amixInputs += `[${sfxLabel}]`;
-           mixCount++;
-        });
-        
-        filterComplex += `${amixInputs}amix=inputs=${mixCount}:duration=first:dropout_transition=2[a]`;
-        
-        bgmCommand = `ffmpeg -y${inputs} -filter_complex "${filterComplex}" -map 0:v -map "[a]" -c:v copy -c:a aac -shortest "${outputPath}"`;
-        
-        this.logger.info(`Mixing TTS with ${hasBgm ? 'BGM' : 'no BGM'} and ${sfxInputs.length} SFX tracks`);
-        
-        if (bgmCommand) {
-          await execAsync(bgmCommand);
-        }
-        this.logger.info('Audio track merged into video');
+      } catch (e) {}
+      
+      const isSegmented = segments && segments.length > 0;
+      
+      let inputs = ` -i "${silentVideoPath}"`;
+      if (!isSegmented && audioPath && standardFs.existsSync(audioPath)) {
+         inputs += ` -i "${audioPath}"`; // Legacy: add monolithic audio
+      }
+      if (hasBgm) inputs += ` -stream_loop -1 -i "${randomBgm}"`;
+      
+      sfxInputs.forEach(sfx => inputs += ` -i "${sfx.path}"`);
+      
+      let filterComplex = '';
+      let amixInputs = '';
+      let mixCount = 0;
+      let inputIndex = 0; // 0 is always video
+      
+      if (isSegmented) {
+         // Video already has audio stream from segments
+         filterComplex += `[0:a]volume=1.0[a_base];`;
+         amixInputs += '[a_base]';
+         mixCount++;
+      } else if (audioPath && standardFs.existsSync(audioPath)) {
+         inputIndex++; // 1 is TTS audio
+         filterComplex += `[${inputIndex}:a]volume=1.0[a_base];`;
+         amixInputs += '[a_base]';
+         mixCount++;
+      }
+      
+      if (hasBgm) {
+         inputIndex++;
+         filterComplex += `[${inputIndex}:a]volume=0.15[a_bgm];`;
+         amixInputs += '[a_bgm]';
+         mixCount++;
+      }
+      
+      sfxInputs.forEach((sfx, index) => {
+         inputIndex++;
+         const sfxLabel = `sfx${index}`;
+         filterComplex += `[${inputIndex}:a]adelay=${sfx.delayMs}|${sfx.delayMs},volume=0.8[${sfxLabel}];`;
+         amixInputs += `[${sfxLabel}]`;
+         mixCount++;
+      });
+      
+      if (mixCount > 0) {
+         filterComplex += `${amixInputs}amix=inputs=${mixCount}:duration=first:dropout_transition=2[a]`;
+         bgmCommand = `ffmpeg -y${inputs} -filter_complex "${filterComplex}" -map 0:v -map "[a]" -c:v copy -c:a aac -shortest "${outputPath}"`;
+      } else if (isSegmented || (audioPath && standardFs.existsSync(audioPath))) {
+         // Has audio stream natively from segments or monolithic TTS, just copy
+         bgmCommand = `ffmpeg -y${inputs} -c:v copy -c:a copy "${outputPath}"`;
       } else {
-        await fs.copyFile(silentVideoPath, outputPath);
-        this.logger.warn('No audio file found, video exported without audio');
+         // Completely silent video
+         await fs.copyFile(silentVideoPath, outputPath);
+         this.logger.warn('No audio file found, video exported without audio');
+      }
+      
+      this.logger.info(`Mixing audio with ${hasBgm ? 'BGM' : 'no BGM'} and ${sfxInputs.length} SFX tracks`);
+      if (bgmCommand) {
+         await execAsync(bgmCommand);
       }
 
       // Cleanup temp frames directory
@@ -556,7 +596,10 @@ class AIVideoGenerator {
       const fps = 25;
       const frames = slideDuration * fps;
 
-      const cmd = `ffmpeg -y -f lavfi -i "color=c=${color}:size=1280x720:rate=${fps}" -vf "drawtext=text='${title}':fontcolor=white:fontsize=56:x=(w-text_w)/2:y=(h-text_h)/2:box=1:boxcolor=black@0.3:boxborderw=20" -t ${slideDuration} -c:v libx264 -pix_fmt yuv420p -preset fast "${clipPath}"`;
+      const isShort = script.metadata?.strategy?.videoType === 'short';
+      const targetW = isShort ? 720 : 1280;
+      const targetH = isShort ? 1280 : 720;
+      const cmd = `ffmpeg -y -f lavfi -i "color=c=${color}:size=${targetW}x${targetH}:rate=${fps}" -vf "drawtext=text='${title}':fontcolor=white:fontsize=56:x=(w-text_w)/2:y=(h-text_h)/2:box=1:boxcolor=black@0.3:boxborderw=20" -t ${slideDuration} -c:v libx264 -pix_fmt yuv420p -preset fast "${clipPath}"`;
       await execAsync(cmd);
       clipPaths.push(clipPath);
     }

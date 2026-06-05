@@ -465,7 +465,7 @@ class Database {
     const rows = await this.getAllRows(
       `SELECT * FROM publish_schedule 
        WHERE status IN ('scheduled', 'paused') 
-       ORDER BY publish_time ASC`
+       ORDER BY publish_time ASC, created_at ASC`
     );
     
     return rows.map(row => ({
@@ -488,7 +488,7 @@ class Database {
     const rows = await this.getAllRows(
       `SELECT * FROM publish_schedule 
        WHERE publish_time BETWEEN datetime('now') AND datetime(?)
-       ORDER BY publish_time ASC`,
+       ORDER BY publish_time ASC, created_at ASC`,
       [endDate.toISOString()]
     );
     
@@ -515,7 +515,7 @@ class Database {
            WHEN status = 'published' THEN 3
            ELSE 4 
          END, 
-         publish_time DESC`
+         publish_time DESC, created_at DESC`
     );
     
     return rows.map(row => ({

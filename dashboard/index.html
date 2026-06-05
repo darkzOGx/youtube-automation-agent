@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ethereal Dreamscript - YouTube Automation Dashboard</title>
+    <title>Kids Story AI - YouTube Automation</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐈</text></svg>">
     <!-- Google Fonts Outfit -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -747,6 +748,20 @@
             
             <div style="text-align: center; display: flex; justify-content: center; margin-top: 15px;">
                 <div style="display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.05); padding: 10px 20px; border-radius: 12px;">
+                    <label for="video-format" style="color: #94a3b8; font-size: 0.8em; margin-right: 8px;">Video Format:</label>
+                    <select id="video-format" style="background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 6px 12px; border-radius: 6px; font-family: 'Outfit', sans-serif; font-size: 0.85em;">
+                        <option value="slideshow">Ken Burns Slideshow</option>
+                        <option value="narrative">Narrative Story</option>
+                        <option value="educational">Educational Video</option>
+                        <option value="documentary">Mini Documentary</option>
+                    </select>
+
+                    <label for="video-type" style="color: #94a3b8; font-size: 0.8em; margin-left: 16px; margin-right: 8px;">Video Type:</label>
+                    <select id="video-type" style="background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 6px 12px; border-radius: 6px; font-family: 'Outfit', sans-serif; font-size: 0.85em;">
+                        <option value="long">Long-form (16:9)</option>
+                        <option value="short">YouTube Shorts (9:16)</option>
+                    </select>
+
                     <label for="image-model-provider" style="font-weight: 500; color: #a78bfa; font-size: 0.9em;">Image Generator:</label>
                     <select id="image-model-provider" class="form-control" style="width: auto; background: rgba(0,0,0,0.2); border: 1px solid rgba(139, 92, 246, 0.3); color: white; padding: 6px 12px; border-radius: 6px; font-size: 0.9em;" onchange="updateImageModelList()">
                         <option value="gemini">Google Gemini</option>
@@ -756,9 +771,9 @@
                     
                     <label for="image-model-name" style="font-weight: 500; color: #a78bfa; margin-left: 10px; font-size: 0.9em;">Model:</label>
                     <select id="image-model-name" class="form-control" style="width: auto; background: rgba(0,0,0,0.2); border: 1px solid rgba(139, 92, 246, 0.3); color: white; padding: 6px 12px; border-radius: 6px; font-size: 0.9em;">
-                        <option value="imagen-4.0-generate-001">Imagen 4.0</option>
-                        <option value="imagen-3.0-generate-002">Imagen 3.0 (Best)</option>
-                        <option value="imagen-3.0-fast-generate-001">Imagen 3.0 Fast (Cheaper)</option>
+                        <option value="imagen-4.0-fast-generate-001">Google Imagen 4 Fast</option>
+                        <option value="google/gemini-2.5-flash-image">Gemini 2.5 Flash Image</option>
+                        <option value="imagen-4.0-generate-001">Imagen 4</option>
                     </select>
 
                     <label for="video-format" style="font-weight: 500; color: #a78bfa; margin-left: 10px; font-size: 0.9em;">Video Format:</label>
@@ -850,7 +865,10 @@
 
             <!-- YouTube Channel Selector Card -->
             <div class="dashboard-card glass-panel channel-selector-card">
-                <h2><span class="icon">📺</span> YouTube Channel <span style="font-size:0.65em; color:#34d399; background:rgba(52,211,153,0.1); padding:3px 10px; border-radius:20px; vertical-align:middle;">Upload Destination</span></h2>
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.06); margin-bottom: 20px; padding-bottom: 12px;">
+                    <h2 style="border-bottom: none; margin-bottom: 0; padding-bottom: 0;"><span class="icon">📺</span> YouTube Channel <span style="font-size:0.65em; color:#34d399; background:rgba(52,211,153,0.1); padding:3px 10px; border-radius:20px; vertical-align:middle;">Upload Destination</span></h2>
+                    <button onclick="loadChannels(true)" class="btn btn-sm btn-outline" style="border-radius: 8px; padding: 4px 10px; font-size: 0.8em; margin: 0;">🔄 Refresh</button>
+                </div>
                 <div class="card-content">
                     <p style="color:#94a3b8; font-size:0.9em; margin-bottom:16px;">Select which YouTube channel videos will be uploaded to. Currently uploading to: <strong id="current-channel-name" style="color:#34d399;">Loading...</strong></p>
                     <div id="channel-list" class="channel-list loading">Loading channels from your Google account...</div>
@@ -860,7 +878,94 @@
             </div>
 
 
-            <!-- System Overview Card -->
+            <!-- Voice & TTS Engine Settings Card -->
+            <div class="dashboard-card glass-panel" id="tts-settings-card">
+                <h2><span class="icon">🎙️</span> Voice & TTS Engine <span id="tts-active-badge" style="font-size:0.6em; color:#34d399; background:rgba(52,211,153,0.1); padding:3px 10px; border-radius:20px; vertical-align:middle;">Loading...</span></h2>
+                <div class="card-content">
+                    <p style="color:#94a3b8; font-size:0.88em; margin-bottom:18px;">Configure the text-to-speech engine used for narration. Changes are saved instantly — no restart required.</p>
+                    
+                    <!-- Provider & Voice Row -->
+                    <div style="display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 16px;">
+                        <div style="flex: 1; min-width: 200px;">
+                            <label for="tts-provider-select" style="display:block; font-weight:500; color:#a78bfa; font-size:0.85em; margin-bottom:6px;">TTS Provider</label>
+                            <select id="tts-provider-select" class="form-control" onchange="updateTTSVoiceOptions()" style="width:100%; background:rgba(0,0,0,0.3); border:1px solid rgba(139,92,246,0.3); color:white; padding:10px 14px; border-radius:10px; font-size:0.92em; font-family:'Outfit',sans-serif; cursor:pointer; transition:border-color 0.2s;">
+                                <option value="edge_tts">🆓 Microsoft Edge Neural TTS (Free)</option>
+                                <option value="openai">⭐ OpenAI TTS (Recommended)</option>
+                                <option value="elevenlabs">💎 ElevenLabs (Premium Quality)</option>
+                                <option value="local">🖥️ Local/Custom API Server</option>
+                            </select>
+                        </div>
+                        <div style="flex: 1; min-width: 200px;">
+                            <label for="tts-voice-select" style="display:block; font-weight:500; color:#a78bfa; font-size:0.85em; margin-bottom:6px;">Voice</label>
+                            <select id="tts-voice-select" class="form-control" style="width:100%; background:rgba(0,0,0,0.3); border:1px solid rgba(139,92,246,0.3); color:white; padding:10px 14px; border-radius:10px; font-size:0.92em; font-family:'Outfit',sans-serif; cursor:pointer; transition:border-color 0.2s;">
+                                <option value="id-ID-GadisNeural">Gadis Neural (Perempuan 🇮🇩)</option>
+                                <option value="id-ID-ArdiNeural">Ardi Neural (Laki-laki 🇮🇩)</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- ElevenLabs Config (conditional) -->
+                    <div id="tts-elevenlabs-config" style="display:none; background:rgba(139,92,246,0.06); border:1px solid rgba(139,92,246,0.15); border-radius:12px; padding:16px; margin-bottom:16px;">
+                        <p style="color:#c084fc; font-size:0.82em; font-weight:500; margin-bottom:12px;">💎 ElevenLabs Configuration</p>
+                        <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                            <div style="flex:1; min-width:180px;">
+                                <label for="tts-elevenlabs-key" style="display:block; font-size:0.8em; color:#94a3b8; margin-bottom:4px;">API Key</label>
+                                <input type="password" id="tts-elevenlabs-key" placeholder="xi-..." style="width:100%; background:rgba(0,0,0,0.3); border:1px solid rgba(139,92,246,0.2); color:white; padding:8px 12px; border-radius:8px; font-size:0.88em; font-family:'Outfit',sans-serif;">
+                            </div>
+                            <div style="flex:1; min-width:180px;">
+                                <label for="tts-elevenlabs-voice-id" style="display:block; font-size:0.8em; color:#94a3b8; margin-bottom:4px;">Voice ID</label>
+                                <input type="text" id="tts-elevenlabs-voice-id" placeholder="Enter Voice ID from ElevenLabs" style="width:100%; background:rgba(0,0,0,0.3); border:1px solid rgba(139,92,246,0.2); color:white; padding:8px 12px; border-radius:8px; font-size:0.88em; font-family:'Outfit',sans-serif;">
+                            </div>
+                        </div>
+                        <div style="margin-top: 12px;">
+                            <label for="tts-elevenlabs-model" style="display:block; font-size:0.8em; color:#94a3b8; margin-bottom:4px;">Model Selection</label>
+                            <select id="tts-elevenlabs-model" style="width:100%; background:rgba(0,0,0,0.3); border:1px solid rgba(139,92,246,0.2); color:white; padding:8px 12px; border-radius:8px; font-size:0.88em; font-family:'Outfit',sans-serif;">
+                                <option value="eleven_multilingual_v2">Multilingual v2 ($0.10/1k - Best Emotion & Whisper)</option>
+                                <option value="eleven_turbo_v2_5">Turbo v2.5 ($0.05/1k - Fast & Cheap, 32 Languages)</option>
+                                <option value="eleven_v3">Multilingual v3 ($0.10/1k - Newest Model)</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- OpenAI Config (conditional) -->
+                    <div id="tts-openai-config" style="display:none; background:rgba(52,211,153,0.06); border:1px solid rgba(52,211,153,0.15); border-radius:12px; padding:16px; margin-bottom:16px;">
+                        <p style="color:#34d399; font-size:0.82em; font-weight:500; margin-bottom:8px;">⭐ OpenAI TTS Configuration</p>
+                        <div style="margin-bottom: 12px;">
+                            <label for="tts-openai-key" style="display:block; font-size:0.8em; color:#94a3b8; margin-bottom:4px;">OpenAI API Key</label>
+                            <input type="password" id="tts-openai-key" placeholder="sk-..." style="width:100%; background:rgba(0,0,0,0.3); border:1px solid rgba(52,211,153,0.2); color:white; padding:8px 12px; border-radius:8px; font-size:0.88em; font-family:'Outfit',sans-serif;">
+                        </div>
+                        <label for="tts-openai-model" style="display:block; font-size:0.8em; color:#94a3b8; margin-bottom:4px;">Model Selection</label>
+                        <select id="tts-openai-model" style="width:100%; background:rgba(0,0,0,0.3); border:1px solid rgba(52,211,153,0.2); color:white; padding:8px 12px; border-radius:8px; font-size:0.88em; font-family:'Outfit',sans-serif;">
+                            <option value="tts-1-hd">tts-1-hd (High Quality)</option>
+                            <option value="tts-1">tts-1 (Fast & Cheap)</option>
+                            <option value="gpt-4o-mini-tts">gpt-4o-mini-tts</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Local API Config (conditional) -->
+                    <div id="tts-local-config" style="display:none; background:rgba(52,211,153,0.06); border:1px solid rgba(52,211,153,0.15); border-radius:12px; padding:16px; margin-bottom:16px;">
+                        <p style="color:#34d399; font-size:0.82em; font-weight:500; margin-bottom:8px;">🖥️ Local TTS Server URL</p>
+                        <p style="color:#64748b; font-size:0.78em; margin-bottom:10px;">For F5-TTS, XTTS v2, or CosyVoice. Use SSH tunnel for remote GPU: <code style="color:#a78bfa;">ssh -R 8000:localhost:8000 user@server</code></p>
+                        <input type="url" id="tts-local-url" placeholder="http://localhost:8000" style="width:100%; background:rgba(0,0,0,0.3); border:1px solid rgba(52,211,153,0.2); color:white; padding:8px 12px; border-radius:8px; font-size:0.88em; font-family:'Outfit',sans-serif;">
+                    </div>
+                    
+                    <!-- Action Buttons -->
+                    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                        <button id="tts-test-btn" onclick="testTTSVoice()" class="btn" style="background:linear-gradient(135deg, #8b5cf6, #6366f1); padding:8px 20px; font-size:0.88em; border-radius:10px; border:none; color:white; font-weight:500; cursor:pointer; transition: all 0.2s;">🔊 Test Voice</button>
+                        <button id="tts-save-btn" onclick="saveTTSConfig()" class="btn" style="background:linear-gradient(135deg, #34d399, #059669); padding:8px 20px; font-size:0.88em; border-radius:10px; border:none; color:white; font-weight:500; cursor:pointer; transition: all 0.2s;">💾 Save Settings</button>
+                        <span id="tts-save-status" style="font-size:0.82em; color:#94a3b8; margin-left:6px;"></span>
+                    </div>
+                    
+                    <!-- Test Audio Player -->
+                    <div id="tts-test-player-container" style="display:none; margin-top:14px; background:rgba(0,0,0,0.2); border-radius:10px; padding:12px;">
+                        <p id="tts-test-info" style="font-size:0.8em; color:#94a3b8; margin-bottom:8px;"></p>
+                        <audio id="tts-test-audio" controls style="width:100%; border-radius:8px;"></audio>
+                    </div>
+                </div>
+            </div>
+
+
+
             <div class="dashboard-card glass-panel">
                 <h2><span class="icon">📈</span> System Overview</h2>
                 <div class="card-content">
@@ -1317,29 +1422,254 @@
             
             if (provider === 'gemini') {
                 modelSelect.innerHTML = `
-                    <option value="imagen-4.0-generate-001">Imagen 4.0</option>
-                    <option value="imagen-3.0-generate-002">Imagen 3.0 (Best)</option>
-                    <option value="imagen-3.0-fast-generate-001">Imagen 3.0 Fast (Cheaper)</option>
+                    <option value="imagen-4.0-fast-generate-001">Google Imagen 4 Fast</option>
+                    <option value="google/gemini-2.5-flash-image">Gemini 2.5 Flash Image</option>
+                    <option value="imagen-4.0-generate-001">Imagen 4</option>
                 `;
             } else if (provider === 'openai') {
                 modelSelect.innerHTML = `
-                    <option value="dall-e-3">DALL-E 3 (Best)</option>
-                    <option value="dall-e-2">DALL-E 2 (Cheaper)</option>
+                    <option value="gpt-image-1-mini">GPT Image 1 Mini</option>
+                    <option value="gpt-image-2">GPT Image 2</option>
                 `;
             } else if (provider === 'openrouter') {
                 modelSelect.innerHTML = `
-                    <option value="x-ai/grok-imagine-image-quality">xAI Grok (Image Quality)</option>
-                    <option value="bytedance-seed/seedream-4.5">ByteDance SeeDream 4.5</option>
+                    <option value="bytedance-seed/seedream-4.5">Bytedance Seedream</option>
+                    <option value="x-ai/grok-imagine-image-quality">Grok Imagine</option>
                 `;
             }
         }
         
+        // ─── TTS Settings Panel Functions ─────────────────────────────
+        
+        const ttsVoiceOptions = {
+            edge_tts: [
+                { value: 'id-ID-GadisNeural', label: 'Gadis Neural (Perempuan \ud83c\uddee\ud83c\udde9)' },
+                { value: 'id-ID-ArdiNeural', label: 'Ardi Neural (Laki-laki \ud83c\uddee\ud83c\udde9)' }
+            ],
+            openai: [
+                { value: 'nova', label: 'Nova (Warm, Friendly ⭐)' },
+                { value: 'marin', label: 'Marin' },
+                { value: 'cedar', label: 'Cedar' }
+            ],
+            elevenlabs: [],
+            local: []
+        };
+
+        async function loadTTSConfig() {
+            try {
+                const response = await fetch('/api/tts-config');
+                if (!response.ok) return;
+                const config = await response.json();
+                
+                const providerSelect = document.getElementById('tts-provider-select');
+                if (providerSelect && config.provider) {
+                    providerSelect.value = config.provider;
+                }
+                
+                updateTTSVoiceOptions();
+                
+                // Set current voice value after options are populated
+                const voiceSelect = document.getElementById('tts-voice-select');
+                if (voiceSelect && config.voice) {
+                    voiceSelect.value = config.voice;
+                }
+                
+                // Set local URL if present
+                const localUrlInput = document.getElementById('tts-local-url');
+                if (localUrlInput && config.localUrl) {
+                    localUrlInput.value = config.localUrl;
+                }
+                
+                // Set ElevenLabs fields if present
+                const elKeyInput = document.getElementById('tts-elevenlabs-key');
+                if (elKeyInput && config.hasElevenLabsKey) {
+                    elKeyInput.value = '********';
+                }
+                const elVoiceIdInput = document.getElementById('tts-elevenlabs-voice-id');
+                if (elVoiceIdInput && config.elevenLabsVoiceId) {
+                    elVoiceIdInput.value = config.elevenLabsVoiceId;
+                }
+                const elModelSelect = document.getElementById('tts-elevenlabs-model');
+                if (elModelSelect && config.elevenLabsModel) {
+                    elModelSelect.value = config.elevenLabsModel;
+                }
+                
+                // Set OpenAI fields if present
+                const openaiModelSelect = document.getElementById('tts-openai-model');
+                if (openaiModelSelect && config.openaiModel) {
+                    openaiModelSelect.value = config.openaiModel;
+                }
+                const openaiKeyInput = document.getElementById('tts-openai-key');
+                if (openaiKeyInput && config.hasOpenAiKey) {
+                    openaiKeyInput.value = '********';
+                }
+                
+                // Update active badge
+                const badge = document.getElementById('tts-active-badge');
+                if (badge) {
+                    const providerLabels = {
+                        edge_tts: '\ud83d\udfe2 Edge TTS (Free)',
+                        openai: '\ud83d\udfe2 OpenAI TTS',
+                        elevenlabs: '\ud83d\udfe2 ElevenLabs',
+                        local: '\ud83d\udfe2 Local API'
+                    };
+                    badge.textContent = providerLabels[config.provider] || config.provider;
+                    badge.style.color = config.available[config.provider] ? '#34d399' : '#f87171';
+                    badge.style.background = config.available[config.provider] 
+                        ? 'rgba(52,211,153,0.1)' 
+                        : 'rgba(248,113,113,0.1)';
+                }
+            } catch (err) {
+                const badge = document.getElementById('tts-active-badge');
+                if (badge) badge.textContent = '\u26a0\ufe0f Offline';
+            }
+        }
+
+        function updateTTSVoiceOptions() {
+            const provider = document.getElementById('tts-provider-select').value;
+            const voiceSelect = document.getElementById('tts-voice-select');
+            const elevenlabsConfig = document.getElementById('tts-elevenlabs-config');
+            const openaiConfig = document.getElementById('tts-openai-config');
+            const localConfig = document.getElementById('tts-local-config');
+            
+            // Show/hide conditional config panels
+            elevenlabsConfig.style.display = provider === 'elevenlabs' ? 'block' : 'none';
+            if (openaiConfig) openaiConfig.style.display = provider === 'openai' ? 'block' : 'none';
+            localConfig.style.display = provider === 'local' ? 'block' : 'none';
+            
+            // Populate voice options using DOM API (not innerHTML) for XSS safety
+            voiceSelect.replaceChildren();
+            
+            const options = ttsVoiceOptions[provider];
+            if (options && options.length > 0) {
+                voiceSelect.disabled = false;
+                options.forEach(opt => {
+                    const optEl = document.createElement('option');
+                    optEl.value = opt.value;
+                    optEl.textContent = opt.label;
+                    voiceSelect.appendChild(optEl);
+                });
+            } else {
+                voiceSelect.disabled = false;
+                const optEl = document.createElement('option');
+                optEl.value = 'default';
+                optEl.textContent = provider === 'elevenlabs' 
+                    ? 'Uses Voice ID below \u2193' 
+                    : 'Custom voice (enter in server config)';
+                voiceSelect.appendChild(optEl);
+            }
+        }
+
+        async function saveTTSConfig() {
+            const saveBtn = document.getElementById('tts-save-btn');
+            const statusEl = document.getElementById('tts-save-status');
+            saveBtn.disabled = true;
+            statusEl.textContent = 'Saving...';
+            statusEl.style.color = '#94a3b8';
+            
+            try {
+                const provider = document.getElementById('tts-provider-select').value;
+                const voice = document.getElementById('tts-voice-select').value;
+                
+                const body = { provider, voice };
+                
+                // Include ElevenLabs config if selected
+                if (provider === 'elevenlabs') {
+                    const keyVal = document.getElementById('tts-elevenlabs-key').value;
+                    if (keyVal && keyVal !== '********') {
+                        body.elevenLabsApiKey = keyVal;
+                    }
+                    body.elevenLabsVoiceId = document.getElementById('tts-elevenlabs-voice-id').value;
+                    body.elevenLabsModel = document.getElementById('tts-elevenlabs-model').value;
+                }
+                
+                // Include OpenAI config if selected
+                if (provider === 'openai') {
+                    const openaiKeyVal = document.getElementById('tts-openai-key')?.value;
+                    if (openaiKeyVal && openaiKeyVal !== '********') {
+                        body.openaiApiKey = openaiKeyVal;
+                    }
+                    const openaiModelEl = document.getElementById('tts-openai-model');
+                    if (openaiModelEl) {
+                        body.openaiModel = openaiModelEl.value;
+                    }
+                }
+                
+                // Include local URL if selected
+                if (provider === 'local') {
+                    body.localUrl = document.getElementById('tts-local-url').value;
+                }
+                
+                const response = await fetch('/api/tts-config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    statusEl.textContent = '\u2705 Saved successfully!';
+                    statusEl.style.color = '#34d399';
+                    loadTTSConfig(); // Refresh badge
+                } else {
+                    statusEl.textContent = '\u274c ' + (result.error || 'Save failed');
+                    statusEl.style.color = '#f87171';
+                }
+            } catch (err) {
+                statusEl.textContent = '\u274c Network error';
+                statusEl.style.color = '#f87171';
+            } finally {
+                saveBtn.disabled = false;
+                setTimeout(() => { statusEl.textContent = ''; }, 4000);
+            }
+        }
+
+        async function testTTSVoice() {
+            const testBtn = document.getElementById('tts-test-btn');
+            const playerContainer = document.getElementById('tts-test-player-container');
+            const audioEl = document.getElementById('tts-test-audio');
+            const infoEl = document.getElementById('tts-test-info');
+            
+            testBtn.disabled = true;
+            testBtn.textContent = '\u23f3 Generating...';
+            playerContainer.style.display = 'none';
+            
+            try {
+                // Save current config first so the test uses the selected provider
+                await saveTTSConfig();
+                
+                const response = await fetch('/api/tts-test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    audioEl.src = result.audioUrl;
+                    infoEl.textContent = 'Provider: ' + result.provider + ' | Voice: ' + result.voice;
+                    playerContainer.style.display = 'block';
+                    audioEl.play();
+                } else {
+                    infoEl.textContent = '\u274c Test failed: ' + (result.error || 'Unknown error');
+                    playerContainer.style.display = 'block';
+                }
+            } catch (err) {
+                infoEl.textContent = '\u274c Network error: Could not reach server';
+                playerContainer.style.display = 'block';
+            } finally {
+                testBtn.disabled = false;
+                testBtn.textContent = '\ud83d\udd0a Test Voice';
+            }
+        }
+
         async function triggerContentGeneration() {
             if (confirm('Generate content now? This will launch the background generation pipeline to compile a new story video.')) {
                 try {
                     const imageProvider = document.getElementById('image-model-provider').value;
                     const imageModel = document.getElementById('image-model-name').value;
                     const videoFormat = document.getElementById('video-format').value;
+                    const videoType = document.getElementById('video-type').value;
                     
                     const response = await fetch('/generate', {
                         method: 'POST',
@@ -1349,7 +1679,8 @@
                             style: 'story',
                             imageProvider: imageProvider,
                             imageModel: imageModel,
-                            videoFormat: videoFormat
+                            videoFormat: videoFormat,
+                            videoType: videoType
                         })
                     });
                     const result = await response.json();
@@ -1376,6 +1707,7 @@
         // Hide analytics and schedule by default on load
         document.addEventListener('DOMContentLoaded', () => {
             switchMainTab('dashboard');
+            loadTTSConfig();
         });
 
         function refreshDashboard() {
@@ -1387,6 +1719,7 @@
         
         // Load dashboard on page load
         loadDashboard();
+        loadTTSConfig();
 
         // Content Pipeline JS Logic
         let activePipelineTab = 'queue';
@@ -1417,12 +1750,18 @@
             renderPipeline();
         }
 
-        async function loadChannels() {
+        async function loadChannels(forceRefresh = false) {
             const channelListEl = document.getElementById('channel-list');
             const currentNameEl = document.getElementById('current-channel-name');
+            
+            if (forceRefresh) {
+                channelListEl.classList.add('loading');
+                channelListEl.innerHTML = 'Refreshing channels from YouTube...';
+            }
 
             try {
-                const response = await fetch('/youtube/channels');
+                const url = forceRefresh ? '/youtube/channels?forceRefresh=true' : '/youtube/channels';
+                const response = await fetch(url);
                 if (!response.ok) {
                     let errMsg = 'Check YouTube API credentials.';
                     try {
@@ -1614,8 +1953,22 @@
             if (publishedList) publishedList.classList.remove('loading');
             
             // Filter queue and published items
-            const queueItems = pipelineData.filter(item => item.status !== 'published');
-            const publishedItems = pipelineData.filter(item => item.status === 'published');
+            let queueItems = pipelineData.filter(item => item.status !== 'published');
+            let publishedItems = pipelineData.filter(item => item.status === 'published');
+            
+            // Sort queue items (Pipeline): Soonest to be published first (ASC)
+            queueItems.sort((a, b) => {
+                const dateA = new Date(a.publish_time || a.publishTime || a.created_at || a.createdAt).getTime();
+                const dateB = new Date(b.publish_time || b.publishTime || b.created_at || b.createdAt).getTime();
+                return dateA - dateB;
+            });
+
+            // Sort published items (History): Most recently published first (DESC)
+            publishedItems.sort((a, b) => {
+                const dateA = new Date(a.publish_time || a.publishTime || a.published_at || a.publishedAt || a.created_at || a.createdAt).getTime();
+                const dateB = new Date(b.publish_time || b.publishTime || b.published_at || b.publishedAt || b.created_at || b.createdAt).getTime();
+                return dateB - dateA;
+            });
             
             // Update dashboard metric cards
             const contentCountEl = document.getElementById('content-count');

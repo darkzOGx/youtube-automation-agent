@@ -12,11 +12,32 @@ class AnalyticsOptimizationAgent {
     this.apiCache = new Map();
   }
 
+  async executeWithFallback(operation) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (error.code === 403 && (error.message.toLowerCase().includes('quota') || error.message.toLowerCase().includes('exceeded'))) {
+        this.logger.warn('Quota exceeded on YouTube API. Attempting fallback...');
+        if (this.credentials.switchToNextYouTubeAuth()) {
+          const auth = this.credentials.getYouTubeAuth();
+          this.youtubeAnalytics = google.youtubeAnalytics({ version: 'v2', auth });
+          this.youtube = google.youtube({ version: 'v3', auth });
+          return await operation();
+        }
+      }
+      throw error;
+    }
+  }
+
   async initialize() {
     this.logger.info('Initializing Analytics & Optimization Agent...');
     await this.setupAnalyticsAPI();
     await this.loadHistoricalData();
     return true;
+  }
+
+  async queryAnalytics(params) {
+    return this.executeWithFallback(() => this.youtubeAnalytics.reports.query(params));
   }
 
   async setupAnalyticsAPI() {
@@ -94,10 +115,10 @@ class AnalyticsOptimizationAgent {
       if (Date.now() - cached.timestamp < 3600000) return cached.data; // 1 hour
     }
 
-    const response = await this.youtube.videos.list({
+    const response = await this.executeWithFallback(() => this.youtube.videos.list({
       part: 'snippet,statistics,contentDetails',
       id: videoId
-    });
+    }));
     
     if (!response.data.items.length) {
       throw new Error(`Video not found: ${videoId}`);
@@ -165,7 +186,7 @@ class AnalyticsOptimizationAgent {
   }
 
   async getViewsAnalytics(videoId, startDate, endDate) {
-    const response = await this.youtubeAnalytics.reports.query({
+    const response = await this.queryAnalytics({
       ids: 'channel==MINE',
       startDate,
       endDate,
@@ -183,7 +204,7 @@ class AnalyticsOptimizationAgent {
   }
 
   async getWatchTimeAnalytics(videoId, startDate, endDate) {
-    const response = await this.youtubeAnalytics.reports.query({
+    const response = await this.queryAnalytics({
       ids: 'channel==MINE',
       startDate,
       endDate,
@@ -204,7 +225,7 @@ class AnalyticsOptimizationAgent {
   async getDemographicsAnalytics(videoId, startDate, endDate) {
     try {
       const [ageResponse, genderResponse] = await Promise.all([
-        this.youtubeAnalytics.reports.query({
+        this.queryAnalytics({
           ids: 'channel==MINE',
           startDate,
           endDate,
@@ -212,7 +233,7 @@ class AnalyticsOptimizationAgent {
           dimensions: 'ageGroup',
           filters: `video==${videoId}`
         }),
-        this.youtubeAnalytics.reports.query({
+        this.queryAnalytics({
           ids: 'channel==MINE',
           startDate,
           endDate,
@@ -233,7 +254,7 @@ class AnalyticsOptimizationAgent {
   }
 
   async getTrafficSourcesAnalytics(videoId, startDate, endDate) {
-    const response = await this.youtubeAnalytics.reports.query({
+    const response = await this.queryAnalytics({
       ids: 'channel==MINE',
       startDate,
       endDate,
@@ -257,7 +278,7 @@ class AnalyticsOptimizationAgent {
   }
 
   async getDeviceAnalytics(videoId, startDate, endDate) {
-    const response = await this.youtubeAnalytics.reports.query({
+    const response = await this.queryAnalytics({
       ids: 'channel==MINE',
       startDate,
       endDate,
@@ -297,7 +318,7 @@ class AnalyticsOptimizationAgent {
   async analyzeThumbnailPerformance(videoId) {
     // Analyze thumbnail click-through rate and impressions
     try {
-      const response = await this.youtubeAnalytics.reports.query({
+      const response = await this.queryAnalytics({
         ids: 'channel==MINE',
         startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         endDate: new Date().toISOString().split('T')[0],
