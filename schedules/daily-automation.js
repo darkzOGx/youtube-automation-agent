@@ -459,8 +459,9 @@ class DailyAutomation {
   }
 
   async logAutomationEvent(eventType, status, data = {}) {
+    // created_at is populated by the column DEFAULT (CURRENT_TIMESTAMP).
     await this.db.executeQuery(
-      'INSERT INTO automation_events (event_type, status, data, created_at) VALUES (?, ?, ?, datetime("now"))',
+      'INSERT INTO automation_events (event_type, status, data) VALUES (?, ?, ?)',
       [eventType, status, JSON.stringify(data)]
     );
   }
@@ -503,7 +504,7 @@ class DailyAutomation {
 
     // Check scheduled tasks
     this.scheduledTasks.forEach((task, name) => {
-      health.scheduledTasks[name] = task.running;
+      health.scheduledTasks[name] = this.isTaskActive(task);
     });
 
     // Get system resources (simplified)
@@ -565,12 +566,21 @@ class DailyAutomation {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
+  // Compatible across node-cron v3 (task.running boolean) and v4 (task.getStatus()).
+  isTaskActive(task) {
+    if (task && typeof task.getStatus === 'function') {
+      const status = task.getStatus();
+      return status !== 'stopped' && status !== 'destroyed';
+    }
+    return !!(task && task.running);
+  }
+
   async getAutomationStatus() {
     return {
       enabled: this.isEnabled,
       scheduledTasks: Array.from(this.scheduledTasks.keys()).map(name => ({
         name,
-        running: this.scheduledTasks.get(name).running
+        running: this.isTaskActive(this.scheduledTasks.get(name))
       })),
       lastHealthCheck: this.lastHealthCheck,
       uptime: process.uptime()

@@ -4,6 +4,7 @@ const { google } = require('googleapis');
 const inquirer = require('inquirer');
 const chalk = require('chalk');
 const { Logger } = require('./logger');
+const { writeJsonSecure, readJsonSecure } = require('./secure-store');
 
 class CredentialManager {
   constructor() {
@@ -27,8 +28,7 @@ class CredentialManager {
 
   async loadCredentials() {
     try {
-      const data = await fs.readFile(this.credentialsPath, 'utf8');
-      this.credentials = JSON.parse(data);
+      this.credentials = await readJsonSecure(this.credentialsPath);
     } catch (error) {
       this.credentials = {};
     }
@@ -36,8 +36,7 @@ class CredentialManager {
 
   async loadTokens() {
     try {
-      const data = await fs.readFile(this.tokensPath, 'utf8');
-      this.tokens = JSON.parse(data);
+      this.tokens = await readJsonSecure(this.tokensPath);
     } catch (error) {
       this.tokens = {};
     }
@@ -45,12 +44,13 @@ class CredentialManager {
 
   async saveCredentials() {
     await fs.mkdir(path.dirname(this.credentialsPath), { recursive: true });
-    await fs.writeFile(this.credentialsPath, JSON.stringify(this.credentials, null, 2));
+    // Encrypted at rest when CREDENTIAL_KEY is set; otherwise written 0600.
+    await writeJsonSecure(this.credentialsPath, this.credentials, this.logger);
   }
 
   async saveTokens() {
     await fs.mkdir(path.dirname(this.tokensPath), { recursive: true });
-    await fs.writeFile(this.tokensPath, JSON.stringify(this.tokens, null, 2));
+    await writeJsonSecure(this.tokensPath, this.tokens, this.logger);
   }
 
   // YouTube API Authentication

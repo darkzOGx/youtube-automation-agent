@@ -1,6 +1,7 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs').promises;
+const crypto = require('crypto');
 const { Logger } = require('../utils/logger');
 
 class Database {
@@ -183,6 +184,15 @@ class Database {
         value TEXT NOT NULL,
         description TEXT,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )`,
+
+      // Automation Events (audit log for the scheduler)
+      `CREATE TABLE IF NOT EXISTS automation_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_type TEXT NOT NULL,
+        status TEXT NOT NULL,
+        data TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
       )`
     ];
 
@@ -538,7 +548,8 @@ class Database {
 
   // Utility methods
   generateId(prefix) {
-    return `${prefix}_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    // Use a cryptographically-strong suffix to avoid predictable/colliding ids.
+    return `${prefix}_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`;
   }
 
   async executeQuery(query, params = []) {

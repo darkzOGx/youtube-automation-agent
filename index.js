@@ -1,6 +1,12 @@
+require('dotenv').config();
 const express = require('express');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
 const { Logger } = require('./utils/logger');
+const { requireApiToken, sameOriginOnly } = require('./utils/security');
 const { Database } = require('./database/db');
 const { CredentialManager } = require('./utils/credential-manager');
 const { ContentStrategyAgent } = require('./agents/content-strategy-agent');
@@ -21,6 +27,34 @@ class YouTubeAutomationAgent {
     this.agents = {};
     this.app = express();
     this.isInitialized = false;
+    this.host = process.env.HOST || '127.0.0.1';
+    this.apiToken = this.resolveApiToken();
+  }
+
+  // Resolve the API token used to protect mutating endpoints. Prefer an
+  // explicitly configured token; otherwise generate one, persist it to a
+  // gitignored file, and surface it in the startup banner.
+  resolveApiToken() {
+    if (process.env.API_TOKEN && process.env.API_TOKEN.length >= 16) {
+      return process.env.API_TOKEN;
+    }
+    const tokenFile = path.join(__dirname, '.api-token');
+    try {
+      const existing = fs.readFileSync(tokenFile, 'utf8').trim();
+      if (existing.length >= 16) {
+        process.env.API_TOKEN = existing;
+        return existing;
+      }
+    } catch { /* no token file yet */ }
+
+    const token = crypto.randomBytes(24).toString('hex');
+    try {
+      fs.writeFileSync(tokenFile, token, { mode: 0o600 });
+    } catch (error) {
+      this.logger.warn('Could not persist API token file: ' + error.message);
+    }
+    process.env.API_TOKEN = token;
+    return token;
   }
 
   async initialize() {
@@ -85,14 +119,40 @@ class YouTubeAutomationAgent {
   }
 
   setupAPI() {
-    this.app.use(express.json());
+    // Security headers. CSP allows the dashboard's inline styles/handlers while
+    // still constraining external script/connect origins (defense-in-depth; the
+    // primary XSS fix is output-escaping in the dashboard itself).
+    this.app.use(helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'", "'unsafe-inline'"],
+          scriptSrcAttr: ["'unsafe-inline'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", 'data:'],
+          connectSrc: ["'self'"],
+        },
+      },
+    }));
+
+    // Cap request bodies to mitigate memory-exhaustion DoS.
+    this.app.use(express.json({ limit: '64kb' }));
+
+    // Global rate limit, with a stricter limit on the expensive generation route.
+    const globalLimiter = rateLimit({ windowMs: 60 * 1000, max: 120, standardHeaders: true, legacyHeaders: false });
+    const generateLimiter = rateLimit({ windowMs: 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false });
+    this.app.use(globalLimiter);
+
+    const requireAuth = requireApiToken(() => this.apiToken);
+    const originGuard = sameOriginOnly(() => (process.env.ALLOWED_HOSTS || '').split(',').map((h) => h.trim()).filter(Boolean));
+
     this.app.use(express.static(path.join(__dirname, 'dashboard')));
-    
+
     // Main dashboard route
     this.app.get('/', (req, res) => {
       res.sendFile(path.join(__dirname, 'dashboard', 'index.html'));
     });
-    
+
     // Health check
     this.app.get('/health', (req, res) => {
       res.json({
@@ -103,14 +163,18 @@ class YouTubeAutomationAgent {
       });
     });
 
-    // Manual content generation
-    this.app.post('/generate', async (req, res) => {
+    // Manual content generation (privileged: spends API budget). Requires token + same-origin.
+    this.app.post('/generate', generateLimiter, originGuard, requireAuth, async (req, res) => {
       try {
-        const { topic, style, length } = req.body;
+        const { topic, style, length } = this.validateGenerateInput(req.body);
         const result = await this.generateContent(topic, style, length);
         res.json({ success: true, result });
       } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
+        if (error.statusCode === 400) {
+          return res.status(400).json({ success: false, error: error.message });
+        }
+        this.logger.error('Generation request failed:', error);
+        res.status(500).json({ success: false, error: 'Content generation failed' });
       }
     });
 
@@ -120,7 +184,8 @@ class YouTubeAutomationAgent {
         const analytics = await this.agents.analytics.getRecentAnalytics();
         res.json(analytics);
       } catch (error) {
-        res.status(500).json({ error: error.message });
+        this.logger.error('Analytics request failed:', error);
+        res.status(500).json({ error: 'Failed to load analytics' });
       }
     });
 
@@ -130,20 +195,58 @@ class YouTubeAutomationAgent {
         const schedule = await this.db.getUpcomingSchedule();
         res.json(schedule);
       } catch (error) {
-        res.status(500).json({ error: error.message });
+        this.logger.error('Schedule request failed:', error);
+        res.status(500).json({ error: 'Failed to load schedule' });
       }
     });
 
-    // Manual publish
-    this.app.post('/publish/:contentId', async (req, res) => {
+    // Manual publish (privileged: publishes externally). Requires token + same-origin.
+    this.app.post('/publish/:contentId', originGuard, requireAuth, async (req, res) => {
       try {
-        const { contentId } = req.params;
+        const contentId = String(req.params.contentId || '');
+        if (!/^[A-Za-z0-9_-]{1,128}$/.test(contentId)) {
+          return res.status(400).json({ success: false, error: 'Invalid content id' });
+        }
         const result = await this.agents.publishing.publishContent(contentId);
         res.json({ success: true, result });
       } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
+        this.logger.error('Publish request failed:', error);
+        res.status(500).json({ success: false, error: 'Publish failed' });
       }
     });
+  }
+
+  // Validate and normalize /generate input. Throws a 400-tagged error on bad input.
+  validateGenerateInput(body) {
+    const bad = (msg) => { const e = new Error(msg); e.statusCode = 400; return e; };
+    const src = body && typeof body === 'object' ? body : {};
+
+    let { topic, style, length } = src;
+
+    if (topic !== undefined && topic !== null) {
+      if (typeof topic !== 'string') throw bad('topic must be a string');
+      if (topic.length > 200) throw bad('topic must be 200 characters or fewer');
+    } else {
+      topic = null;
+    }
+
+    const allowedStyles = ['tutorial', 'explainer', 'list', 'listicle', 'review', 'story', null, undefined];
+    if (style !== undefined && style !== null) {
+      if (typeof style !== 'string' || !allowedStyles.includes(style.toLowerCase())) {
+        throw bad('style is not a recognized value');
+      }
+      style = style.toLowerCase();
+    } else {
+      style = null;
+    }
+
+    const allowedLengths = ['short', 'medium', 'long', undefined, null];
+    if (length !== undefined && length !== null && !allowedLengths.includes(length)) {
+      throw bad('length must be short, medium, or long');
+    }
+    length = length || 'medium';
+
+    return { topic, style, length };
   }
 
   async generateContent(topic = null, style = null, length = 'medium') {
@@ -174,10 +277,12 @@ class YouTubeAutomationAgent {
     });
     this.logger.info('Production processing complete');
     
-    // Step 6: Save to database
-    const contentId = await this.db.saveProductionData(productionData);
-    this.logger.info(`Content saved with ID: ${contentId}`);
-    
+    // Production data is already persisted by the production agent
+    // (processContent -> saveProductionData/updateProductionData); do not
+    // insert it again here or it violates the productions.id primary key.
+    const contentId = productionData.id;
+    this.logger.info(`Content ready with ID: ${contentId}`);
+
     return {
       contentId,
       title: script.title,
@@ -194,14 +299,20 @@ class YouTubeAutomationAgent {
     }
     
     const PORT = process.env.PORT || 3456;
-    this.app.listen(PORT, () => {
-      console.log(chalk.green(`\n✅ YouTube Automation Agent running on port ${PORT}`));
+    this.app.listen(PORT, this.host, () => {
+      const display = this.host === '0.0.0.0' ? 'localhost' : this.host;
+      console.log(chalk.green(`\n✅ YouTube Automation Agent running on ${this.host}:${PORT}`));
       console.log(chalk.gray('─'.repeat(50)));
-      console.log(chalk.white('📊 Dashboard: ') + chalk.cyan(`http://localhost:${PORT}`));
-      console.log(chalk.white('🔧 API Health: ') + chalk.cyan(`http://localhost:${PORT}/health`));
-      console.log(chalk.white('📅 Schedule: ') + chalk.cyan(`http://localhost:${PORT}/schedule`));
-      console.log(chalk.white('📈 Analytics: ') + chalk.cyan(`http://localhost:${PORT}/analytics`));
+      console.log(chalk.white('📊 Dashboard: ') + chalk.cyan(`http://${display}:${PORT}`));
+      console.log(chalk.white('🔧 API Health: ') + chalk.cyan(`http://${display}:${PORT}/health`));
+      console.log(chalk.white('📅 Schedule: ') + chalk.cyan(`http://${display}:${PORT}/schedule`));
+      console.log(chalk.white('📈 Analytics: ') + chalk.cyan(`http://${display}:${PORT}/analytics`));
       console.log(chalk.gray('─'.repeat(50)));
+      console.log(chalk.white('🔑 API token (for /generate and /publish): ') + chalk.yellow(this.apiToken));
+      console.log(chalk.gray('   Send as "Authorization: Bearer <token>" or "x-api-token" header.'));
+      if (this.host !== '127.0.0.1' && this.host !== 'localhost') {
+        console.log(chalk.red(`⚠️  Server is bound to ${this.host} (non-localhost). Ensure access is restricted.`));
+      }
       console.log(chalk.yellow('\n🤖 Automation is active. Content will be generated and posted daily.'));
     });
   }

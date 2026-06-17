@@ -1,14 +1,19 @@
 const OpenAI = require('openai');
 const Replicate = require('replicate');
-const { exec } = require('child_process');
+const { execFile } = require('child_process');
 const { promisify } = require('util');
 const fs = require('fs').promises;
 const path = require('path');
 const axios = require('axios');
 const FormData = require('form-data');
 const { Logger } = require('./logger');
+const { isSafePublicUrl } = require('./security');
 
-const execAsync = promisify(exec);
+// execFile (no shell) prevents OS command injection via interpolated paths.
+const execFileAsync = promisify(execFile);
+
+// Cap remote downloads to avoid unbounded disk writes from a hostile/buggy source.
+const MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024; // 100 MB
 
 class AIVideoGenerator {
   constructor(credentials) {
@@ -168,16 +173,37 @@ class AIVideoGenerator {
   }
 
   async downloadImage(url, outputPath) {
+    return this.downloadToFile(url, outputPath);
+  }
+
+  // Shared, SSRF-guarded streaming download with a hard size cap.
+  async downloadToFile(url, outputPath) {
+    if (!isSafePublicUrl(url)) {
+      throw new Error('Refusing to download from a non-public or unsafe URL');
+    }
+
     const response = await axios({
       method: 'GET',
       url: url,
-      responseType: 'stream'
+      responseType: 'stream',
+      maxRedirects: 3,
+      maxContentLength: MAX_DOWNLOAD_BYTES,
+      maxBodyLength: MAX_DOWNLOAD_BYTES,
     });
 
     const writer = require('fs').createWriteStream(outputPath);
-    response.data.pipe(writer);
+    let downloaded = 0;
 
     return new Promise((resolve, reject) => {
+      response.data.on('data', (chunk) => {
+        downloaded += chunk.length;
+        if (downloaded > MAX_DOWNLOAD_BYTES) {
+          response.data.destroy();
+          writer.destroy();
+          reject(new Error('Download exceeded maximum allowed size'));
+        }
+      });
+      response.data.pipe(writer);
       writer.on('finish', resolve);
       writer.on('error', reject);
     });
@@ -274,9 +300,14 @@ class AIVideoGenerator {
 
     await browser.close();
 
-    // Convert frames to video using FFmpeg
-    const ffmpegCommand = `ffmpeg -framerate 30 -i "${framesDir}/frame_%06d.png" -c:v libx264 -pix_fmt yuv420p "${videoPath}"`;
-    await execAsync(ffmpegCommand);
+    // Convert frames to video using FFmpeg (arg array — no shell interpolation)
+    await execFileAsync('ffmpeg', [
+      '-framerate', '30',
+      '-i', path.join(framesDir, 'frame_%06d.png'),
+      '-c:v', 'libx264',
+      '-pix_fmt', 'yuv420p',
+      videoPath,
+    ]);
 
     // Add audio
     await this.addAudioToVideo(videoPath, audioPath, outputPath);
@@ -508,25 +539,20 @@ class AIVideoGenerator {
   }
 
   async addAudioToVideo(videoPath, audioPath, outputPath) {
-    const command = `ffmpeg -i "${videoPath}" -i "${audioPath}" -c:v copy -c:a aac -shortest "${outputPath}"`;
-    await execAsync(command);
+    // arg array — no shell interpolation of paths
+    await execFileAsync('ffmpeg', [
+      '-i', videoPath,
+      '-i', audioPath,
+      '-c:v', 'copy',
+      '-c:a', 'aac',
+      '-shortest',
+      outputPath,
+    ]);
     this.logger.info('Audio added to video successfully');
   }
 
   async downloadVideo(url, outputPath) {
-    const response = await axios({
-      method: 'GET',
-      url: url,
-      responseType: 'stream'
-    });
-
-    const writer = require('fs').createWriteStream(outputPath);
-    response.data.pipe(writer);
-
-    return new Promise((resolve, reject) => {
-      writer.on('finish', resolve);
-      writer.on('error', reject);
-    });
+    return this.downloadToFile(url, outputPath);
   }
 
   async cleanupDirectory(dirPath) {
