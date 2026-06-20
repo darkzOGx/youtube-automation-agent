@@ -73,7 +73,7 @@ class AIVideoGenerator {
     
     const data = {
       text: text,
-      model_id: "eleven_monolingual_v1",
+      model_id: "eleven_v3",
       voice_settings: {
         stability: 0.5,
         similarity_boost: 0.8,
@@ -108,8 +108,8 @@ class AIVideoGenerator {
 
   async generateOpenAITTS(text, outputPath) {
     const response = await this.openai.audio.speech.create({
-      model: "tts-1-hd",
-      voice: "nova",
+      model: "gpt-4o-mini-tts",
+      voice: "coral",
       input: text,
       speed: 1.0
     });
@@ -130,24 +130,24 @@ class AIVideoGenerator {
       }
 
       const enhancedPrompt = this.enhanceVisualPrompt(prompt, style);
-      
-      // Use DALL-E 3 for high-quality images
-      const response = await this.openai.images.generate({
-        model: "dall-e-3",
-        prompt: enhancedPrompt,
-        n: count,
-        size: "1792x1024", // 16:9 aspect ratio for video
-        quality: "hd",
-        style: "natural"
-      });
-
-      const imageUrls = response.data.map(img => img.url);
       const localPaths = [];
 
-      // Download images locally
-      for (let i = 0; i < imageUrls.length; i++) {
+      for (let i = 0; i < count; i++) {
+        const response = await this.openai.images.generate({
+          model: "gpt-image-2",
+          prompt: enhancedPrompt,
+          n: 1,
+          size: "1536x1024",
+          quality: "high",
+        });
+
         const imagePath = path.join(__dirname, '..', 'data', 'assets', `visual_${Date.now()}_${i}.png`);
-        await this.downloadImage(imageUrls[i], imagePath);
+        if (response.data[0].b64_json) {
+          const buffer = Buffer.from(response.data[0].b64_json, 'base64');
+          await fs.writeFile(imagePath, buffer);
+        } else {
+          await this.downloadImage(response.data[0].url, imagePath);
+        }
         localPaths.push(imagePath);
       }
 
@@ -227,18 +227,14 @@ class AIVideoGenerator {
   }
 
   async generateReplicateVideo(script, visualAssets, audioPath, outputPath) {
-    // Use Stable Video Diffusion or similar model
     const output = await this.replicate.run(
-      "stability-ai/stable-video-diffusion:3f0457e4619daac51203dedb1a4f46e66251bb3bfb18edd25d728dda8aa28ab7",
+      "wan-video/wan-2.7-i2v",
       {
         input: {
-          cond_aug: 0.02,
-          decoding_t: 7,
-          input_image: visualAssets[0], // Use first image as base
-          video_length: "14_frames_with_svd",
-          sizing_strategy: "maintain_aspect_ratio",
-          motion_bucket_id: 127,
-          fps_id: 6
+          image: visualAssets[0],
+          prompt: script.title || "smooth cinematic motion",
+          duration: 5,
+          resolution: "720p"
         }
       }
     );
@@ -578,22 +574,26 @@ class AIVideoGenerator {
       const prompt = `YouTube thumbnail for "${script.title}", ${style} style, eye-catching, high contrast text, professional design, clickable, engaging`;
       
       const response = await this.openai.images.generate({
-        model: "dall-e-3",
+        model: "gpt-image-2",
         prompt: prompt,
         n: 1,
-        size: "1792x1024",
-        quality: "hd"
+        size: "1536x1024",
+        quality: "high"
       });
 
       const thumbnailPath = path.join(__dirname, '..', 'uploads', 'thumbnails', `thumbnail_${Date.now()}.png`);
       await fs.mkdir(path.dirname(thumbnailPath), { recursive: true });
-      
-      await this.downloadImage(response.data[0].url, thumbnailPath);
-      
+
+      if (response.data[0].b64_json) {
+        const buffer = Buffer.from(response.data[0].b64_json, 'base64');
+        await fs.writeFile(thumbnailPath, buffer);
+      } else {
+        await this.downloadImage(response.data[0].url, thumbnailPath);
+      }
+
       return {
         path: thumbnailPath,
-        url: response.data[0].url,
-        dimensions: { width: 1792, height: 1024 },
+        dimensions: { width: 1536, height: 1024 },
         fileSize: await this.getFileSize(thumbnailPath)
       };
     } catch (error) {

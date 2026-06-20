@@ -265,7 +265,7 @@ class ContentStrategyAgent {
     const angles = [
       `The Ultimate Guide to ${topic}`,
       `${topic}: What Nobody Is Telling You`,
-      `How ${topic} Will Change Everything in 2025`,
+      `How ${topic} Will Change Everything in ${new Date().getFullYear()}`,
       `The Hidden Truth About ${topic}`,
       `${topic} Explained in 5 Minutes`,
       `Why ${topic} Is More Important Than You Think`,

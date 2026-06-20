@@ -1,264 +1,253 @@
-# 🎬 YouTube Automation Agent
+# YouTube Automation Agent
 
-A fully automated YouTube channel management system that creates, optimizes, and publishes content daily using AI agents. No coding required - just configure and let the AI agents handle your YouTube channel 24/7!
+## What's New in v2.0
 
-## ✨ What This Does
+- **Model upgrades across the board** — GPT-5.5 / GPT-5.5 Instant replace GPT-4-turbo, GPT Image 2 replaces DALL-E 3, Gemini 3.5 Flash/Pro replace Gemini 1.x, ElevenLabs Eleven v3 replaces v1, Wan 2.7 replaces Stable Video Diffusion
+- **OpenAI SDK v6** — upgraded from v4, along with `@google/genai` v2.9, `replicate` v1.4, `googleapis` v173
+- **Revamped setup wizard** — new TTS service picker (OpenAI TTS / ElevenLabs / Azure), ElevenLabs credential setup, updated model selection menus
+- **Fixed deprecated API patterns** — OpenAI v3 SDK calls in credential testing replaced with v4+ patterns
+- **Dynamic year in content strategy** — no more hardcoded "2025" in trend analysis prompts
+- **README rewrite** — developer-focused docs with Mermaid architecture diagrams, no fluff
 
-This system runs 24/7 to:
-- 🎯 Research trending topics in your niche
-- ✍️ Write engaging video scripts automatically  
-- 🎨 Generate eye-catching thumbnails
-- 📈 Optimize SEO for maximum reach
-- 📅 Upload and schedule videos
-- 📊 Analyze performance and improve over time
+---
 
-## 💡 How It Works - No Claude Required!
+Fully automated YouTube channel management system. AI agents handle content strategy, scriptwriting, thumbnail generation, SEO, publishing, and analytics — end to end, on a daily schedule.
 
-**You do NOT need Claude to use this system!** The YouTube Automation Agent is designed to work with multiple AI providers, giving you flexibility and cost control.
+## Architecture
 
-### 🤖 AI Provider Options
-
-1. **OpenAI (Recommended)**
-   - GPT-4 for intelligent content generation
-   - DALL-E 3 for stunning thumbnails
-   - Whisper for speech processing
-   - **Cost**: ~$0.10-0.30 per video
-   - **Best for**: Professional creators wanting highest quality
-
-2. **Google Gemini (Budget-Friendly)**
-   - Free tier: 60 requests/minute
-   - Can generate multiple videos daily at no cost
-   - **Cost**: FREE for most users
-   - **Best for**: Beginners and hobby creators
-
-3. **Custom AI Integration**
-   - Support for Anthropic Claude (if you prefer)
-   - Local models via Ollama
-   - Any OpenAI-compatible API
-
-### 📊 What Each Agent Does
-
-```javascript
-// Content Strategy Agent
-→ Analyzes YouTube trends via API
-→ Identifies viral topics in your niche
-→ Plans content calendar automatically
-
-// Script Writer Agent
-→ Writes engaging scripts with hooks
-→ Adds storytelling and call-to-actions
-→ Optimizes for watch time
-
-// Thumbnail Designer Agent
-→ Generates eye-catching thumbnails
-→ A/B tests different designs
-→ Optimizes for click-through rate
-
-// SEO Optimizer Agent
-→ Researches high-performing keywords
-→ Optimizes titles and descriptions
-→ Manages tags and metadata
-
-// Publishing Agent
-→ Uploads videos automatically
-→ Schedules for optimal times
-→ Manages playlists and end screens
+```mermaid
+graph TD
+    A[Content Strategy Agent] --> B[Script Writer Agent]
+    B --> C[Thumbnail Designer Agent]
+    B --> D[SEO Optimizer Agent]
+    C --> E[Production Management Agent]
+    D --> E
+    E --> F[Publishing & Scheduling Agent]
+    F --> G[Analytics & Optimization Agent]
+    G -->|feedback loop| A
 ```
 
-### 💰 Cost Breakdown
+## How It Works
 
-| Component | Free Tier | Paid Usage |
-|-----------|-----------|------------|
-| **YouTube API** | ✅ 10,000 units/day | ✅ Same |
-| **OpenAI** | ❌ None | ~$0.20/video |
-| **Google Gemini** | ✅ 60 req/min | $0.00035/1k chars |
-| **Hosting** | ✅ Local PC | $5-20/month VPS |
-| **Total Monthly** | **$0** | **$6-50** |
+Each agent handles one stage of the pipeline:
 
-### 🖥️ Deployment Options
+| Agent | Role |
+|-------|------|
+| **Content Strategy** | Analyzes YouTube trends, identifies topics, plans content calendar |
+| **Script Writer** | Generates scripts with hooks, storytelling, CTAs |
+| **Thumbnail Designer** | Creates thumbnails, runs A/B variations |
+| **SEO Optimizer** | Keywords, titles, descriptions, tags |
+| **Production** | Coordinates TTS audio, image assets, video assembly |
+| **Publishing** | Uploads, schedules, manages playlists |
+| **Analytics** | Tracks performance, feeds insights back to strategy |
 
-- **Local Computer**: Run on your PC/Mac (free)
-- **Raspberry Pi**: Low-power home automation (~$50 one-time)
-- **Cloud VPS**: DigitalOcean, Linode ($5/month)
-- **Free Cloud**: Railway, Render (with limitations)
-- **Serverless**: Vercel, Netlify (pay-per-use)
+## AI Providers
 
-## 🚀 Quick Start
+All OpenAI-compatible providers work out of the box — the system auto-configures the SDK base URL. Pick one, or use OpenRouter to access everything through a single key.
+
+```mermaid
+graph LR
+    subgraph Direct
+        OA[OpenAI<br/>GPT-5.5]
+        GM[Gemini<br/>3.5 Flash/Pro]
+        KM[Kimi<br/>K2.6]
+        MM[MiMo<br/>V2.5 Pro]
+        GL[GLM<br/>GLM-5]
+    end
+    subgraph Router
+        OR[OpenRouter<br/>300+ models]
+    end
+    Direct --> YAA[YouTube Automation Agent]
+    Router --> YAA
+```
+
+| Provider | Models | Base URL | Cost |
+|----------|--------|----------|------|
+| **OpenAI** | GPT-5.5, GPT-5.5 Instant | `api.openai.com/v1` | ~$0.05–0.20/video |
+| **OpenRouter** | 300+ (GPT, Claude, Gemini, Kimi, GLM, etc.) | `openrouter.ai/api/v1` | varies by model |
+| **Google Gemini** | Gemini 3.5 Flash, 3.5 Pro | via `@google/genai` SDK | free tier available |
+| **Kimi (Moonshot AI)** | Kimi K2.6, K2.5 | `api.moonshot.ai/v1` | ~80% cheaper than GPT-5.5 |
+| **MiMo (Xiaomi)** | MiMo V2.5 Pro, V2.5 | `api.xiaomimimo.com/v1` | competitive |
+| **GLM (Zhipu AI)** | GLM-5, GLM-5.1 | `api.z.ai/api/paas/v4/` | ~$1/M input tokens |
+
+Additional integrations: Anthropic Claude (`claude-opus-4-8`), ElevenLabs (Eleven v3 TTS), Replicate (Wan 2.7 video), local models via Ollama, any OpenAI-compatible endpoint.
+
+## Quick Start
+
+```bash
+git clone https://github.com/darkzOGx/youtube-automation-agent.git
+cd youtube-automation-agent
+npm install
+cp .env.example .env
+cp config/credentials.example.json config/credentials.json
+npm run setup   # interactive credential wizard
+npm start
+```
+
+Dashboard runs at `http://localhost:3456`.
 
 ### Prerequisites
-- Node.js 18+ ([Download here](https://nodejs.org/))
-- Google Account (for YouTube API)
-- AI Provider Account (choose one):
-  - OpenAI account ([Sign up](https://platform.openai.com/signup)) OR
-  - Google AI Studio account ([Sign up - FREE](https://makersuite.google.com/))
-- 10 minutes for initial setup
 
-### Installation
+- Node.js 18+
+- Google account (YouTube Data API — free)
+- At least one AI provider key (OpenAI or Gemini)
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/darkzOGx/youtube-automation-agent.git
-   cd youtube-automation-agent
-   npm install
-   ```
+## Configuration
 
-2. **Configure your credentials**
-   ```bash
-   # Copy example files
-   cp .env.example .env
-   cp config/credentials.example.json config/credentials.json
-   
-   # Run interactive setup
-   npm run setup
-   ```
-   
-   The setup wizard will help you:
-   - Get YouTube API credentials (step-by-step guide included)
-   - Choose and configure AI provider
-   - Set your channel preferences
-   - Configure automation schedule
+### API Keys
 
-3. **Start the system**
-   ```bash
-   npm start
-   ```
+#### YouTube Data API (required, free)
 
-4. **Access the dashboard**
-   Open http://localhost:3456 in your browser
+1. Create a project in [Google Cloud Console](https://console.cloud.google.com/)
+2. Enable **YouTube Data API v3**
+3. Create an OAuth 2.0 client (Desktop app)
+4. Save the JSON as `config/credentials.json`
 
-## 🎯 Use Cases
+#### OpenAI
 
-- **Educational Channels**: Automate tutorial and explainer videos
-- **News Channels**: Auto-generate daily news summaries
-- **Story Channels**: Create animated story content
-- **Gaming Channels**: Generate game guides and tips
-- **Tech Channels**: Automate product reviews and comparisons
-- **Kids Content**: Create educational kids videos
-- **Meditation/Relaxation**: Generate ambient content
-- **Compilation Channels**: Automate "Top 10" style videos
+1. Get a key from [platform.openai.com](https://platform.openai.com/)
+2. Set `OPENAI_API_KEY` in `.env`
 
-## 🔧 Configuration
+#### OpenRouter (easiest — one key, all models)
 
-### Getting Your API Keys (Step-by-Step)
+1. Get a key from [openrouter.ai/keys](https://openrouter.ai/keys)
+2. Set `OPENROUTER_API_KEY` in `.env`
 
-#### Option 1: YouTube Data API (Required - FREE)
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Click "Create Project" (name it "YouTube Automation")
-3. In the left menu, go to "APIs & Services" → "Library"
-4. Search for "YouTube Data API v3" and click "Enable"
-5. Go to "Credentials" → "Create Credentials" → "OAuth client ID"
-6. Choose "Desktop app" as application type
-7. Download the JSON file and save as `config/credentials.json`
+#### Google Gemini
 
-**Visual Guide**: [YouTube API Setup Tutorial](https://developers.google.com/youtube/v3/getting-started)
+1. Get a key from [Google AI Studio](https://aistudio.google.com/)
+2. Set `GEMINI_API_KEY` in `.env`
 
-#### Option 2A: OpenAI API (Recommended for Quality)
-1. Visit [OpenAI Platform](https://platform.openai.com/)
-2. Click "API Keys" in sidebar
-3. Click "Create new secret key"
-4. Copy key to `.env` file as `OPENAI_API_KEY`
-5. Add $5-10 credits to get started
+#### Kimi / MiMo / GLM
 
-**Pricing**: ~$0.01 per 1K tokens (approx 750 words)
-
-#### Option 2B: Google Gemini API (FREE Alternative)
-1. Visit [Google AI Studio](https://makersuite.google.com/)
-2. Click "Get API Key"
-3. Create API key for new or existing project
-4. Copy key to `.env` file as `GEMINI_API_KEY`
-
-**Pricing**: FREE for 60 requests/minute, perfect for most users!
+| Provider | Get key at | Env var |
+|----------|-----------|---------|
+| Kimi (Moonshot AI) | [platform.kimi.ai](https://platform.kimi.ai) | `MOONSHOT_API_KEY` |
+| MiMo (Xiaomi) | [mimo.mi.com](https://mimo.mi.com) | `MIMO_API_KEY` |
+| GLM (Zhipu AI) | [z.ai](https://z.ai) | `GLM_API_KEY` |
 
 ### Environment Variables
 
 ```env
-# Core Settings
+# AI provider — pick one (or use OpenRouter for access to all)
+OPENAI_API_KEY=sk-...
+# OPENROUTER_API_KEY=sk-or-...
+# GEMINI_API_KEY=...
+# MOONSHOT_API_KEY=...
+# MIMO_API_KEY=...
+# GLM_API_KEY=...
+
+# Optional: premium TTS
+# ELEVENLABS_API_KEY=...
+# ELEVENLABS_VOICE_ID=...
+
+# Optional: AI video generation
+# REPLICATE_API_KEY=...
+
+# App config
 NODE_ENV=production
 PORT=3456
-LOG_LEVEL=info
-
-# AI Provider (choose one)
-OPENAI_API_KEY=your-key-here
-# OR
-GEMINI_API_KEY=your-key-here
-
-# YouTube Settings
-YOUTUBE_REGION=US
-DEFAULT_PRIVACY_STATUS=public
-
-# Content Settings
 CHANNEL_NAME=Your Channel Name
 TARGET_AUDIENCE=Your target audience
-POSTING_FREQUENCY=daily
+YOUTUBE_REGION=US
+DEFAULT_PRIVACY_STATUS=public
 ```
 
-## 🚦 First Run Tutorial
+## Automation Schedule
 
-After setup, here's how to generate your first video:
+```mermaid
+gantt
+    title Daily Pipeline
+    dateFormat HH:mm
+    axisFormat %H:%M
+
+    section Content
+    Generate content (strategy + script + thumbnail + SEO) :06:00, 2h
+
+    section Publishing
+    Process publishing queue :crit, 08:00, 14h
+
+    section Analytics
+    Collect analytics     :09:00, 1h
+    Run optimizations     :22:00, 1h
+```
+
+The scheduler runs automatically after `npm start`. Content generation at 06:00, publishing queue processed every 15 minutes, analytics at 09:00, optimization at 22:00. Weekly strategy reviews run on Sundays.
+
+## API
 
 ```bash
-# Test content generation
-npm run test
+# health check
+curl http://localhost:3456/health
 
-# Generate a single video manually
+# generate a video on demand
 curl -X POST http://localhost:3456/generate \
   -H "Content-Type: application/json" \
   -d '{"topic": "Top 10 Life Hacks", "style": "listicle"}'
 
-# Start full automation
-npm start
-```
-
-## 📋 Daily Usage
-
-### Automation Schedule
-Once configured, the system runs automatically:
-
-- **6:00 AM**: Generates new content (strategy, script, thumbnail, SEO)
-- **Every 15 minutes**: Processes publishing queue
-- **9:00 AM**: Collects analytics data
-- **10:00 PM**: Runs optimization tasks
-- **Weekly**: Strategy review and performance analysis
-
-### Manual Operations
-
-#### Generate Content Immediately
-```bash
-curl -X POST http://localhost:3456/generate \
-  -H "Content-Type: application/json" \
-  -d '{"topic": "Your Topic", "style": "tutorial"}'
-```
-
-#### View Schedule
-```bash
+# view schedule
 curl http://localhost:3456/schedule
-```
 
-#### Get Analytics
-```bash
+# get analytics
 curl http://localhost:3456/analytics
+
+# publish a specific content item
+curl -X POST http://localhost:3456/publish/:contentId
 ```
 
-## 🛠️ Customization Guide
+## Production Pipeline
 
-### Switching AI Providers
+```mermaid
+flowchart LR
+    subgraph TTS["Audio Generation"]
+        direction TB
+        EL[ElevenLabs v3] -.->|fallback| OA[OpenAI TTS]
+        OA -.->|fallback| SIM1[Simulation]
+    end
 
-To use Claude instead of OpenAI:
+    subgraph IMG["Image Generation"]
+        direction TB
+        GPT[GPT Image 2] -.->|fallback| SIM2[Simulation]
+    end
+
+    subgraph VID["Video Assembly"]
+        direction TB
+        WAN[Wan 2.7 I2V] -.->|fallback| PW[Playwright Slideshow]
+        PW -.->|fallback| SIM3[Simulation]
+    end
+
+    TTS --> MIX[FFmpeg Mux]
+    IMG --> VID
+    VID --> MIX
+    MIX --> OUT[Final Video]
+```
+
+Each stage has graceful fallbacks. If a paid API key isn't configured, the system simulates that step so the rest of the pipeline still runs.
+
+## Extending
+
+### Custom AI provider
 
 ```javascript
 // utils/ai-service.js
+const Anthropic = require('@anthropic-ai/sdk');
+
 class ClaudeAIService {
+  constructor(apiKey) {
+    this.client = new Anthropic({ apiKey });
+  }
   async generateContent(prompt) {
-    return await anthropic.complete({
-      model: 'claude-3-sonnet',
-      prompt: prompt,
-      max_tokens: 1000
+    const message = await this.client.messages.create({
+      model: 'claude-opus-4-8',
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: prompt }]
     });
+    return message.content[0].text;
   }
 }
 ```
 
-### Adding Custom Content Types
+### Custom content types
 
 ```javascript
 // agents/content-strategy-agent.js
@@ -268,124 +257,45 @@ const contentTypes = {
     style: 'conversational',
     thumbnail: 'podcast-style'
   },
-  // Add your custom type here
 };
 ```
 
-## 🏗️ Architecture
+## Project Structure
 
-### Agent Communication Flow
-```
-Content Strategy Agent
-         ↓
-Script Writer Agent
-         ↓
-Thumbnail Designer Agent → Production Management Agent
-         ↓                           ↓
-SEO Optimizer Agent → Publishing & Scheduling Agent
-         ↓                           ↓
-Analytics & Optimization Agent ← YouTube Upload
-```
-
-### File Structure
 ```
 youtube-automation-agent/
-├── agents/                 # AI agent implementations
-├── config/                 # Configuration files
-├── database/              # Database management
-├── data/                  # Generated content and assets
-├── logs/                  # Application logs
-├── schedules/             # Automation schedulers
-├── utils/                 # Utility functions
-├── workflows/             # Content workflows
-└── uploads/               # Temporary upload files
+├── agents/          # one file per agent
+├── config/          # credentials, example configs
+├── database/        # SQLite schema and access layer
+├── data/            # generated content and assets
+├── schedules/       # cron-based automation
+├── utils/           # AI service wrappers, logging, credential management
+├── workflows/       # daily and weekly pipeline orchestration
+├── uploads/         # temporary upload staging
+└── index.js         # Express server + agent initialization
 ```
 
-## 🔒 Security & Privacy
+## Troubleshooting
 
-- All API keys are stored locally in encrypted configuration
-- No content is sent to external services except configured APIs
-- Local database with automatic backups
-- Rate limiting to respect API quotas
-- Error logging without sensitive data exposure
+| Problem | Fix |
+|---------|-----|
+| YouTube API quota exceeded | Check quotas in Google Cloud Console; reduce posting frequency |
+| Content generation failed | Verify API keys and credits; check `logs/` |
+| Publishing failed | Re-authenticate YouTube OAuth tokens; check video format |
 
-## 📈 Performance Optimization
+Enable debug logging:
 
-### Content Strategy
-- **Trend Analysis**: Real-time monitoring of trending topics
-- **Competitor Research**: Automated analysis of successful channels
-- **Audience Insights**: Performance-based audience targeting
-- **Seasonal Optimization**: Content timing based on seasonal trends
-
-### Technical Optimization
-- **Thumbnail A/B Testing**: Automatic testing of different designs
-- **Title Optimization**: SEO-optimized titles with power words
-- **Publishing Time**: Data-driven optimal scheduling
-- **Keyword Research**: Performance-based keyword optimization
-
-## 🌟 Success Stories
-
-- **Educational Channel**: 50K subscribers in 3 months
-- **Story Channel**: 1M+ views per month on autopilot
-- **News Channel**: 24/7 automated news coverage
-- **Kids Channel**: $5K/month ad revenue, fully automated
-
-## ❓ Frequently Asked Questions
-
-**Q: Do I need coding knowledge?**
-A: No! Just follow the setup wizard and you're ready to go.
-
-**Q: Can I use this for multiple channels?**
-A: Yes! Run multiple instances with different configurations.
-
-**Q: Is this against YouTube ToS?**
-A: No, as long as you create original content and follow YouTube guidelines.
-
-**Q: How much does it cost to run?**
-A: Can be completely FREE with Gemini, or ~$10-50/month with OpenAI.
-
-**Q: Can I customize the content style?**
-A: Yes! Full control over tone, style, topics, and format.
-
-## 🆘 Troubleshooting
-
-### Common Issues
-
-#### "YouTube API quota exceeded"
-- Check your Google Cloud Console quotas
-- Implement additional rate limiting if needed
-- Consider upgrading your quota limits
-
-#### "Content generation failed"
-- Verify AI service API keys and credits
-- Check internet connectivity
-- Review error logs in `logs/` directory
-
-#### "Publishing failed"
-- Confirm YouTube OAuth tokens are valid
-- Check video file sizes and formats
-- Verify channel permissions
-
-### Debug Mode
-Enable detailed logging:
 ```bash
 NODE_ENV=development DEBUG_MODE=true npm start
 ```
 
-### Health Check
-```bash
-curl http://localhost:3456/health
-```
+## Contributing
 
-## 🤝 Contributing
-
-1. Fork the repository
+1. Fork the repo
 2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Submit a pull request
+3. Make changes and add tests
+4. Submit a PR
 
-### Development Setup
 ```bash
 git clone <your-fork>
 cd youtube-automation-agent
@@ -393,39 +303,22 @@ npm install
 npm run dev
 ```
 
-## 📄 License
+## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT — see [LICENSE](LICENSE).
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
-- **OpenAI** for GPT models
-- **Google** for YouTube Data API and Gemini
-- **YouTube Creator Community** for inspiration and feedback
-
-## 📞 Support
-
-- **Issues**: [GitHub Issues](https://github.com/darkzOGx/youtube-automation-agent/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/darkzOGx/youtube-automation-agent/discussions)
-- **Wiki**: [Setup Guides & Tutorials](https://github.com/darkzOGx/youtube-automation-agent/wiki)
-
-## 🚀 Get Started in 10 Minutes!
-
-```bash
-# Quick start commands
-git clone https://github.com/darkzOGx/youtube-automation-agent.git
-cd youtube-automation-agent
-npm install
-npm run setup
-npm start
-```
-
-**⭐ Star this repository if it helps you automate your YouTube success!**
-
-**🔔 Watch this repo to get notified of new features and updates!**
+- [OpenAI](https://openai.com/) — GPT-5.5, GPT Image 2, GPT-4o-mini-tts
+- [OpenRouter](https://openrouter.ai/) — unified multi-model API
+- [Google](https://ai.google.dev/) — YouTube Data API, Gemini 3.5
+- [Moonshot AI](https://www.moonshot.ai/) — Kimi K2.6
+- [Xiaomi](https://mimo.mi.com/) — MiMo V2.5
+- [Zhipu AI](https://z.ai/) — GLM-5
+- [ElevenLabs](https://elevenlabs.io/) — Eleven v3 TTS
+- [Replicate](https://replicate.com/) — Wan 2.7 video generation
+- [ConstructionBids.ai](https://constructionbids.ai) - AI scans every federal, state & local public works bid and matches you to contracts you'll win.
 
 ---
 
-**⚠️ Disclaimer**: This tool is designed for legitimate content creation. Please comply with YouTube's Terms of Service and Community Guidelines. The creators are not responsible for any misuse of this software.
-
-*Built with ❤️ by the community. Making YouTube automation accessible to everyone.*
+> This tool is for legitimate content creation. Comply with [YouTube's Terms of Service](https://www.youtube.com/t/terms) and Community Guidelines.

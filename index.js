@@ -59,7 +59,7 @@ class YouTubeAutomationAgent {
 
   async initialize() {
     try {
-      console.log(chalk.cyan.bold('\n🎬 YouTube Automation Agent v1.0'));
+      console.log(chalk.cyan.bold('\n🎬 YouTube Automation Agent v2.0'));
       console.log(chalk.gray('─'.repeat(50)));
       
       // Initialize database
