@@ -3,6 +3,8 @@ const { google } = require('googleapis');
 const fs = require('fs');
 const path = require('path');
 const chalk = require('chalk');
+const { escapeHtml } = require('./utils/security');
+const { readJsonSecureSync, writeJsonSecureSync } = require('./utils/secure-store');
 
 class OAuthServer {
   constructor() {
@@ -14,9 +16,9 @@ class OAuthServer {
   setupRoutes() {
     this.app.get('/auth/callback', async (req, res) => {
       const { code, error } = req.query;
-      
+
       if (error) {
-        res.send(`<h1>❌ Authentication Error</h1><p>${error}</p>`);
+        res.send(`<h1>❌ Authentication Error</h1><p>${escapeHtml(error)}</p>`);
         return;
       }
 
@@ -49,7 +51,7 @@ class OAuthServer {
         
       } catch (error) {
         console.error(chalk.red('Token exchange failed:'), error);
-        res.send(`<h1>❌ Token Exchange Failed</h1><p>${error.message}</p>`);
+        res.send(`<h1>❌ Token Exchange Failed</h1><p>${escapeHtml(error.message)}</p>`);
       }
     });
 
@@ -69,8 +71,8 @@ class OAuthServer {
     const credentialsPath = path.join(__dirname, 'config', 'credentials.json');
     const tokensPath = path.join(__dirname, 'config', 'tokens.json');
     
-    const credentials = JSON.parse(fs.readFileSync(credentialsPath));
-    
+    const credentials = readJsonSecureSync(credentialsPath);
+
     const oauth2Client = new google.auth.OAuth2(
       credentials.youtube.client_id,
       credentials.youtube.client_secret,
@@ -78,13 +80,13 @@ class OAuthServer {
     );
 
     const { tokens } = await oauth2Client.getToken(code);
-    
-    // Save tokens
+
+    // Save tokens (encrypted at rest when CREDENTIAL_KEY is set; otherwise 0600)
     const tokenData = {
       youtube: tokens
     };
-    
-    fs.writeFileSync(tokensPath, JSON.stringify(tokenData, null, 2));
+
+    writeJsonSecureSync(tokensPath, tokenData);
     console.log(chalk.green('✅ Tokens saved successfully!'));
   }
 
@@ -112,7 +114,7 @@ class OAuthServer {
 
   generateAuthUrl() {
     const credentialsPath = path.join(__dirname, 'config', 'credentials.json');
-    const credentials = JSON.parse(fs.readFileSync(credentialsPath));
+    const credentials = readJsonSecureSync(credentialsPath);
     
     const oauth2Client = new google.auth.OAuth2(
       credentials.youtube.client_id,

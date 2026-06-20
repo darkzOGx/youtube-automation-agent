@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const chalk = require('chalk');
 const inquirer = require('inquirer');
+const { readJsonSecureSync, writeJsonSecureSync } = require('./utils/secure-store');
 
 class SimpleAuth {
   constructor() {
@@ -16,8 +17,8 @@ class SimpleAuth {
     
     try {
       // Load credentials
-      const credentials = JSON.parse(fs.readFileSync(this.credentialsPath));
-      
+      const credentials = readJsonSecureSync(this.credentialsPath);
+
       const oauth2Client = new google.auth.OAuth2(
         credentials.youtube.client_id,
         credentials.youtube.client_secret,
@@ -56,10 +57,10 @@ class SimpleAuth {
       // Exchange code for tokens
       const { tokens } = await oauth2Client.getToken(code);
       
-      // Save tokens
+      // Save tokens (encrypted at rest when CREDENTIAL_KEY is set; otherwise 0600)
       const tokenData = { youtube: tokens };
-      fs.writeFileSync(this.tokensPath, JSON.stringify(tokenData, null, 2));
-      
+      writeJsonSecureSync(this.tokensPath, tokenData);
+
       console.log(chalk.green('\n✅ Authentication successful!'));
       console.log(chalk.green('✅ Tokens saved to config/tokens.json'));
       
@@ -72,8 +73,8 @@ class SimpleAuth {
 
   async testAuthentication() {
     try {
-      const tokens = JSON.parse(fs.readFileSync(this.tokensPath));
-      const credentials = JSON.parse(fs.readFileSync(this.credentialsPath));
+      const tokens = readJsonSecureSync(this.tokensPath);
+      const credentials = readJsonSecureSync(this.credentialsPath);
       
       const oauth2Client = new google.auth.OAuth2(
         credentials.youtube.client_id,

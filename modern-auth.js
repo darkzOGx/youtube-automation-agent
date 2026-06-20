@@ -3,7 +3,10 @@ const fs = require('fs');
 const path = require('path');
 const chalk = require('chalk');
 const http = require('http');
+const crypto = require('crypto');
 const { URL } = require('url');
+const { escapeHtml } = require('./utils/security');
+const { readJsonSecureSync, writeJsonSecureSync } = require('./utils/secure-store');
 
 class ModernAuth {
   constructor() {
@@ -17,10 +20,10 @@ class ModernAuth {
     console.log(chalk.gray('═'.repeat(60)));
     
     try {
-      const credentials = JSON.parse(fs.readFileSync(this.credentialsPath));
-      
+      const credentials = readJsonSecureSync(this.credentialsPath);
+
       // Use a random high port to avoid conflicts
-      const port = 8000 + Math.floor(Math.random() * 1000);
+      const port = 8000 + crypto.randomInt(0, 1000);
       const redirectUri = `http://localhost:${port}/callback`;
       
       const oauth2Client = new google.auth.OAuth2(
@@ -82,7 +85,7 @@ class ModernAuth {
           res.writeHead(400, { 'Content-Type': 'text/html' });
           res.end(`
             <h1>❌ Authorization Error</h1>
-            <p>${error}</p>
+            <p>${escapeHtml(error)}</p>
             <p>You can close this window.</p>
           `);
           this.rejectAuth(new Error(`Authorization error: ${error}`));
@@ -92,10 +95,10 @@ class ModernAuth {
         if (code) {
           try {
             const { tokens } = await oauth2Client.getToken(code);
-            
-            // Save tokens
+
+            // Save tokens (encrypted at rest when CREDENTIAL_KEY is set; otherwise 0600)
             const tokenData = { youtube: tokens };
-            fs.writeFileSync(this.tokensPath, JSON.stringify(tokenData, null, 2));
+            writeJsonSecureSync(this.tokensPath, tokenData);
             
             res.writeHead(200, { 'Content-Type': 'text/html' });
             res.end(`
@@ -117,7 +120,7 @@ class ModernAuth {
             res.writeHead(500, { 'Content-Type': 'text/html' });
             res.end(`
               <h1>❌ Token Exchange Failed</h1>
-              <p>${tokenError.message}</p>
+              <p>${escapeHtml(tokenError.message)}</p>
             `);
             this.rejectAuth(tokenError);
           }
@@ -149,8 +152,8 @@ class ModernAuth {
 
   async testAuthentication() {
     try {
-      const tokens = JSON.parse(fs.readFileSync(this.tokensPath));
-      const credentials = JSON.parse(fs.readFileSync(this.credentialsPath));
+      const tokens = readJsonSecureSync(this.tokensPath);
+      const credentials = readJsonSecureSync(this.credentialsPath);
       
       const oauth2Client = new google.auth.OAuth2(
         credentials.youtube.client_id,
