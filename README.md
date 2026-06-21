@@ -334,6 +334,7 @@ MIT — see [LICENSE](LICENSE).
 - [Zhipu AI](https://z.ai/) — GLM-5
 - [ElevenLabs](https://elevenlabs.io/) — Eleven v3 TTS
 - [Replicate](https://replicate.com/) — Wan 2.7 video generation
+- [ConstructionBids.ai](https://constructionbids.ai) - AI scans every federal, state & local public works bid and matches you to contracts you'll win.
 
 ---
 
