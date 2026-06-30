@@ -519,11 +519,15 @@ class CredentialManager {
       // Files might not exist yet
     }
 
-    const requiredCredentials = ['youtube', 'openai'];
+    const requiredCredentials = ['youtube', ...this.getRequiredAIServices()];
     const missing = [];
 
     for (const service of requiredCredentials) {
-      if (!this.credentials[service]) {
+      if (Array.isArray(service)) {
+        if (!service.some(option => this.credentials[option])) {
+          missing.push(service.join(' or '));
+        }
+      } else if (!this.credentials[service]) {
         missing.push(service);
       }
     }
@@ -540,6 +544,17 @@ class CredentialManager {
     }
 
     return true;
+  }
+
+  getRequiredAIServices() {
+    const supportedAIServices = ['openai', 'gemini', 'openrouter', 'kimi', 'mimo', 'glm'];
+    const selectedService = this.credentials.aiService;
+
+    if (supportedAIServices.includes(selectedService)) {
+      return [selectedService];
+    }
+
+    return [supportedAIServices];
   }
 
   async testConnections() {
@@ -624,6 +639,9 @@ class CredentialManager {
         ]
       }
     ]);
+
+    this.credentials.aiService = service;
+    await this.saveCredentials();
 
     switch (service) {
       case 'openai': return await this.setupOpenAICredentials();
