@@ -159,6 +159,80 @@
         .refresh-btn:hover {
             transform: scale(1.1);
         }
+
+        /* Generation progress modal */
+        .progress-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.55);
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .progress-modal {
+            background: #fff;
+            width: 92%;
+            max-width: 520px;
+            border-radius: 16px;
+            padding: 28px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+        .progress-modal h2 { color: #667eea; margin-bottom: 18px; }
+        .progress-bar {
+            height: 14px;
+            background: #eee;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            transition: width 0.6s ease;
+        }
+        .progress-meta {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+            font-weight: 600;
+            color: #444;
+        }
+        .progress-eta { color: #888; font-size: 0.9em; margin-bottom: 16px; }
+        .progress-step {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 10px;
+            border-radius: 8px;
+            margin: 4px 0;
+        }
+        .progress-step .step-label { flex: 1; }
+        .progress-step .step-time {
+            color: #999;
+            font-size: 0.85em;
+            font-variant-numeric: tabular-nums;
+        }
+        .step-pending { opacity: 0.5; }
+        .step-running { background: #eef0ff; font-weight: 600; }
+        .step-done { color: #28a745; }
+        .step-error { color: #dc3545; }
+        .step-running .step-icon {
+            animation: spin 1.2s linear infinite;
+            display: inline-block;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .progress-footer {
+            margin-top: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+        .progress-result strong { color: #333; }
     </style>
 </head>
 <body>
@@ -239,6 +313,21 @@
         </div>
     </div>
     
+    <!-- Generation progress modal -->
+    <div id="progress-overlay" class="progress-overlay">
+        <div class="progress-modal">
+            <h2>🎬 Generating Content</h2>
+            <div class="progress-bar"><div id="progress-bar-fill" class="progress-bar-fill"></div></div>
+            <div class="progress-meta">
+                <span id="progress-status">Starting…</span>
+                <span id="progress-percent">0%</span>
+            </div>
+            <div id="progress-eta" class="progress-eta">…</div>
+            <div id="progress-steps" class="progress-steps"></div>
+            <div id="progress-footer" class="progress-footer"></div>
+        </div>
+    </div>
+
     <button class="refresh-btn" onclick="refreshDashboard()" title="Refresh Dashboard">
         🔄
     </button>
@@ -399,21 +488,90 @@
             return `${hours}h ${minutes}m`;
         }
         
+        let progressTimer = null;
+
         async function generateContent() {
-            if (confirm('Generate content now? This will create a new video for your channel.')) {
-                try {
-                    const response = await fetch('/generate', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ topic: null, style: 'story' })
-                    });
-                    const result = await response.json();
-                    alert(`Content generation started! Title: ${result.result?.title || 'New Content'}`);
-                    refreshDashboard();
-                } catch (error) {
-                    alert('Content generation failed. Please try again.');
-                }
+            try {
+                const response = await fetch('/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ topic: null, style: 'story' })
+                });
+                const data = await response.json();
+                if (!data.jobId) { alert('Could not start generation.'); return; }
+                openProgressModal();
+                pollProgress(data.jobId);
+            } catch (error) {
+                alert('Content generation failed to start. Please try again.');
             }
+        }
+
+        function pollProgress(jobId) {
+            if (progressTimer) clearInterval(progressTimer);
+            const tick = async () => {
+                try {
+                    const res = await fetch('/progress/' + jobId);
+                    if (!res.ok) return;
+                    const p = await res.json();
+                    renderProgress(p);
+                    if (p.status === 'done' || p.status === 'error') {
+                        clearInterval(progressTimer);
+                        progressTimer = null;
+                        if (p.status === 'done') setTimeout(refreshDashboard, 500);
+                    }
+                } catch (e) { /* transient — keep polling */ }
+            };
+            tick();
+            progressTimer = setInterval(tick, 1000);
+        }
+
+        function renderProgress(p) {
+            document.getElementById('progress-bar-fill').style.width = p.percent + '%';
+            document.getElementById('progress-percent').textContent = p.percent + '%';
+
+            const statusEl = document.getElementById('progress-status');
+            const etaEl = document.getElementById('progress-eta');
+            if (p.status === 'running') {
+                statusEl.textContent = 'Generating…';
+                etaEl.textContent = '~' + p.eta + 's remaining · ' + p.elapsed + 's elapsed';
+            } else if (p.status === 'done') {
+                statusEl.textContent = '✅ Done!';
+                etaEl.textContent = 'Completed in ' + p.elapsed + 's';
+            } else if (p.status === 'error') {
+                statusEl.textContent = '❌ Failed';
+                etaEl.textContent = p.error || 'Something went wrong';
+            }
+
+            const icon = (s) => s === 'done' ? '✅' : s === 'running' ? '⏳' : s === 'error' ? '❌' : '⏵';
+            document.getElementById('progress-steps').innerHTML = p.steps.map(s => {
+                const cls = 'step-' + s.status;
+                const timing = s.status === 'running' ? (s.elapsed + 's / ~' + s.est + 's')
+                    : s.status === 'done' ? (s.elapsed + 's')
+                    : ('~' + s.est + 's');
+                return `<div class="progress-step ${cls}">
+                    <span class="step-icon">${icon(s.status)}</span>
+                    <span class="step-label">${s.label}</span>
+                    <span class="step-time">${timing}</span>
+                </div>`;
+            }).join('');
+
+            const footer = document.getElementById('progress-footer');
+            if (p.status === 'done' && p.result) {
+                footer.innerHTML = `<div class="progress-result"><strong>🎬 ${p.result.title}</strong><br><small>Scheduled: ${new Date(p.result.scheduledFor).toLocaleString()}</small></div>
+                    <button class="btn" onclick="closeProgressModal()">Close</button>`;
+            } else if (p.status === 'error') {
+                footer.innerHTML = `<button class="btn" onclick="closeProgressModal()">Close</button>`;
+            } else {
+                footer.innerHTML = `<small style="color:#888">Generation continues even if you hide this.</small>
+                    <button class="btn" onclick="closeProgressModal()">Hide</button>`;
+            }
+        }
+
+        function openProgressModal() {
+            document.getElementById('progress-overlay').style.display = 'flex';
+        }
+        function closeProgressModal() {
+            document.getElementById('progress-overlay').style.display = 'none';
         }
         
         function viewAnalytics() {
