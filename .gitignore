@@ -26,6 +26,17 @@ data/*.db-journal
 *.db-shm
 *.db-wal
 
+# Generated content (runtime output — recreated by setup/runtime)
+data/scripts/
+data/audio/
+data/videos/
+data/assets/
+data/captions/
+data/production/
+*.info
+*.assembly.json
+*.srt
+
 # Logs
 logs/
 *.log

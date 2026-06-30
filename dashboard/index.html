@@ -316,7 +316,7 @@
     <!-- Generation progress modal -->
     <div id="progress-overlay" class="progress-overlay">
         <div class="progress-modal">
-            <h2>🎬 Generating Content</h2>
+            <h2 id="progress-title">🎬 Generating Content</h2>
             <div class="progress-bar"><div id="progress-bar-fill" class="progress-bar-fill"></div></div>
             <div class="progress-meta">
                 <span id="progress-status">Starting…</span>
@@ -489,6 +489,7 @@
         }
         
         let progressTimer = null;
+        let shownJobId = null;
 
         async function generateContent() {
             try {
@@ -499,12 +500,29 @@
                 });
                 const data = await response.json();
                 if (!data.jobId) { alert('Could not start generation.'); return; }
+                shownJobId = data.jobId;
                 openProgressModal();
                 pollProgress(data.jobId);
             } catch (error) {
                 alert('Content generation failed to start. Please try again.');
             }
         }
+
+        // Detect scheduled/automated generation runs (not started from this tab)
+        // and surface the same progress modal so the dashboard reflects activity.
+        async function pollActiveJob() {
+            try {
+                const res = await fetch('/active-job');
+                if (!res.ok) return;
+                const job = await res.json();
+                if (job && job.status === 'running' && job.id !== shownJobId) {
+                    shownJobId = job.id;
+                    openProgressModal();
+                    pollProgress(job.id);
+                }
+            } catch (e) { /* ignore transient errors */ }
+        }
+        setInterval(pollActiveJob, 5000);
 
         function pollProgress(jobId) {
             if (progressTimer) clearInterval(progressTimer);
@@ -526,6 +544,8 @@
         }
 
         function renderProgress(p) {
+            document.getElementById('progress-title').textContent =
+                p.source === 'scheduled' ? '🤖 Automated Generation' : '🎬 Generating Content';
             document.getElementById('progress-bar-fill').style.width = p.percent + '%';
             document.getElementById('progress-percent').textContent = p.percent + '%';
 

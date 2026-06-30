@@ -2,9 +2,10 @@ const cron = require('node-cron');
 const { Logger } = require('../utils/logger');
 
 class DailyAutomation {
-  constructor(agents, database) {
+  constructor(agents, database, mainAgent = null) {
     this.agents = agents;
     this.db = database;
+    this.mainAgent = mainAgent; // used to surface scheduled-run progress on the dashboard
     this.logger = new Logger('DailyAutomation');
     this.scheduledTasks = new Map();
     this.isEnabled = true;
@@ -85,6 +86,7 @@ class DailyAutomation {
   }
 
   async runDailyContentGeneration() {
+    let job = null;
     try {
       this.logger.info('Starting daily content generation...');
       
@@ -98,23 +100,32 @@ class DailyAutomation {
         return;
       }
 
+      // Track this automated run as a job so the dashboard can show live progress.
+      job = this.mainAgent ? this.mainAgent._createJob('scheduled') : null;
+      const mark = (key) => { if (job) this.mainAgent._markStep(job, key); };
+
       // Generate content strategy
+      mark('strategy');
       const strategy = await this.agents.strategy.generateContentStrategy();
       this.logger.info(`Generated strategy: ${strategy.topic}`);
 
       // Generate script
+      mark('script');
       const script = await this.agents.scriptWriter.generateScript(strategy);
       this.logger.info(`Generated script: ${script.title}`);
 
       // Generate thumbnail
+      mark('thumbnail');
       const thumbnail = await this.agents.thumbnailDesigner.generateThumbnail(script);
       this.logger.info('Generated thumbnail');
 
       // Optimize SEO
+      mark('seo');
       const seoData = await this.agents.seoOptimizer.optimize(script, strategy);
       this.logger.info('Completed SEO optimization');
 
       // Process through production
+      mark('production');
       const productionData = await this.agents.production.processContent({
         strategy,
         script,
@@ -126,6 +137,16 @@ class DailyAutomation {
       // Schedule for publishing
       await this.agents.publishing.scheduleContent(productionData);
       this.logger.info('Content scheduled for publishing');
+
+      if (job) {
+        this.mainAgent._finishStep(job);
+        job.status = 'done';
+        job.result = {
+          contentId: productionData.id,
+          title: script.title,
+          scheduledFor: productionData.scheduledPublishTime
+        };
+      }
 
       timer.end();
       this.logger.success('Daily content generation completed successfully');
@@ -139,7 +160,13 @@ class DailyAutomation {
 
     } catch (error) {
       this.logger.error('Daily content generation failed:', error);
-      
+
+      if (job) {
+        this.mainAgent._finishStep(job, 'error');
+        job.status = 'error';
+        job.error = error.message;
+      }
+
       await this.logAutomationEvent('daily_content_generation', 'error', {
         error: error.message
       });

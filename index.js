@@ -65,7 +65,7 @@ class YouTubeAutomationAgent {
       
       // Initialize scheduler
       this.logger.info('Setting up automation scheduler...');
-      this.scheduler = new DailyAutomation(this.agents, this.db);
+      this.scheduler = new DailyAutomation(this.agents, this.db, this);
       await this.scheduler.initialize();
       
       this.isInitialized = true;
@@ -170,6 +170,14 @@ class YouTubeAutomationAgent {
       res.json(this._jobSnapshot(job));
     });
 
+    // Currently-running job (so the dashboard can surface scheduled/automated runs)
+    this.app.get('/active-job', (req, res) => {
+      const running = Object.values(this.jobs)
+        .filter(j => j.status === 'running')
+        .sort((a, b) => b.startedAt - a.startedAt)[0];
+      res.json(running ? this._jobSnapshot(running) : null);
+    });
+
     // Get analytics
     this.app.get('/analytics', async (req, res) => {
       try {
@@ -251,13 +259,13 @@ class YouTubeAutomationAgent {
 
   // ---- Generation job tracking (for live dashboard progress) ----
 
-  _createJob() {
+  _createJob(source = 'manual') {
     const id = 'job_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
     const steps = GENERATION_STEPS.map(s => ({
       key: s.key, label: s.label, est: s.est,
       status: 'pending', startedAt: null, endedAt: null
     }));
-    const job = { id, status: 'running', steps, currentKey: null, startedAt: Date.now(), result: null, error: null };
+    const job = { id, source, status: 'running', steps, currentKey: null, startedAt: Date.now(), result: null, error: null };
     this.jobs[id] = job;
 
     // Prune jobs older than 15 minutes so the store doesn't grow unbounded.
@@ -314,6 +322,7 @@ class YouTubeAutomationAgent {
 
     return {
       id: job.id,
+      source: job.source,
       status: job.status,
       percent,
       elapsed: Math.round((now - job.startedAt) / 1000),
