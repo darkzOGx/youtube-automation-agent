@@ -1,9 +1,10 @@
 const { Logger } = require('../utils/logger');
 
 class ScriptWriterAgent {
-  constructor(db, credentials) {
+  constructor(db, credentials, aiService = null) {
     this.db = db;
     this.credentials = credentials;
+    this.aiService = aiService;
     this.logger = new Logger('ScriptWriter');
     this.templates = this.loadTemplates();
   }
@@ -46,7 +47,20 @@ class ScriptWriterAgent {
   async generateScript(strategy) {
     try {
       this.logger.info(`Generating script for: ${strategy.topic}`);
-      
+
+      // Prefer genuinely AI-written content; fall back to templates if the AI
+      // service is unavailable or the call/parse fails.
+      if (this.aiService?.isAvailable()) {
+        try {
+          const aiScript = await this.generateScriptWithAI(strategy);
+          await this.db.saveScript(aiScript);
+          this.logger.info(`Script generated with AI: ${aiScript.title}`);
+          return aiScript;
+        } catch (aiError) {
+          this.logger.warn(`AI script generation failed (${aiError.message}); falling back to templates`);
+        }
+      }
+
       const template = this.templates[strategy.contentType.toLowerCase()] || this.templates.explainer;
       
       // Generate script components
@@ -87,6 +101,94 @@ class ScriptWriterAgent {
       this.logger.error('Failed to generate script:', error);
       throw error;
     }
+  }
+
+  // Generate a full script with a single structured AI call, then map the
+  // result onto the exact script shape the rest of the pipeline expects
+  // (TTS formatting, captions, production all read these fields).
+  async generateScriptWithAI(strategy) {
+    const template = this.templates[strategy.contentType?.toLowerCase()] || this.templates.explainer;
+    const audience = strategy.targetAudience || 'a general YouTube audience';
+
+    const prompt = `You are an expert YouTube scriptwriter. Write an engaging ${strategy.contentType || 'explainer'} video script.
+
+Topic: ${strategy.topic}
+Angle: ${strategy.angle || ''}
+Target audience: ${audience}
+Tone: ${template.tone}
+
+Return ONLY valid JSON (no markdown, no commentary) with exactly this shape:
+{
+  "title": "compelling, specific YouTube title under 70 characters",
+  "hook": "1-2 sentence attention-grabbing spoken opening",
+  "introduction": "2-3 spoken sentences introducing the topic and the value the viewer gets",
+  "sections": [
+    { "title": "short section heading", "narration": "2-4 sentences of natural spoken narration" }
+  ],
+  "conclusion": "1-2 sentence closing thought",
+  "recap": ["short recap point", "short recap point"],
+  "cta": "1-2 sentence call to action (subscribe / like / comment)"
+}
+Provide 3 to 5 sections. Write natural spoken narration, not bullet points, and do not include stage directions in square brackets.`;
+
+    // gemini-3.5-flash is a "thinking" model — it consumes part of the output
+    // budget on internal reasoning, so give it generous headroom or the JSON
+    // gets truncated mid-output.
+    const data = await this.aiService.generateJson(prompt, { maxTokens: 8192, temperature: 0.8 });
+
+    const sections = (Array.isArray(data.sections) ? data.sections : []).map((s, i) => ({
+      type: 'ai',
+      title: s.title || `Part ${i + 1}`,
+      content: [s.narration || ''],
+      visuals: [],
+      duration: 60
+    }));
+
+    if (sections.length === 0) throw new Error('AI returned no script sections');
+
+    const mainContent = { sections, totalDuration: sections.length * 60 };
+
+    const script = {
+      title: data.title || `${strategy.topic}`,
+      hook: { type: 'ai', text: data.hook || '', duration: '0:00-0:08' },
+      introduction: {
+        greeting: 'Hey everyone, welcome back to the channel!',
+        topicIntro: data.introduction || '',
+        valueProposition: '',
+        credibility: '',
+        duration: '0:08-0:25'
+      },
+      mainContent,
+      conclusion: {
+        type: 'conclusion',
+        title: 'Wrapping Up',
+        recap: Array.isArray(data.recap) ? data.recap : [],
+        finalThought: data.conclusion || '',
+        duration: '30 seconds'
+      },
+      callToAction: {
+        type: 'call_to_action',
+        subscribe: data.cta || 'If you enjoyed this, subscribe for more!',
+        like: '',
+        comment: '',
+        nextVideo: '',
+        duration: '15 seconds'
+      },
+      duration: this.estimateDuration(mainContent),
+      tone: template.tone,
+      pacing: template.pacing,
+      keywords: strategy.keywords,
+      metadata: {
+        strategy,
+        generatedAt: new Date().toISOString(),
+        version: '2.0-ai',
+        provider: this.aiService.providerName,
+        model: this.aiService.model
+      }
+    };
+
+    script.fullScript = this.formatFullScript(script);
+    return script;
   }
 
   async generateTitle(strategy) {

@@ -519,14 +519,12 @@ class CredentialManager {
       // Files might not exist yet
     }
 
-    const requiredCredentials = ['youtube', 'openai'];
+    const aiProviders = ['openai', 'gemini', 'openrouter', 'kimi', 'mimo', 'glm'];
+    const hasAiProvider = aiProviders.some(p => this.credentials[p]);
     const missing = [];
 
-    for (const service of requiredCredentials) {
-      if (!this.credentials[service]) {
-        missing.push(service);
-      }
-    }
+    if (!this.credentials['youtube']) missing.push('youtube');
+    if (!hasAiProvider) missing.push('ai-provider (openai/gemini/openrouter)');
 
     if (missing.length > 0) {
       console.log(chalk.yellow(`\n⚠️  Missing credentials for: ${missing.join(', ')}`));

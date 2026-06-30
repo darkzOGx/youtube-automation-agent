@@ -226,61 +226,75 @@ class AIVideoGenerator {
 
   async generateSlideshowVideo(script, visualAssets, audioPath, outputPath) {
     this.logger.info('Creating slideshow video...');
-    
+
     const { chromium } = require('playwright');
-    const browser = await chromium.launch();
-    const page = await browser.newPage();
-
-    // Create HTML for slideshow
-    const slideshowHtml = this.createSlideshowHTML(script, visualAssets);
-    
-    // Set page content
-    await page.setContent(slideshowHtml);
-    await page.setViewportSize({ width: 1920, height: 1080 });
-
-    // Record video of the slideshow
-    const videoPath = outputPath.replace('.mp4', '_visual.mp4');
-    
-    // Use Playwright to record
-    await page.waitForTimeout(1000); // Wait for assets to load
-    
-    // Create video frames by taking screenshots at intervals
-    const duration = this.calculateScriptDuration(script);
-    const frameCount = Math.ceil(duration * 30); // 30 FPS
-    const frameInterval = duration / frameCount * 1000;
-
     const framesDir = path.join(path.dirname(outputPath), 'frames');
     await fs.mkdir(framesDir, { recursive: true });
 
-    for (let i = 0; i < frameCount; i++) {
-      await page.screenshot({
-        path: path.join(framesDir, `frame_${String(i).padStart(6, '0')}.png`),
-        fullPage: true
-      });
-      
-      // Advance animation
-      await page.evaluate(() => {
-        if (window.advanceAnimation) {
-          window.advanceAnimation();
-        }
-      });
-      
-      await page.waitForTimeout(frameInterval);
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage();
+      await page.setViewportSize({ width: 1920, height: 1080 });
+      await page.setContent(this.createSlideshowHTML(script, visualAssets));
+
+      // Freeze transitions/animations so each slide screenshots cleanly and fast.
+      await page.addStyleTag({ content: '*{transition:none !important;animation:none !important;}' });
+      await page.waitForTimeout(400);
+
+      const slideCount = await page.evaluate(() => document.querySelectorAll('.slide').length);
+      if (!slideCount) throw new Error('no slides to render');
+
+      // One screenshot PER SLIDE (the old code took one per frame: 30fps * duration
+      // = thousands of screenshots, which never finished).
+      for (let i = 0; i < slideCount; i++) {
+        await page.evaluate((idx) => {
+          document.querySelectorAll('.slide').forEach((s, j) => s.classList.toggle('active', j === idx));
+        }, i);
+        await page.waitForTimeout(120);
+        await page.screenshot({
+          path: path.join(framesDir, `slide_${String(i).padStart(3, '0')}.png`),
+          fullPage: false
+        });
+      }
+      await browser.close();
+
+      // Show each slide for an even share of the estimated narration duration.
+      const duration = this.calculateScriptDuration(script);
+      const perSlide = Math.max(3, Math.ceil(duration / slideCount));
+
+      // ffmpeg concat-demuxer list with per-image durations. The last entry is
+      // repeated without a duration line so its duration is honored (a known quirk).
+      const toFf = (p) => p.replace(/\\/g, '/');
+      let list = '';
+      for (let i = 0; i < slideCount; i++) {
+        list += `file '${toFf(path.join(framesDir, `slide_${String(i).padStart(3, '0')}.png`))}'\nduration ${perSlide}\n`;
+      }
+      list += `file '${toFf(path.join(framesDir, `slide_${String(slideCount - 1).padStart(3, '0')}.png`))}'\n`;
+      const listPath = path.join(framesDir, 'list.txt');
+      await fs.writeFile(listPath, list);
+
+      const visualPath = outputPath.replace('.mp4', '_visual.mp4');
+      const vf = 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p';
+      await execAsync(`ffmpeg -y -f concat -safe 0 -i "${listPath}" -vf "${vf}" -c:v libx264 -preset veryfast "${visualPath}"`);
+
+      // Mux narration only if a real audio file exists; otherwise keep it silent.
+      let hasAudio = false;
+      try { await fs.access(audioPath); hasAudio = true; } catch (_) { /* no audio */ }
+      if (hasAudio) {
+        await this.addAudioToVideo(visualPath, audioPath, outputPath);
+        await fs.unlink(visualPath).catch(() => {});
+      } else {
+        this.logger.warn('No narration audio found — producing a silent slideshow video');
+        await fs.rename(visualPath, outputPath);
+      }
+
+      await this.cleanupDirectory(framesDir);
+      this.logger.info(`Slideshow video created: ${outputPath}`);
+      return outputPath;
+    } catch (error) {
+      try { await browser.close(); } catch (_) { /* already closed */ }
+      throw error;
     }
-
-    await browser.close();
-
-    // Convert frames to video using FFmpeg
-    const ffmpegCommand = `ffmpeg -framerate 30 -i "${framesDir}/frame_%06d.png" -c:v libx264 -pix_fmt yuv420p "${videoPath}"`;
-    await execAsync(ffmpegCommand);
-
-    // Add audio
-    await this.addAudioToVideo(videoPath, audioPath, outputPath);
-
-    // Cleanup frames
-    await this.cleanupDirectory(framesDir);
-
-    return outputPath;
   }
 
   createSlideshowHTML(script, visualAssets) {
@@ -380,7 +394,6 @@ class AIVideoGenerator {
         ${visualAssets[0] ? `<img class="background-image" src="${visualAssets[0]}" />` : ''}
         <div class="content">
             <h1>${script.title}</h1>
-            <p>Ethereal Dreamscript</p>
         </div>
     </div>
     
@@ -460,10 +473,17 @@ class AIVideoGenerator {
       ).join('');
     }
     
+    if (Array.isArray(section.content)) {
+      const text = section.content
+        .filter(l => typeof l === 'string' && !l.startsWith('['))
+        .join(' ');
+      return `<p>${text.slice(0, 220)}${text.length > 220 ? '...' : ''}</p>`;
+    }
+
     if (typeof section.content === 'string') {
       return `<p>${section.content.slice(0, 200)}${section.content.length > 200 ? '...' : ''}</p>`;
     }
-    
+
     return '<p>Content coming soon...</p>';
   }
 

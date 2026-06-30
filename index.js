@@ -10,6 +10,7 @@ const { SEOOptimizerAgent } = require('./agents/seo-optimizer-agent');
 const { ProductionManagementAgent } = require('./agents/production-management-agent');
 const { PublishingSchedulingAgent } = require('./agents/publishing-scheduling-agent');
 const { AnalyticsOptimizationAgent } = require('./agents/analytics-optimization-agent');
+const { AITextService } = require('./utils/ai-text-service');
 const { DailyAutomation } = require('./schedules/daily-automation');
 const chalk = require('chalk');
 
@@ -67,9 +68,19 @@ class YouTubeAutomationAgent {
   }
 
   async initializeAgents() {
+    // Shared AI text service (Gemini / OpenAI / OpenRouter / etc.) built from
+    // the loaded credentials. Agents use it for real content generation and
+    // gracefully fall back to templates when it is unavailable.
+    this.aiService = new AITextService(this.credentials.credentials || {});
+    if (this.aiService.isAvailable()) {
+      this.logger.info(`AI text service ready: ${this.aiService.providerName} (${this.aiService.model})`);
+    } else {
+      this.logger.warn('AI text service unavailable — agents will use template fallbacks');
+    }
+
     this.agents = {
-      strategy: new ContentStrategyAgent(this.db, this.credentials),
-      scriptWriter: new ScriptWriterAgent(this.db, this.credentials),
+      strategy: new ContentStrategyAgent(this.db, this.credentials, this.aiService),
+      scriptWriter: new ScriptWriterAgent(this.db, this.credentials, this.aiService),
       thumbnailDesigner: new ThumbnailDesignerAgent(this.db, this.credentials),
       seoOptimizer: new SEOOptimizerAgent(this.db, this.credentials),
       production: new ProductionManagementAgent(this.db, this.credentials),
@@ -99,7 +110,21 @@ class YouTubeAutomationAgent {
         status: 'healthy',
         initialized: this.isInitialized,
         agents: Object.keys(this.agents),
+        uptime: process.uptime(),
         timestamp: new Date().toISOString()
+      });
+    });
+
+    // Channel configuration (for dashboard display)
+    this.app.get('/config', (req, res) => {
+      const c = (this.credentials && this.credentials.credentials) || {};
+      res.json({
+        channelName: c.channel?.channelName || 'YouTube Automation',
+        channelDescription: c.channel?.channelDescription || '',
+        targetAudience: c.content?.targetAudience || '',
+        contentTypes: c.content?.contentTypes || [],
+        postingFrequency: c.content?.postingFrequency || '',
+        preferredPostTime: c.content?.preferredPostTime || ''
       });
     });
 
@@ -174,8 +199,10 @@ class YouTubeAutomationAgent {
     });
     this.logger.info('Production processing complete');
     
-    // Step 6: Save to database
-    const contentId = await this.db.saveProductionData(productionData);
+    // Step 6: The production agent already persisted this record
+    // (processContent calls db.saveProductionData internally), so just
+    // capture its ID here — re-inserting would violate the UNIQUE id constraint.
+    const contentId = productionData.id;
     this.logger.info(`Content saved with ID: ${contentId}`);
     
     return {

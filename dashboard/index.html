@@ -164,7 +164,7 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>🎬 Ethereal Dreamscript</h1>
+            <h1 id="channel-name">🎬 YouTube Automation</h1>
             <p>YouTube Automation Dashboard</p>
         </div>
         
@@ -212,13 +212,7 @@
             <div class="dashboard-card">
                 <h2>🎯 Content Strategy</h2>
                 <div class="card-content">
-                    <div id="content-strategy">
-                        <p><strong>Current Focus:</strong> Animated Storytelling</p>
-                        <p><strong>Target Audience:</strong> Creative individuals interested in storytelling and imagination</p>
-                        <p><strong>Content Types:</strong> Story-driven content, Explainers, Tutorials</p>
-                        <p><strong>Posting Frequency:</strong> Daily</p>
-                        <p><strong>Optimal Time:</strong> 2:00 PM</p>
-                    </div>
+                    <div id="content-strategy" class="loading">Loading strategy...</div>
                 </div>
             </div>
             
@@ -253,6 +247,15 @@
         // Dashboard functionality
         async function loadDashboard() {
             try {
+                // Load channel configuration (branding + strategy panel)
+                try {
+                    const configResponse = await fetch('/config');
+                    const configData = await configResponse.json();
+                    updateConfig(configData);
+                } catch (error) {
+                    console.log('Config not available yet');
+                }
+
                 // Load system health
                 const healthResponse = await fetch('/health');
                 const healthData = await healthResponse.json();
@@ -278,20 +281,41 @@
             }
         }
         
+        function updateConfig(cfg) {
+            if (cfg.channelName) {
+                document.getElementById('channel-name').textContent = '🎬 ' + cfg.channelName;
+                document.title = cfg.channelName + ' - YouTube Automation Dashboard';
+            }
+            const cs = document.getElementById('content-strategy');
+            if (cs) {
+                cs.classList.remove('loading');
+                const types = (cfg.contentTypes && cfg.contentTypes.length) ? cfg.contentTypes.join(', ') : '—';
+                cs.innerHTML = `
+                    <p><strong>Channel:</strong> ${cfg.channelName || '—'}</p>
+                    <p><strong>Target Audience:</strong> ${cfg.targetAudience || '—'}</p>
+                    <p><strong>Content Types:</strong> ${types}</p>
+                    <p><strong>Posting Frequency:</strong> ${cfg.postingFrequency || '—'}</p>
+                    <p><strong>Preferred Time:</strong> ${cfg.preferredPostTime || '—'}</p>
+                `;
+            }
+        }
+
         function updateSystemStatus(data) {
             document.getElementById('system-status').textContent = data.status === 'healthy' ? '🟢' : '🔴';
             
             const overview = document.getElementById('system-overview');
+            overview.classList.remove('loading');
             overview.innerHTML = `
                 <p><strong>Status:</strong> ${data.initialized ? 'Initialized' : 'Initializing'}</p>
                 <p><strong>Agents Active:</strong> ${data.agents ? data.agents.length : 0}/7</p>
-                <p><strong>Uptime:</strong> ${formatUptime(process?.uptime?.() || 0)}</p>
+                <p><strong>Uptime:</strong> ${formatUptime(data.uptime || 0)}</p>
                 <p><strong>Last Updated:</strong> ${new Date().toLocaleTimeString()}</p>
             `;
-            
+
             const agentStatus = document.getElementById('agent-status');
             if (data.agents) {
-                agentStatus.innerHTML = data.agents.map(agent => 
+                agentStatus.classList.remove('loading');
+                agentStatus.innerHTML = data.agents.map(agent =>
                     `<div class="schedule-item">✅ ${agent} Agent</div>`
                 ).join('');
             }
@@ -299,7 +323,8 @@
         
         function updateSchedule(data) {
             const schedule = document.getElementById('upcoming-schedule');
-            
+            schedule.classList.remove('loading');
+
             if (data && data.length > 0) {
                 schedule.innerHTML = data.slice(0, 3).map(item => `
                     <div class="schedule-item">
@@ -338,6 +363,7 @@
         
         function updateMetrics(data) {
             const metrics = document.getElementById('performance-metrics');
+            metrics.classList.remove('loading');
             if (data && data.totalVideos !== undefined) {
                 document.getElementById('content-count').textContent = data.totalVideos || '0';
                 document.getElementById('published-count').textContent = data.totalVideos || '0';
@@ -357,6 +383,7 @@
             
             // Update activity log
             const activity = document.getElementById('recent-activity');
+            activity.classList.remove('loading');
             activity.innerHTML = `
                 <div class="log-entry success">✅ System initialized successfully</div>
                 <div class="log-entry info">ℹ️ All 7 agents are active</div>
