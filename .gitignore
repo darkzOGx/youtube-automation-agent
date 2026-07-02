@@ -90,3 +90,10 @@ backup/
 # Cache
 .cache/
 *.cache
+# Generated content outputs
+data/assets/
+data/audio/
+data/captions/
+data/scripts/
+data/videos/
+data/thumbnails/

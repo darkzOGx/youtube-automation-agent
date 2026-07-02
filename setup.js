@@ -104,7 +104,7 @@ LOG_LEVEL=info
 
 # YouTube Settings
 YOUTUBE_REGION=US
-DEFAULT_PRIVACY_STATUS=public
+DEFAULT_PRIVACY_STATUS=private
 
 # Content Settings
 AUTO_SHORTEN_CONTENT=true
@@ -121,9 +121,6 @@ DEFAULT_DELAY_BETWEEN_POSTS=60000
 
 # TTS Settings
 TTS_VOICE=neural_voice_1
-
-# Security
-JWT_SECRET=${this.generateJWTSecret()}
 
 # Analytics & Monitoring
 ENABLE_ANALYTICS=true
@@ -158,10 +155,6 @@ SCREENSHOT_PATH=./debug/screenshots
     console.log(chalk.green('✅ Environment file created'));
   }
 
-  generateJWTSecret() {
-    const crypto = require('crypto');
-    return crypto.randomBytes(64).toString('hex');
-  }
 
   async installDependencies() {
     console.log(chalk.cyan('\n📦 Checking dependencies...'));

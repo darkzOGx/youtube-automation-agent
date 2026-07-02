@@ -266,14 +266,19 @@ class AnalyticsOptimizationAgent {
     const videoDetails = await this.getVideoDetails(videoId);
     const stats = videoDetails.statistics;
     
-    const engagementRate = ((stats.likeCount + stats.commentCount) / stats.viewCount * 100).toFixed(2);
-    const likeRatio = (stats.likeCount / (stats.likeCount + (stats.dislikeCount || 0)) * 100).toFixed(2);
+    const views = stats.viewCount || 0;
+    const likes = stats.likeCount || 0;
+    const comments = stats.commentCount || 0;
+    const interactions = likes + comments;
+    const engagementRate = views > 0 ? (interactions / views) * 100 : 0;
+    const likeRatio = interactions > 0 ? (likes / interactions) * 100 : 0;
+    const commentsPerView = views > 0 ? (comments / views) * 100 : 0;
     
     return {
-      engagementRate: parseFloat(engagementRate),
-      likeRatio: parseFloat(likeRatio),
-      commentsPerView: (stats.commentCount / stats.viewCount * 100).toFixed(4),
-      engagementQuality: this.assessEngagementQuality(parseFloat(engagementRate))
+      engagementRate: parseFloat(engagementRate.toFixed(2)),
+      likeRatio: parseFloat(likeRatio.toFixed(2)),
+      commentsPerView: commentsPerView.toFixed(4),
+      engagementQuality: this.assessEngagementQuality(engagementRate)
     };
   }
 

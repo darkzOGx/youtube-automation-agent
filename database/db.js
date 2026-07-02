@@ -177,7 +177,15 @@ class Database {
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
       )`,
       
-      // System Settings
+      // Automation Events
+      `CREATE TABLE IF NOT EXISTS automation_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_type TEXT NOT NULL,
+        status TEXT NOT NULL,
+        data TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )`,
+            // System Settings
       `CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL,
@@ -315,7 +323,7 @@ class Database {
   // Production methods
   async saveProductionData(production) {
     await this.executeQuery(
-      `INSERT INTO productions (
+      `INSERT OR REPLACE INTO productions (
         id, status, assets, timeline, scheduled_publish_time, 
         priority, estimated_duration
       ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -329,6 +337,8 @@ class Database {
         production.estimatedDuration
       ]
     );
+  
+    return production.id;
   }
 
   async updateProductionData(production) {

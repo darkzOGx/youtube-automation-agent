@@ -1,5 +1,14 @@
 # YouTube Automation Agent
 
+## What's New in v2.1
+
+- **Real AI generation wired in** — the Content Strategy, Script Writer, and SEO agents now call your configured AI provider (OpenAI, OpenRouter, Kimi, MiMo, GLM, or Gemini) for topics, scripts, titles, descriptions, and tags. If no provider key is set, they fall back to the built-in templates so the pipeline still runs.
+- **API protection** — set `API_KEY` in `.env` and the mutating endpoints (`POST /generate`, `POST /publish/:id`) require a matching `x-api-key` header. Request bodies are validated and size-limited.
+- **Safer publishing** — default privacy is now `private` (set `DEFAULT_PRIVACY_STATUS=public` to opt in), and the uploader streams the real video file — it refuses to upload placeholder assets from simulated runs.
+- **Startup and scheduler fixes** — added the missing `sharp` dependency (the app previously crashed on boot), created the missing `automation_events` table (every scheduled task previously threw on logging), fixed the double-insert in the content pipeline, and fixed the publish-queue removal.
+- **No more fabricated statistics** — template scripts no longer invent numbers like "90% of people…".
+- **Cleaner repo** — removed two dead OAuth flows (`authenticate.js`, `simple-auth.js` used Google's long-deprecated OOB flow), dead dependencies (`cron`, `jimp`), broken npm scripts, and committed build artifacts. Added ESLint (`npm run lint`) and GitHub Actions CI.
+
 ## What's New in v2.0
 
 - **Model upgrades across the board** — GPT-5.5 / GPT-5.5 Instant replace GPT-4-turbo, GPT Image 2 replaces DALL-E 3, Gemini 3.5 Flash/Pro replace Gemini 1.x, ElevenLabs Eleven v3 replaces v1, Wan 2.7 replaces Stable Video Diffusion
@@ -97,8 +106,9 @@ Dashboard runs at `http://localhost:3456`.
 ### Prerequisites
 
 - Node.js 18+
+- [FFmpeg](https://ffmpeg.org/download.html) on your PATH (used for video assembly and audio muxing)
 - Google account (YouTube Data API — free)
-- At least one AI provider key (OpenAI or Gemini)
+- At least one AI provider key (OpenAI or Gemini) — without one, agents fall back to template-based generation
 
 ## Configuration
 
@@ -158,7 +168,10 @@ PORT=3456
 CHANNEL_NAME=Your Channel Name
 TARGET_AUDIENCE=Your target audience
 YOUTUBE_REGION=US
-DEFAULT_PRIVACY_STATUS=public
+DEFAULT_PRIVACY_STATUS=private
+
+# Optional: protect mutating API routes (POST /generate, /publish)
+# API_KEY=some-long-random-string
 ```
 
 ## Automation Schedule
@@ -188,10 +201,11 @@ The scheduler runs automatically after `npm start`. Content generation at 06:00,
 # health check
 curl http://localhost:3456/health
 
-# generate a video on demand
+# generate a video on demand (send x-api-key if API_KEY is set in .env)
 curl -X POST http://localhost:3456/generate \
   -H "Content-Type: application/json" \
-  -d '{"topic": "Top 10 Life Hacks", "style": "listicle"}'
+  -H "x-api-key: $API_KEY" \
+  -d '{"topic": "Top 10 Life Hacks", "style": "list"}'
 
 # view schedule
 curl http://localhost:3456/schedule
@@ -278,8 +292,7 @@ youtube-automation-agent/
 ├── data/            # generated content and assets
 ├── schedules/       # cron-based automation
 ├── utils/           # AI service wrappers, logging, credential management
-├── workflows/       # daily and weekly pipeline orchestration
-├── uploads/         # temporary upload staging
+├── .github/         # CI workflow (lint + tests on every push/PR)
 └── index.js         # Express server + agent initialization
 ```
 
@@ -317,7 +330,8 @@ If this was useful, check out:
 git clone <your-fork>
 cd youtube-automation-agent
 npm install
-npm run dev
+npm run lint   # must pass — CI runs this on every PR
+npm test
 ```
 
 ## License

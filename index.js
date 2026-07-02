@@ -106,9 +106,78 @@ class YouTubeAutomationAgent {
     }
   }
 
+  requireAPIKey() {
+    return (req, res, next) => {
+      if (!process.env.API_KEY) {
+        return next();
+      }
+
+      if (req.get('x-api-key') !== process.env.API_KEY) {
+        return res.status(401).json({ success: false, error: 'Unauthorized' });
+      }
+
+      return next();
+    };
+  }
+
+  validateGenerateRequestBody(body = {}) {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return { valid: false, status: 400, error: 'Request body must be a JSON object' };
+    }
+
+    const value = {
+      topic: null,
+      style: null,
+      length: typeof body.length === 'string' ? body.length : 'medium'
+    };
+
+    if (body.topic !== undefined) {
+      if (typeof body.topic !== 'string') {
+        return { valid: false, status: 400, error: 'topic must be a string' };
+      }
+
+      const topic = body.topic.trim();
+      if (topic.length > 200) {
+        return { valid: false, status: 400, error: 'topic must be 200 characters or less' };
+      }
+      value.topic = topic || null;
+    }
+
+    if (body.style !== undefined) {
+      if (typeof body.style !== 'string') {
+        return { valid: false, status: 400, error: 'style must be a string' };
+      }
+
+      const allowedStyles = new Set([
+        'tutorial',
+        'explainer',
+        'list',
+        'review',
+        'story',
+        'educational',
+        'informative',
+        'engaging',
+        'professional',
+        'ethereal'
+      ]);
+      const style = body.style.trim();
+
+      if (style.length > 50) {
+        return { valid: false, status: 400, error: 'style must be 50 characters or less' };
+      }
+
+      value.style = allowedStyles.has(style.toLowerCase()) ? style.toLowerCase() : style || null;
+    }
+
+    return { valid: true, value };
+  }
   setupAPI() {
-    this.app.use(express.json());
+    this.app.use(express.json({ limit: '1mb' }));
     this.app.use(express.static(path.join(__dirname, 'dashboard')));
+
+    if (!process.env.API_KEY) {
+      this.logger.warn('API_KEY is not set; mutating API routes are unprotected');
+    }
     
     // Main dashboard route
     this.app.get('/', (req, res) => {
@@ -139,10 +208,16 @@ class YouTubeAutomationAgent {
       });
     });
 
-    // Manual content generation — runs asynchronously and reports progress via
-    // /progress/:jobId so the dashboard can show a live status instead of hanging.
-    this.app.post('/generate', (req, res) => {
-      const { topic, style, length } = req.body || {};
+    // Manual content generation — auth-checked and validated, then runs
+    // asynchronously and reports progress via /progress/:jobId so the dashboard
+    // shows a live status instead of hanging.
+    this.app.post('/generate', this.requireAPIKey(), (req, res) => {
+      const validation = this.validateGenerateRequestBody(req.body);
+      if (!validation.valid) {
+        return res.status(validation.status).json({ success: false, error: validation.error });
+      }
+
+      const { topic, style, length } = validation.value;
       const job = this._createJob();
 
       // Respond immediately with the job id; the pipeline runs in the background.
@@ -199,7 +274,7 @@ class YouTubeAutomationAgent {
     });
 
     // Manual publish
-    this.app.post('/publish/:contentId', async (req, res) => {
+    this.app.post('/publish/:contentId', this.requireAPIKey(), async (req, res) => {
       try {
         const { contentId } = req.params;
         const result = await this.agents.publishing.publishContent(contentId);

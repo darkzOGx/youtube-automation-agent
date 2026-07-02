@@ -1,12 +1,13 @@
 const { Logger } = require('../utils/logger');
+const { AITextService } = require('../utils/ai-text-service');
 
 class ScriptWriterAgent {
-  constructor(db, credentials, aiService = null) {
+  constructor(db, credentials) {
     this.db = db;
     this.credentials = credentials;
-    this.aiService = aiService;
     this.logger = new Logger('ScriptWriter');
     this.templates = this.loadTemplates();
+    this.aiTextService = new AITextService(credentials?.credentials || credentials || {});
   }
 
   async initialize() {
@@ -47,22 +48,17 @@ class ScriptWriterAgent {
   async generateScript(strategy) {
     try {
       this.logger.info(`Generating script for: ${strategy.topic}`);
-
-      // Prefer genuinely AI-written content; fall back to templates if the AI
-      // service is unavailable or the call/parse fails.
-      if (this.aiService?.isAvailable()) {
-        try {
-          const aiScript = await this.generateScriptWithAI(strategy);
-          await this.db.saveScript(aiScript);
-          this.logger.info(`Script generated with AI: ${aiScript.title}`);
-          return aiScript;
-        } catch (aiError) {
-          this.logger.warn(`AI script generation failed (${aiError.message}); falling back to templates`);
-        }
-      }
-
-      const template = this.templates[strategy.contentType.toLowerCase()] || this.templates.explainer;
       
+      const template = this.templates[strategy.contentType.toLowerCase()] || this.templates.explainer;
+      const aiScript = await this.generateScriptWithAI(strategy, template);
+      if (aiScript) {
+        aiScript.fullScript = this.formatFullScript(aiScript);
+        await this.db.saveScript(aiScript);
+        this.logger.info(`Script generated with AI provider: ${aiScript.title}`);
+        return aiScript;
+      }
+      
+      this.logger.info('Using template script generation');
       // Generate script components
       const hook = await this.generateHook(strategy);
       const introduction = await this.generateIntroduction(strategy);
@@ -103,94 +99,149 @@ class ScriptWriterAgent {
     }
   }
 
-  // Generate a full script with a single structured AI call, then map the
-  // result onto the exact script shape the rest of the pipeline expects
-  // (TTS formatting, captions, production all read these fields).
-  async generateScriptWithAI(strategy) {
-    const template = this.templates[strategy.contentType?.toLowerCase()] || this.templates.explainer;
-    const audience = strategy.targetAudience || 'a general YouTube audience';
+  async generateScriptWithAI(strategy, template) {
+    if (!this.aiTextService.isAvailable()) {
+      this.logger.info('Using template script generation because no AI text provider is configured');
+      return null;
+    }
 
-    const prompt = `You are an expert YouTube scriptwriter. Write an engaging ${strategy.contentType || 'explainer'} video script.
+    const prompt = `You are writing a YouTube script plan.
+Return only valid JSON with this exact shape:
+{
+  "title": "compelling title under 100 characters",
+  "hook": "opening hook in one sentence",
+  "sections": [
+    { "title": "section title", "content": ["spoken script bullet"], "duration": 60 }
+  ],
+  "cta": "clear call to action"
+}
 
 Topic: ${strategy.topic}
-Angle: ${strategy.angle || ''}
-Target audience: ${audience}
+Style/content type: ${strategy.contentType}
+Angle: ${strategy.angle}
+Target audience: ${strategy.targetAudience}
+Desired length: ${process.env.DEFAULT_VIDEO_LENGTH || '8-12 minutes'}
 Tone: ${template.tone}
+Pacing: ${template.pacing}
+Keywords: ${(strategy.keywords || []).join(', ')}
+Avoid fabricated statistics, unsupported claims, and fake urgency.`;
 
-Return ONLY valid JSON (no markdown, no commentary) with exactly this shape:
-{
-  "title": "compelling, specific YouTube title under 70 characters",
-  "hook": "1-2 sentence attention-grabbing spoken opening",
-  "introduction": "2-3 spoken sentences introducing the topic and the value the viewer gets",
-  "sections": [
-    { "title": "short section heading", "narration": "2-4 sentences of natural spoken narration" }
-  ],
-  "conclusion": "1-2 sentence closing thought",
-  "recap": ["short recap point", "short recap point"],
-  "cta": "1-2 sentence call to action (subscribe / like / comment)"
-}
-Provide 3 to 5 sections. Write natural spoken narration, not bullet points, and do not include stage directions in square brackets.`;
+    try {
+      const response = await this.aiTextService.generateText(prompt, {
+        // gemini-3.5-flash is a "thinking" model — it spends part of the output
+        // budget on internal reasoning, so a small cap truncates the JSON.
+        maxTokens: 8192,
+        temperature: 0.7
+      });
+      const parsed = this.parseAIJsonResponse(response);
+      const sections = this.normalizeAISections(parsed.sections, strategy);
 
-    // gemini-3.5-flash is a "thinking" model — it consumes part of the output
-    // budget on internal reasoning, so give it generous headroom or the JSON
-    // gets truncated mid-output.
-    const data = await this.aiService.generateJson(prompt, { maxTokens: 8192, temperature: 0.8 });
-
-    const sections = (Array.isArray(data.sections) ? data.sections : []).map((s, i) => ({
-      type: 'ai',
-      title: s.title || `Part ${i + 1}`,
-      content: [s.narration || ''],
-      visuals: [],
-      duration: 60
-    }));
-
-    if (sections.length === 0) throw new Error('AI returned no script sections');
-
-    const mainContent = { sections, totalDuration: sections.length * 60 };
-
-    const script = {
-      title: data.title || `${strategy.topic}`,
-      hook: { type: 'ai', text: data.hook || '', duration: '0:00-0:08' },
-      introduction: {
-        greeting: 'Hey everyone, welcome back to the channel!',
-        topicIntro: data.introduction || '',
-        valueProposition: '',
-        credibility: '',
-        duration: '0:08-0:25'
-      },
-      mainContent,
-      conclusion: {
-        type: 'conclusion',
-        title: 'Wrapping Up',
-        recap: Array.isArray(data.recap) ? data.recap : [],
-        finalThought: data.conclusion || '',
-        duration: '30 seconds'
-      },
-      callToAction: {
-        type: 'call_to_action',
-        subscribe: data.cta || 'If you enjoyed this, subscribe for more!',
-        like: '',
-        comment: '',
-        nextVideo: '',
-        duration: '15 seconds'
-      },
-      duration: this.estimateDuration(mainContent),
-      tone: template.tone,
-      pacing: template.pacing,
-      keywords: strategy.keywords,
-      metadata: {
-        strategy,
-        generatedAt: new Date().toISOString(),
-        version: '2.0-ai',
-        provider: this.aiService.providerName,
-        model: this.aiService.model
+      if (!parsed.title || !parsed.hook || sections.length === 0) {
+        throw new Error('AI script response missing required fields');
       }
-    };
 
-    script.fullScript = this.formatFullScript(script);
-    return script;
+      this.logger.info(`Using AI script generation via ${this.aiTextService.providerName}`);
+      return {
+        title: String(parsed.title).slice(0, 100),
+        hook: this.normalizeAIHook(parsed.hook),
+        introduction: await this.generateIntroduction(strategy),
+        mainContent: {
+          sections,
+          totalDuration: this.calculateSectionsDuration(sections)
+        },
+        conclusion: await this.generateConclusion(strategy),
+        callToAction: this.normalizeAICTA(parsed.cta, strategy),
+        duration: this.estimateDuration({ sections }),
+        tone: template.tone,
+        pacing: template.pacing,
+        keywords: strategy.keywords || [],
+        metadata: {
+          strategy,
+          generatedAt: new Date().toISOString(),
+          version: '1.0',
+          generationSource: 'ai'
+        }
+      };
+    } catch (error) {
+      this.logger.warn(`AI script generation failed; using template fallback: ${error.message}`);
+      return null;
+    }
   }
 
+  parseAIJsonResponse(response) {
+    const text = String(response || '').trim();
+    const withoutFences = text
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/```$/i, '')
+      .trim();
+
+    try {
+      return JSON.parse(withoutFences);
+    } catch (error) {
+      const match = withoutFences.match(/\{[\s\S]*\}/);
+      if (!match) {
+        throw error;
+      }
+      return JSON.parse(match[0]);
+    }
+  }
+
+  normalizeAIHook(hook) {
+    const text = typeof hook === 'object' && hook !== null ? hook.text : hook;
+    return {
+      type: 'ai',
+      text: String(text).trim(),
+      duration: '0:00-0:05'
+    };
+  }
+
+  normalizeAISections(sections, strategy) {
+    if (!Array.isArray(sections)) {
+      return [];
+    }
+
+    return sections
+      .slice(0, 8)
+      .map((section, index) => {
+        const rawContent = Array.isArray(section.content)
+          ? section.content
+          : [section.content || section.summary || section.description];
+        const content = rawContent
+          .filter(Boolean)
+          .map(line => String(line).trim())
+          .filter(Boolean);
+
+        return {
+          type: 'ai_generated',
+          title: String(section.title || `${strategy.topic} Part ${index + 1}`).trim(),
+          content,
+          duration: parseInt(section.duration, 10) || 60
+        };
+      })
+      .filter(section => section.title && section.content.length > 0);
+  }
+
+  normalizeAICTA(cta, strategy) {
+    if (cta && typeof cta === 'object') {
+      return {
+        type: 'call_to_action',
+        subscribe: String(cta.subscribe || cta.text || `Subscribe for more on ${strategy.topic}.`),
+        like: String(cta.like || 'Like this video if it helped.'),
+        comment: String(cta.comment || `Share your experience with ${strategy.topic} in the comments.`),
+        nextVideo: String(cta.nextVideo || 'Watch the next related video for more context.'),
+        duration: '15 seconds'
+      };
+    }
+
+    return {
+      type: 'call_to_action',
+      subscribe: String(cta || `Subscribe for more practical videos about ${strategy.topic}.`),
+      like: 'Like this video if it helped.',
+      comment: `Share your experience with ${strategy.topic} in the comments.`,
+      nextVideo: 'Watch the next related video for more context.',
+      duration: '15 seconds'
+    };
+  }
   async generateTitle(strategy) {
     const templates = [
       `${strategy.angle}`,
@@ -261,11 +312,11 @@ Provide 3 to 5 sections. Write natural spoken narration, not bullet points, and 
 
   generateStatistic(topic) {
     const stats = [
-      `90% of people don't understand ${topic} correctly`,
-      `${topic} has grown by 300% in the last year alone`,
-      `experts predict ${topic} will be worth billions by 2030`,
-      `only 1 in 10 people are using ${topic} effectively`,
-      `${topic} can save you hours every single day`
+      `many people are still figuring out how ${topic} works`,
+      `the conversation around ${topic} keeps expanding`,
+      `experts continue to debate where ${topic} is headed`,
+      `people often miss the practical side of ${topic}`,
+      `${topic} can be easier to approach with a clear framework`
     ];
     
     return stats[Math.floor(Math.random() * stats.length)];

@@ -5,7 +5,6 @@ const { promisify } = require('util');
 const fs = require('fs').promises;
 const path = require('path');
 const axios = require('axios');
-const FormData = require('form-data');
 const { Logger } = require('./logger');
 
 const execAsync = promisify(exec);

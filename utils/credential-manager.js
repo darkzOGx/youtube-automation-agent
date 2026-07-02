@@ -423,7 +423,7 @@ class CredentialManager {
         name: 'defaultPrivacy',
         message: 'Select default privacy setting:',
         choices: ['public', 'unlisted', 'private'],
-        default: 'public'
+        default: 'private'
       },
       {
         type: 'input',
@@ -440,10 +440,10 @@ class CredentialManager {
     this.credentials.channel = answers;
     
     // Set environment variables for the application
-    process.env.CHANNEL_NAME = answers.channelName;
-    process.env.DEFAULT_PRIVACY_STATUS = answers.defaultPrivacy;
-    process.env.WEBSITE_URL = answers.websiteUrl;
-    process.env.BUSINESS_EMAIL = answers.businessEmail;
+    this.setEnvIfPresent('CHANNEL_NAME', answers.channelName);
+    this.setEnvIfPresent('DEFAULT_PRIVACY_STATUS', answers.defaultPrivacy);
+    this.setEnvIfPresent('WEBSITE_URL', answers.websiteUrl);
+    this.setEnvIfPresent('BUSINESS_EMAIL', answers.businessEmail);
 
     await this.saveCredentials();
     console.log(chalk.green('✅ Channel configuration saved successfully!'));
@@ -502,14 +502,21 @@ class CredentialManager {
     this.credentials.content = answers;
     
     // Set environment variables
-    process.env.COMPETITOR_CHANNELS = answers.competitorChannels.join(',');
-    process.env.DEFAULT_AUTHOR = answers.channelName || 'Content Creator';
-    process.env.TARGET_AUDIENCE = answers.targetAudience;
+    this.setEnvIfPresent('COMPETITOR_CHANNELS', answers.competitorChannels.join(','));
+    this.setEnvIfPresent('DEFAULT_AUTHOR', this.credentials.channel?.channelName || 'Content Creator');
+    this.setEnvIfPresent('TARGET_AUDIENCE', answers.targetAudience);
 
     await this.saveCredentials();
     console.log(chalk.green('✅ Content configuration saved successfully!'));
   }
 
+  setEnvIfPresent(key, value) {
+    if (value === undefined || value === null || value === '') {
+      return;
+    }
+
+    process.env[key] = String(value);
+  }
   // Validation methods
   async validateAll() {
     try {

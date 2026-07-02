@@ -16,6 +16,10 @@ class SystemTest {
     
     const tests = [
       { name: 'Database Connection', test: () => this.testDatabase() },
+      { name: 'Production Persistence', test: () => this.testProductionPersistence() },
+      { name: 'Automation Events Table', test: () => this.testAutomationEventsTable() },
+      { name: 'API Validation and Security', test: () => this.testAPIValidationAndSecurity() },
+      { name: 'Publishing Safety', test: () => this.testPublishingSafety() },
       { name: 'Logger System', test: () => this.testLogger() },
       { name: 'Directory Structure', test: () => this.testDirectories() },
       { name: 'Agent Loading', test: () => this.testAgentLoading() },
@@ -75,6 +79,175 @@ class SystemTest {
     this.logger.info('Database test completed successfully');
   }
 
+  async testProductionPersistence() {
+    const db = new Database();
+    await db.initialize();
+
+    const production = {
+      id: `prod_test_${Date.now()}`,
+      status: 'processing',
+      assets: { finalVideo: { path: 'placeholder.mp4' } },
+      timeline: { created: new Date().toISOString() },
+      scheduledPublishTime: new Date().toISOString(),
+      priority: 25,
+      estimatedDuration: '1:00'
+    };
+
+    const firstId = await db.saveProductionData(production);
+    if (firstId !== production.id) {
+      throw new Error('saveProductionData did not return the production id');
+    }
+
+    const secondId = await db.saveProductionData({
+      ...production,
+      status: 'ready',
+      priority: 90
+    });
+    if (secondId !== production.id) {
+      throw new Error('saveProductionData upsert did not return the production id');
+    }
+
+    const saved = await db.getRow('SELECT status, priority FROM productions WHERE id = ?', [production.id]);
+    if (!saved || saved.status !== 'ready' || saved.priority !== 90) {
+      throw new Error('saveProductionData did not upsert the existing production row');
+    }
+
+    await db.executeQuery('DELETE FROM productions WHERE id = ?', [production.id]);
+    await db.close();
+    this.logger.info('Production persistence test completed successfully');
+  }
+
+  async testAutomationEventsTable() {
+    const db = new Database();
+    await db.initialize();
+
+    await db.executeQuery(
+      'INSERT INTO automation_events (event_type, status, data, created_at) VALUES (?, ?, ?, datetime("now"))',
+      ['test_event', 'success', JSON.stringify({ ok: true })]
+    );
+
+    const row = await db.getRow(
+      'SELECT event_type, status, data FROM automation_events WHERE event_type = ? ORDER BY created_at DESC',
+      ['test_event']
+    );
+
+    if (!row || row.status !== 'success') {
+      throw new Error('automation_events row was not persisted');
+    }
+
+    await db.executeQuery('DELETE FROM automation_events WHERE event_type = ?', ['test_event']);
+    await db.close();
+    this.logger.info('Automation events table test completed successfully');
+  }
+
+  async testAPIValidationAndSecurity() {
+    const { YouTubeAutomationAgent } = require('./index');
+    const agent = new YouTubeAutomationAgent();
+
+    if (typeof agent.validateGenerateRequestBody !== 'function') {
+      throw new Error('validateGenerateRequestBody is not implemented');
+    }
+    if (typeof agent.requireAPIKey !== 'function') {
+      throw new Error('requireAPIKey is not implemented');
+    }
+
+    const valid = agent.validateGenerateRequestBody({
+      topic: 'Node automation',
+      style: 'tutorial'
+    });
+    if (!valid.valid || valid.value.topic !== 'Node automation') {
+      throw new Error('Valid generate request was rejected');
+    }
+
+    const invalidTopic = agent.validateGenerateRequestBody({ topic: 123 });
+    if (invalidTopic.valid || invalidTopic.status !== 400) {
+      throw new Error('Non-string topic was not rejected');
+    }
+
+    const invalidStyle = agent.validateGenerateRequestBody({ style: 'x'.repeat(51) });
+    if (invalidStyle.valid || invalidStyle.status !== 400) {
+      throw new Error('Overlong style was not rejected');
+    }
+
+    const previousKey = process.env.API_KEY;
+    process.env.API_KEY = 'test-secret';
+    const middleware = agent.requireAPIKey();
+
+    let rejectedNextCalled = false;
+    const rejectedResponse = this.createMockResponse();
+    middleware({ get: () => 'wrong-secret' }, rejectedResponse, () => {
+      rejectedNextCalled = true;
+    });
+
+    if (rejectedNextCalled || rejectedResponse.statusCode !== 401) {
+      throw new Error('Invalid API key was not rejected');
+    }
+
+    let acceptedNextCalled = false;
+    const acceptedResponse = this.createMockResponse();
+    middleware({ get: () => 'test-secret' }, acceptedResponse, () => {
+      acceptedNextCalled = true;
+    });
+
+    if (!acceptedNextCalled || acceptedResponse.statusCode) {
+      throw new Error('Valid API key was not accepted');
+    }
+
+    if (previousKey === undefined) {
+      delete process.env.API_KEY;
+    } else {
+      process.env.API_KEY = previousKey;
+    }
+
+    this.logger.info('API validation and security test completed successfully');
+  }
+
+  createMockResponse() {
+    return {
+      statusCode: null,
+      body: null,
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      json(payload) {
+        this.body = payload;
+        return this;
+      }
+    };
+  }
+
+  async testPublishingSafety() {
+    const { PublishingSchedulingAgent } = require('./agents/publishing-scheduling-agent');
+    const agent = new PublishingSchedulingAgent({
+      updateScheduleEntry: async () => {}
+    }, {});
+
+    agent.publishQueue = [
+      { productionId: 'prod-a', title: 'A', status: 'scheduled', metadata: {} },
+      { productionId: 'prod-b', title: 'B', status: 'scheduled', metadata: {} }
+    ];
+    agent.uploadToYouTube = async () => ({ id: 'youtube-1' });
+
+    await agent.publishContent('prod-a');
+
+    if (agent.publishQueue.length !== 1 || agent.publishQueue[0].productionId !== 'prod-b') {
+      throw new Error('publishContent removed the wrong publish queue entries');
+    }
+
+    let missingFileRejected = false;
+    try {
+      await agent.getVideoStream(path.join(__dirname, 'data', 'missing-placeholder.mp4'));
+    } catch (error) {
+      missingFileRejected = /video file not found/.test(error.message);
+    }
+
+    if (!missingFileRejected) {
+      throw new Error('getVideoStream did not reject a missing video file');
+    }
+
+    this.logger.info('Publishing safety test completed successfully');
+  }
   async testLogger() {
     const testLogger = new Logger('TestLogger');
     

@@ -1,5 +1,6 @@
 const { google } = require('googleapis');
 const fs = require('fs').promises;
+const fsSync = require('fs');
 const path = require('path');
 const { Logger } = require('../utils/logger');
 
@@ -96,7 +97,7 @@ class PublishingSchedulingAgent {
       await this.db.updateScheduleEntry(scheduleEntry);
       
       // Remove from queue
-      this.publishQueue = this.publishQueue.filter(entry => entry.id !== scheduleEntry.id);
+      this.publishQueue = this.publishQueue.filter(entry => entry.productionId !== scheduleEntry.productionId);
       
       this.logger.success(`Content published: ${scheduleEntry.youtubeUrl}`);
       return scheduleEntry;
@@ -120,7 +121,7 @@ class PublishingSchedulingAgent {
         defaultAudioLanguage: metadata.seo.metadata.language
       },
       status: {
-        privacyStatus: process.env.DEFAULT_PRIVACY_STATUS || 'public',
+        privacyStatus: process.env.DEFAULT_PRIVACY_STATUS || 'private',
         publishAt: scheduleEntry.publishTime,
         selfDeclaredMadeForKids: false
       }
@@ -152,15 +153,17 @@ class PublishingSchedulingAgent {
   }
 
   async getVideoStream(videoPath) {
-    // In a real implementation, this would return a file stream
-    // For now, we'll simulate it
-    return JSON.stringify({
-      message: 'Video stream would be provided here',
-      path: videoPath,
-      timestamp: new Date().toISOString()
-    });
-  }
+    try {
+      const stats = await fs.stat(videoPath);
+      if (!stats.isFile() || path.extname(videoPath).toLowerCase() !== '.mp4') {
+        throw new Error('placeholder asset');
+      }
 
+      return fsSync.createReadStream(videoPath);
+    } catch (error) {
+      throw new Error('video file not found — refusing to upload placeholder');
+    }
+  }
   async uploadThumbnail(videoId, thumbnailPath) {
     try {
       const thumbnailBuffer = await fs.readFile(thumbnailPath);

@@ -1,5 +1,6 @@
 const axios = require('axios');
 const { Logger } = require('../utils/logger');
+const { AITextService } = require('../utils/ai-text-service');
 
 class ContentStrategyAgent {
   constructor(db, credentials, aiService = null) {
@@ -10,6 +11,7 @@ class ContentStrategyAgent {
     this.trendingTopics = [];
     this.competitorData = [];
     this.contentCalendar = [];
+    this.aiTextService = new AITextService(credentials?.credentials || credentials || {});
   }
 
   async initialize() {
@@ -61,7 +63,7 @@ class ContentStrategyAgent {
       return response.data.items.map(video => ({
         title: video.snippet.title,
         tags: video.snippet.tags || [],
-        viewCount: parseInt(video.statistics.viewCount),
+        viewCount: parseInt(video.statistics?.viewCount, 10) || 0,
         category: video.snippet.categoryId,
         publishedAt: video.snippet.publishedAt
       }));
@@ -131,7 +133,7 @@ class ContentStrategyAgent {
 
     videos.forEach(video => {
       const title = video.snippet.title.toLowerCase();
-      const views = parseInt(video.statistics.viewCount);
+      const views = parseInt(video.statistics?.viewCount, 10) || 0;
       totalViews += views;
 
       // Extract topics from title
@@ -207,6 +209,14 @@ class ContentStrategyAgent {
     try {
       let topic, angle, targetAudience, contentType;
 
+      const aiStrategy = await this.generateContentStrategyWithAI(requestedTopic);
+      if (aiStrategy) {
+        await this.db.saveContentStrategy(aiStrategy);
+        this.logger.info(`Generated AI strategy for: ${aiStrategy.topic}`);
+        return aiStrategy;
+      }
+
+      this.logger.info('Using template content strategy generation');
       if (requestedTopic) {
         topic = requestedTopic;
         angle = await this.generateAngle(topic);
@@ -289,6 +299,91 @@ Return ONLY valid JSON (no markdown) with this shape:
     return { topic: data.topic, angle: data.angle || data.topic };
   }
 
+  async generateContentStrategyWithAI(requestedTopic = null) {
+    if (!this.aiTextService.isAvailable()) {
+      this.logger.info('Using template content strategy generation because no AI text provider is configured');
+      return null;
+    }
+
+    const trendingTopics = this.trendingTopics
+      .slice(0, 10)
+      .map(topic => topic.topic)
+      .join(', ');
+    const prompt = `You are selecting a YouTube content strategy.
+Return only valid JSON with this exact shape:
+{
+  "topic": "specific video topic",
+  "angle": "distinct content angle",
+  "targetAudience": "specific audience",
+  "contentType": "Tutorial|Explainer|List|Review|Story|News",
+  "keywords": ["keyword"]
+}
+
+Requested topic: ${requestedTopic || 'none'}
+Trending topics available: ${trendingTopics || 'Technology Trends'}
+Channel target audience: ${process.env.TARGET_AUDIENCE || 'General audience interested in educational content'}
+Avoid fabricated claims and unsupported numbers.`;
+
+    try {
+      const response = await this.aiTextService.generateText(prompt, {
+        maxTokens: 1000,
+        temperature: 0.7
+      });
+      const parsed = this.parseAIJsonResponse(response);
+      const topic = String(parsed.topic || requestedTopic || '').trim();
+
+      if (!topic) {
+        throw new Error('AI strategy response missing topic');
+      }
+
+      const contentType = this.normalizeContentType(parsed.contentType, topic);
+      const keywords = Array.isArray(parsed.keywords) && parsed.keywords.length > 0
+        ? parsed.keywords.map(keyword => String(keyword).trim()).filter(Boolean)
+        : this.extractKeywords(topic);
+
+      this.logger.info(`Using AI content strategy via ${this.aiTextService.providerName}`);
+      return {
+        topic,
+        angle: String(parsed.angle || await this.generateAngle(topic)).trim(),
+        targetAudience: String(parsed.targetAudience || await this.identifyTargetAudience(topic)).trim(),
+        contentType,
+        keywords,
+        estimatedViews: this.predictViews(topic),
+        bestPublishTime: this.calculateBestPublishTime(),
+        competitorAnalysis: this.getCompetitorInsights(topic),
+        createdAt: new Date().toISOString()
+      };
+    } catch (error) {
+      this.logger.warn(`AI content strategy failed; using template fallback: ${error.message}`);
+      return null;
+    }
+  }
+
+  parseAIJsonResponse(response) {
+    const text = String(response || '').trim();
+    const withoutFences = text
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/```$/i, '')
+      .trim();
+
+    try {
+      return JSON.parse(withoutFences);
+    } catch (error) {
+      const match = withoutFences.match(/\{[\s\S]*\}/);
+      if (!match) {
+        throw error;
+      }
+      return JSON.parse(match[0]);
+    }
+  }
+
+  normalizeContentType(contentType, topic) {
+    const allowed = new Set(['Tutorial', 'Explainer', 'List', 'Review', 'Story', 'News']);
+    const normalized = String(contentType || '').trim();
+    const titleCased = normalized.charAt(0).toUpperCase() + normalized.slice(1).toLowerCase();
+
+    return allowed.has(titleCased) ? titleCased : this.selectContentType(topic);
+  }
   selectOptimalTopic() {
     // Use scoring algorithm to select best topic
     const recentTopics = this.getRecentTopics();

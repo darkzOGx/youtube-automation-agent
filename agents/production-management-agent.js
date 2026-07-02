@@ -62,7 +62,7 @@ class ProductionManagementAgent {
         status: 'processing',
         assets: {
           script: await this.processScript(script),
-          thumbnail: await this.processThumbnail(thumbnail),
+          thumbnail: await this.processThumbnail(thumbnail, script),
           audio: null, // Will be generated later
           video: null, // Will be generated later
           captions: null // Will be generated later
@@ -206,11 +206,11 @@ class ProductionManagementAgent {
     return ttsText;
   }
 
-  async processThumbnail(thumbnail) {
+  async processThumbnail(thumbnail, script) {
     try {
       // Try to generate AI thumbnail first
-      const script = thumbnail.script || { title: 'Ethereal Dreamscript Video' };
-      const aiThumbnail = await this.aiVideoGenerator.generateThumbnail(script, 'ethereal');
+      const thumbnailScript = thumbnail.script || script || { title: thumbnail.title || 'Untitled Video' };
+      const aiThumbnail = await this.aiVideoGenerator.generateThumbnail(thumbnailScript, 'ethereal');
       
       return {
         path: aiThumbnail.path,
@@ -434,18 +434,6 @@ class ProductionManagementAgent {
     }
   }
 
-  async simulateTTSGeneration(scriptPath, outputPath, config) {
-    // This is a simulation - in production, you'd integrate with actual TTS services
-    this.logger.info(`Simulating TTS generation: ${config.voice}`);
-    
-    // Create a placeholder audio file reference
-    await fs.writeFile(outputPath + '.info', JSON.stringify({
-      message: 'TTS audio would be generated here',
-      config,
-      timestamp: new Date().toISOString()
-    }, null, 2));
-  }
-
   async generateCaptions(productionData) {
     this.logger.info('Generating captions...');
     
@@ -588,17 +576,6 @@ class ProductionManagementAgent {
       // Fallback to simulation
       return await this.simulateVideoAssembly(productionData);
     }
-  }
-
-  async simulateVideoRendering(instructions) {
-    this.logger.info('Simulating video rendering...');
-    
-    // Create a placeholder that indicates video would be rendered
-    await fs.writeFile(instructions.outputPath + '.placeholder', JSON.stringify({
-      message: 'Final video would be rendered here',
-      instructions,
-      timestamp: new Date().toISOString()
-    }, null, 2));
   }
 
   async getPipelineStatus() {
