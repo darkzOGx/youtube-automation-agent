@@ -30,13 +30,13 @@
     "inquirer": "^8.2.6",
     "microsoft-cognitiveservices-speech-sdk": "^1.45.0",
     "moment": "^2.29.4",
-    "node-cron": "^3.0.2",
+    "node-cron": "^4.5.0",
     "openai": "^6.0.0",
     "playwright": "^1.54.2",
     "replicate": "^1.4.0",
-    "sqlite3": "^5.1.6",
-    "winston": "^3.11.0",
-    "sharp": "^0.33.0"
+    "sharp": "^0.35.2",
+    "sqlite3": "^6.0.1",
+    "winston": "^3.11.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.2",

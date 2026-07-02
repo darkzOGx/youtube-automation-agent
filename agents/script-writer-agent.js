@@ -128,7 +128,9 @@ Avoid fabricated statistics, unsupported claims, and fake urgency.`;
 
     try {
       const response = await this.aiTextService.generateText(prompt, {
-        maxTokens: 1800,
+        // gemini-3.5-flash is a "thinking" model — it spends part of the output
+        // budget on internal reasoning, so a small cap truncates the JSON.
+        maxTokens: 8192,
         temperature: 0.7
       });
       const parsed = this.parseAIJsonResponse(response);

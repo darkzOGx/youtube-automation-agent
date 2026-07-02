@@ -121,6 +121,23 @@ class AITextService {
     return response.choices[0].message.content;
   }
 
+  // Generate text and parse it as JSON, tolerating markdown code fences and
+  // surrounding prose. Throws if no JSON object can be extracted/parsed.
+  async generateJson(prompt, options = {}) {
+    const raw = await this.generateText(prompt, options);
+    if (!raw) throw new Error('empty AI response');
+
+    let text = String(raw).trim();
+    const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (fence) text = fence[1].trim();
+
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start === -1 || end === -1) throw new Error('no JSON object in AI response');
+
+    return JSON.parse(text.slice(start, end + 1));
+  }
+
   isAvailable() {
     return !!(this.client || this.gemini);
   }

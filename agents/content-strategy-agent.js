@@ -3,9 +3,10 @@ const { Logger } = require('../utils/logger');
 const { AITextService } = require('../utils/ai-text-service');
 
 class ContentStrategyAgent {
-  constructor(db, credentials) {
+  constructor(db, credentials, aiService = null) {
     this.db = db;
     this.credentials = credentials;
+    this.aiService = aiService;
     this.logger = new Logger('ContentStrategy');
     this.trendingTopics = [];
     this.competitorData = [];
@@ -219,6 +220,19 @@ class ContentStrategyAgent {
       if (requestedTopic) {
         topic = requestedTopic;
         angle = await this.generateAngle(topic);
+      } else if (this.aiService?.isAvailable()) {
+        // Let the AI propose a specific, audience-relevant topic (the raw
+        // trending keywords are often junk like "official" from video titles).
+        try {
+          const ai = await this.generateTopicWithAI();
+          topic = ai.topic;
+          angle = ai.angle;
+        } catch (e) {
+          this.logger.warn(`AI topic generation failed (${e.message}); using trending fallback`);
+          const selectedTopic = this.selectOptimalTopic();
+          topic = selectedTopic.topic;
+          angle = await this.generateAngle(topic);
+        }
       } else {
         // Select from trending topics
         const selectedTopic = this.selectOptimalTopic();
@@ -254,6 +268,35 @@ class ContentStrategyAgent {
       this.logger.error('Failed to generate content strategy:', error);
       throw error;
     }
+  }
+
+  // Ask the AI for one specific, compelling video topic tailored to the
+  // channel's audience, optionally seeded by real trending keywords.
+  async generateTopicWithAI() {
+    const channel = this.credentials?.credentials?.content || {};
+    const audience = channel.targetAudience || 'a general YouTube audience';
+    const types = (channel.contentTypes && channel.contentTypes.length)
+      ? channel.contentTypes.join(', ')
+      : 'explainer';
+    const trending = (this.trendingTopics || [])
+      .slice(0, 10)
+      .map(t => t.topic)
+      .filter(Boolean);
+
+    const prompt = `You are a YouTube content strategist. Propose ONE specific, compelling video idea.
+
+Channel target audience: ${audience}
+Preferred content types: ${types}
+${trending.length ? `Trending keywords for inspiration (optional): ${trending.join(', ')}` : ''}
+
+Return ONLY valid JSON (no markdown) with this shape:
+{ "topic": "a specific, searchable video topic - NOT a single generic word", "angle": "a unique, compelling angle or hook for the video" }`;
+
+    // Generous token budget: gemini-3.5-flash spends part of the output budget
+    // on internal reasoning, so a small cap leaves no room for the JSON itself.
+    const data = await this.aiService.generateJson(prompt, { maxTokens: 2048, temperature: 0.9 });
+    if (!data.topic) throw new Error('AI returned no topic');
+    return { topic: data.topic, angle: data.angle || data.topic };
   }
 
   async generateContentStrategyWithAI(requestedTopic = null) {
