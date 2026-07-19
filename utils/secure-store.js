@@ -18,8 +18,18 @@ const MAGIC = 'aes-256-gcm';
 
 function getKeyMaterial() {
   const secret = process.env.CREDENTIAL_KEY;
-  if (secret && secret.length >= 16) return secret;
-  return null;
+  if (secret === undefined || secret === '') return null;
+  if (secret.length < 16) {
+    // A present-but-invalid key means the operator tried to enable encryption.
+    // Failing open to plaintext here would silently defeat that intent, so
+    // treat it as a configuration error instead.
+    throw new Error(
+      'CREDENTIAL_KEY is set but shorter than 16 characters. Refusing to ' +
+      'handle secrets: use a key of at least 16 characters, or unset ' +
+      'CREDENTIAL_KEY to fall back to unencrypted 0600 storage.'
+    );
+  }
+  return secret;
 }
 
 function deriveKey(secret, salt) {
@@ -71,6 +81,36 @@ function warnOnce(logger, msg) {
   else console.warn(msg);
 }
 
+/**
+ * Write via a 0600 temp file in the same directory, then rename over the
+ * target. `writeFile(..., { mode })` only applies the mode when it CREATES a
+ * file; replacing an existing world-readable file in place would leave the old
+ * permissive mode on fresh secrets (and a crash before a follow-up chmod
+ * would leave them exposed). The rename swaps in an inode that was private
+ * from birth.
+ */
+function writeFileAtomicSync(filePath, contents) {
+  const tmp = `${filePath}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+  fs.writeFileSync(tmp, contents, { mode: 0o600 });
+  try {
+    fs.renameSync(tmp, filePath);
+  } catch (err) {
+    try { fs.unlinkSync(tmp); } catch { /* already gone */ }
+    throw err;
+  }
+}
+
+async function writeFileAtomic(filePath, contents) {
+  const tmp = `${filePath}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+  await fsp.writeFile(tmp, contents, { mode: 0o600 });
+  try {
+    await fsp.rename(tmp, filePath);
+  } catch (err) {
+    try { await fsp.unlink(tmp); } catch { /* already gone */ }
+    throw err;
+  }
+}
+
 /** Synchronous write (used by the standalone OAuth scripts). */
 function writeJsonSecureSync(filePath, obj, logger) {
   const plaintext = JSON.stringify(obj, null, 2);
@@ -79,8 +119,7 @@ function writeJsonSecureSync(filePath, obj, logger) {
   if (!secret) {
     warnOnce(logger, 'CREDENTIAL_KEY not set — secrets are stored unencrypted (0600). Set CREDENTIAL_KEY to encrypt at rest.');
   }
-  fs.writeFileSync(filePath, contents, { mode: 0o600 });
-  try { fs.chmodSync(filePath, 0o600); } catch { /* best effort on non-POSIX */ }
+  writeFileAtomicSync(filePath, contents);
 }
 
 /** Async write (used by the credential manager). */
@@ -91,8 +130,7 @@ async function writeJsonSecure(filePath, obj, logger) {
   if (!secret) {
     warnOnce(logger, 'CREDENTIAL_KEY not set — secrets are stored unencrypted (0600). Set CREDENTIAL_KEY to encrypt at rest.');
   }
-  await fsp.writeFile(filePath, contents, { mode: 0o600 });
-  try { await fsp.chmod(filePath, 0o600); } catch { /* best effort on non-POSIX */ }
+  await writeFileAtomic(filePath, contents);
 }
 
 function readJsonSecureSync(filePath) {
