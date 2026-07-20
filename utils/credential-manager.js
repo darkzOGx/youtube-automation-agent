@@ -260,6 +260,37 @@ class CredentialManager {
     console.log(chalk.green('OpenRouter configured successfully!'));
   }
 
+  // Atlas Cloud Setup
+  async setupAtlasCloudCredentials() {
+    console.log(chalk.cyan('\nAtlas Cloud Setup'));
+    console.log(chalk.gray('Get your API key from: https://www.atlascloud.ai/console/api-keys'));
+
+    const answers = await inquirer.prompt([
+      {
+        type: 'password',
+        name: 'apiKey',
+        message: 'Enter your Atlas Cloud API Key:',
+        validate: input => input.length > 0 || 'API key is required'
+      },
+      {
+        type: 'list',
+        name: 'model',
+        message: 'Select default model:',
+        choices: ['qwen/qwen3.5-flash', 'deepseek-ai/deepseek-v4-pro'],
+        default: 'qwen/qwen3.5-flash'
+      }
+    ]);
+
+    this.credentials.aiProvider = {
+      provider: 'atlascloud',
+      apiKey: answers.apiKey,
+      model: answers.model
+    };
+
+    await this.saveCredentials();
+    console.log(chalk.green('Atlas Cloud credentials configured successfully!'));
+  }
+
   // Kimi (Moonshot AI) Setup
   async setupKimiCredentials() {
     console.log(chalk.cyan('\nKimi (Moonshot AI) Setup'));
@@ -538,7 +569,7 @@ class CredentialManager {
     }
 
     if (!this.hasAITextProvider()) {
-      missing.push('an AI provider (OpenAI, Gemini, OpenRouter, Kimi, MiMo, or GLM)');
+      missing.push('an AI provider (OpenAI, Gemini, OpenRouter, Atlas Cloud, Kimi, MiMo, or GLM)');
     }
 
     return missing;
@@ -645,6 +676,7 @@ class CredentialManager {
           { name: 'OpenAI (GPT-5.5)', value: 'openai' },
           { name: 'Google Gemini (Gemini 3.5 — free tier)', value: 'gemini' },
           { name: 'OpenRouter (300+ models, one API key)', value: 'openrouter' },
+          { name: 'Atlas Cloud (OpenAI-compatible)', value: 'atlascloud' },
           { name: 'Kimi (Moonshot AI — K2.6)', value: 'kimi' },
           { name: 'MiMo (Xiaomi — V2.5 Pro)', value: 'mimo' },
           { name: 'GLM (Zhipu AI — GLM-5)', value: 'glm' },
@@ -656,6 +688,7 @@ class CredentialManager {
       case 'openai': return await this.setupOpenAICredentials();
       case 'gemini': return await this.setupGeminiCredentials();
       case 'openrouter': return await this.setupOpenRouterCredentials();
+      case 'atlascloud': return await this.setupAtlasCloudCredentials();
       case 'kimi': return await this.setupKimiCredentials();
       case 'mimo': return await this.setupMiMoCredentials();
       case 'glm': return await this.setupGLMCredentials();
