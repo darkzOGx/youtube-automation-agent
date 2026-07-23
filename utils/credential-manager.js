@@ -260,6 +260,45 @@ class CredentialManager {
     console.log(chalk.green('OpenRouter configured successfully!'));
   }
 
+  // OmniRoute Setup
+  async setupOmniRouteCredentials() {
+    console.log(chalk.cyan('\nOmniRoute Setup'));
+    console.log(chalk.gray('See docs/OMNIROUTE.md. The inference URL must end in /v1.'));
+
+    const answers = await inquirer.prompt([
+      {
+        type: 'input',
+        name: 'baseURL',
+        message: 'OmniRoute inference URL:',
+        default: process.env.OMNIROUTE_BASE_URL || 'http://127.0.0.1:20128/v1',
+        validate: input => /^https?:\/\/.+\/v1\/?$/.test(input.trim()) || 'Enter an HTTP(S) URL ending in /v1'
+      },
+      {
+        type: 'password',
+        name: 'apiKey',
+        message: 'OmniRoute client API key:',
+        validate: input => input.length > 0 || 'API key is required'
+      },
+      {
+        type: 'input',
+        name: 'model',
+        message: 'OmniRoute model or combo:',
+        default: process.env.OMNIROUTE_MODEL || 'auto/smart',
+        validate: input => input.trim().length > 0 || 'Model or combo is required'
+      }
+    ]);
+
+    this.credentials.aiProvider = {
+      provider: 'omniroute',
+      baseURL: answers.baseURL.replace(/\/$/, ''),
+      apiKey: answers.apiKey,
+      model: answers.model.trim()
+    };
+
+    await this.saveCredentials();
+    console.log(chalk.green('OmniRoute configured successfully!'));
+  }
+
   // Kimi (Moonshot AI) Setup
   async setupKimiCredentials() {
     console.log(chalk.cyan('\nKimi (Moonshot AI) Setup'));
@@ -538,7 +577,7 @@ class CredentialManager {
     }
 
     if (!this.hasAITextProvider()) {
-      missing.push('an AI provider (OpenAI, Gemini, OpenRouter, Kimi, MiMo, or GLM)');
+      missing.push('an AI provider (OmniRoute, OpenAI, Gemini, OpenRouter, Kimi, MiMo, or GLM)');
     }
 
     return missing;
@@ -642,6 +681,7 @@ class CredentialManager {
         name: 'service',
         message: 'Select your preferred AI service:',
         choices: [
+          { name: 'OmniRoute (self-hosted routing + failover)', value: 'omniroute' },
           { name: 'OpenAI (GPT-5.5)', value: 'openai' },
           { name: 'Google Gemini (Gemini 3.5 — free tier)', value: 'gemini' },
           { name: 'OpenRouter (300+ models, one API key)', value: 'openrouter' },
@@ -653,6 +693,7 @@ class CredentialManager {
     ]);
 
     switch (service) {
+      case 'omniroute': return await this.setupOmniRouteCredentials();
       case 'openai': return await this.setupOpenAICredentials();
       case 'gemini': return await this.setupGeminiCredentials();
       case 'openrouter': return await this.setupOpenRouterCredentials();
