@@ -12,6 +12,36 @@ const { checkFFmpeg, ffmpegInstallHint } = require('./utils/ffmpeg');
 
 // Everything a beginner needs to know about each provider, in one place
 const AI_PROVIDER_GUIDE = {
+  omniroute: {
+    label: 'OmniRoute — self-hosted gateway with routing and failover',
+    keyUrl: 'http://127.0.0.1:20128',
+    keyHint: 'the API key configured in your OmniRoute instance',
+    instructions: [
+      'Start OmniRoute and open its dashboard',
+      'Add and test at least one upstream provider',
+      'Create or confirm a combo such as auto/smart',
+      'Keep the inference URL ending in /v1 (default: http://127.0.0.1:20128/v1)'
+    ],
+    models: ['auto/smart', 'auto/best-fast', 'auto/best-coding', 'auto/pro-reasoning'],
+    defaultModel: 'auto/smart',
+    covers: 'scripts only (configure Gemini, OpenAI, ElevenLabs, or Azure separately for media)',
+    save(credentials, apiKey, model) {
+      credentials.aiProvider = {
+        provider: 'omniroute',
+        apiKey,
+        model,
+        baseURL: process.env.OMNIROUTE_BASE_URL || 'http://127.0.0.1:20128/v1'
+      };
+    },
+    validationCreds: (apiKey, model) => ({
+      aiProvider: {
+        provider: 'omniroute',
+        apiKey,
+        model,
+        baseURL: process.env.OMNIROUTE_BASE_URL || 'http://127.0.0.1:20128/v1'
+      }
+    })
+  },
   gemini: {
     label: 'Google Gemini — FREE tier, no credit card (recommended for beginners)',
     keyUrl: 'https://aistudio.google.com/apikey',

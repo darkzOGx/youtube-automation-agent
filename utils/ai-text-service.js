@@ -2,6 +2,13 @@ const OpenAI = require('openai');
 const { Logger } = require('./logger');
 
 const PROVIDERS = {
+  omniroute: {
+    name: 'OmniRoute',
+    baseURL: process.env.OMNIROUTE_BASE_URL || 'http://127.0.0.1:20128/v1',
+    defaultModel: process.env.OMNIROUTE_MODEL || 'auto/smart',
+    models: ['auto/smart', 'auto/best-fast', 'auto/best-coding', 'auto/pro-reasoning'],
+    envKey: 'OMNIROUTE_API_KEY',
+  },
   openai: {
     name: 'OpenAI',
     baseURL: 'https://api.openai.com/v1',
@@ -54,9 +61,11 @@ class AITextService {
     const provider = credentials.aiProvider?.provider;
     const apiKey = credentials.aiProvider?.apiKey;
     const model = credentials.aiProvider?.model;
+    const baseURL = credentials.aiProvider?.baseURL;
 
     if (provider && PROVIDERS[provider] && apiKey) {
-      return this._initOpenAICompatible(PROVIDERS[provider], apiKey, model);
+      const preset = baseURL ? { ...PROVIDERS[provider], baseURL } : PROVIDERS[provider];
+      return this._initOpenAICompatible(preset, apiKey, model);
     }
 
     for (const [, preset] of Object.entries(PROVIDERS)) {

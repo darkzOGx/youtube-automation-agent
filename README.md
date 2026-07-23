@@ -1,5 +1,8 @@
 # YouTube Automation Agent
 
+> Using a self-hosted AI gateway? See the [OmniRoute walkthrough](docs/OMNIROUTE.md)
+> for routing, failover, environment configuration, and validation.
+
 ## What's New in v2.4
 
 - **Guided walkthrough for first-time setup** — `npm run walkthrough` (also offered when you run `npm run setup`). It explains every choice in plain English, shows exactly where to get each key (and opens the page in your browser), **live-tests keys the moment you paste them**, walks you click-by-click through Google Cloud for the YouTube connection, and signs you in via your browser instead of copy-pasting auth codes. Every step is skippable and progress is saved — re-run it any time.
