@@ -1,0 +1,21 @@
+# Never copy these into the image — they're rebuilt, or they're secrets/state.
+node_modules
+npm-debug.log*
+
+# Secrets and local state (must NOT be baked into the image)
+.env
+.env.*
+config/credentials.json
+config/tokens.json
+
+# Runtime output (provided as bind-mounted volumes instead)
+data
+logs
+uploads
+temp
+
+# Dev / VCS noise
+.git
+.gitignore
+.github
+*.log

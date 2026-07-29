@@ -1,0 +1,39 @@
+# Run the YouTube Automation Agent with one command:  docker compose up -d
+#
+# First-time setup (creates config/credentials.json + tokens.json):
+#   cp .env.example .env         # then edit .env and add your keys
+#   docker compose run --rm agent npm run setup
+#
+# Then start it 24/7:
+#   docker compose up -d
+#   open http://localhost:3456
+
+services:
+  agent:
+    build: .
+    image: youtube-automation-agent
+    container_name: youtube-automation-agent
+    restart: unless-stopped
+
+    # Loads ANTHROPIC_API_KEY, OPENAI_API_KEY, CHANNEL_NAME, etc.
+    # Create it first:  cp .env.example .env
+    env_file:
+      - .env
+
+    ports:
+      - "3456:3456"          # dashboard + API
+
+    # Bind mounts keep your data on the host so it survives restarts/rebuilds:
+    volumes:
+      - ./config:/app/config     # YouTube OAuth credentials + tokens
+      - ./data:/app/data         # SQLite database + generated content
+      - ./logs:/app/logs         # application logs
+      - ./uploads:/app/uploads   # thumbnails and temporary uploads
+
+    # Reports healthy once the dashboard responds (after credentials are set up).
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3456/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

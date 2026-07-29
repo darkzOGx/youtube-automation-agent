@@ -292,6 +292,35 @@ npm run test:claude              # Claude (text) reachable?
 > 💡 Check the `logs/` folder after a run to see which steps ran for real vs.
 > simulated — each agent logs whether it used AI or a fallback.
 
+## 🐳 Run with Docker (easiest for 24/7)
+
+Docker bundles Node, FFmpeg **and** the Chromium renderer, so real videos work
+without installing anything else. You only need
+[Docker](https://docs.docker.com/get-docker/) installed.
+
+```bash
+# 1. Configure — add ANTHROPIC_API_KEY (and OPENAI_API_KEY for real media)
+cp .env.example .env
+
+# 2. One-time YouTube login (interactive: opens an auth URL, you paste a code)
+docker compose run --rm agent npm run setup
+
+# 3. Start it 24/7
+docker compose up -d          # dashboard at http://localhost:3456
+
+# Handy commands
+docker compose logs -f        # watch logs
+docker compose restart        # restart
+docker compose down           # stop
+```
+
+Your credentials (`config/`), database + generated files (`data/`), and logs
+(`logs/`) live on your machine via volumes, so they survive restarts and rebuilds.
+
+> ⚠️ Run the one-time `setup` step **first** so the app has YouTube credentials.
+> The container uses `restart: unless-stopped`, so without them it would just
+> exit on boot asking you to configure them.
+
 ## 📋 Daily Usage
 
 ### Automation Schedule
