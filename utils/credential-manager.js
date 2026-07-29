@@ -463,7 +463,7 @@ class CredentialManager {
 
     const setupSteps = [
       { name: '🎬 YouTube API', action: () => this.setupYouTubeCredentials() },
-      { name: '🤖 AI Service (OpenAI/Gemini)', action: () => this.setupAIService() },
+      { name: '🤖 AI Service (Claude / OpenAI / Gemini)', action: () => this.setupAIService() },
       { name: '🎙️  Text-to-Speech Service', action: () => this.setupTTSService() },
       { name: '📺 Channel Configuration', action: () => this.setupChannelConfig() },
       { name: '📝 Content Configuration', action: () => this.setupContentConfig() }
@@ -481,26 +481,65 @@ class CredentialManager {
     await this.testConnections();
   }
 
+  // Anthropic Claude API Setup (default text provider for the agents)
+  async setupClaudeCredentials() {
+    console.log(chalk.cyan('\n🧠 Anthropic Claude API Setup'));
+    console.log(chalk.gray('Get your API key from: https://console.anthropic.com/'));
+
+    const answers = await inquirer.prompt([
+      {
+        type: 'password',
+        name: 'apiKey',
+        message: 'Enter your Anthropic API Key:',
+        validate: input => input.startsWith('sk-ant-') || 'Anthropic keys start with "sk-ant-"'
+      },
+      {
+        type: 'list',
+        name: 'model',
+        message: 'Select your preferred Claude model:',
+        choices: [
+          { name: 'Claude Haiku 4.5 — cheapest, great for this (recommended)', value: 'claude-haiku-4-5' },
+          { name: 'Claude Sonnet 5 — balanced', value: 'claude-sonnet-5' },
+          { name: 'Claude Opus 5 — most capable', value: 'claude-opus-5' }
+        ],
+        default: 'claude-haiku-4-5'
+      }
+    ]);
+
+    this.credentials.claude = {
+      apiKey: answers.apiKey,
+      model: answers.model
+    };
+
+    await this.saveCredentials();
+    console.log(chalk.green('✅ Claude credentials configured successfully!'));
+  }
+
   async setupAIService() {
     const { service } = await inquirer.prompt([
       {
         type: 'list',
         name: 'service',
-        message: 'Select your preferred AI service:',
+        message: 'Select the AI service that writes your content:',
         choices: [
-          { name: 'OpenAI (GPT-4/GPT-3.5)', value: 'openai' },
-          { name: 'Google Gemini', value: 'gemini' },
-          { name: 'Both (OpenAI primary)', value: 'both' }
-        ]
+          { name: 'Anthropic Claude (recommended)', value: 'claude' },
+          { name: 'OpenAI (also enables DALL-E thumbnails + voice)', value: 'openai' },
+          { name: 'Google Gemini (free tier)', value: 'gemini' },
+          { name: 'Skip for now (agents use built-in templates)', value: 'skip' }
+        ],
+        default: 'claude'
       }
     ]);
 
-    if (service === 'openai' || service === 'both') {
+    if (service === 'claude') {
+      await this.setupClaudeCredentials();
+    } else if (service === 'openai') {
       await this.setupOpenAICredentials();
-    }
-    
-    if (service === 'gemini' || service === 'both') {
+    } else if (service === 'gemini') {
       await this.setupGeminiCredentials();
+    } else {
+      console.log(chalk.yellow('\nℹ️  Skipped AI setup. Add ANTHROPIC_API_KEY to your .env later,'));
+      console.log(chalk.gray('   or the agents will fall back to built-in templates.'));
     }
   }
 
