@@ -25,6 +25,7 @@ class SystemTest {
       { name: 'FFmpeg Resolution', test: () => this.testFFmpegResolution() },
       { name: 'Gemini Media Provider Selection', test: () => this.testGeminiMediaProvider() },
       { name: 'Slideshow Renderer', test: () => this.testSlideshowRenderer() },
+      { name: 'Slideshow Embeds Visual Assets', test: () => this.testSlideshowEmbedsVisualAssets() },
       { name: 'Evergreen Template Topics', test: () => this.testEvergreenTopics() },
       { name: 'Walkthrough Module', test: () => this.testWalkthroughModule() },
       { name: 'Logger System', test: () => this.testLogger() },
@@ -444,6 +445,57 @@ class SystemTest {
 
     this.logger.info('Slideshow renderer test completed successfully');
   }
+
+  async testSlideshowEmbedsVisualAssets() {
+    const { AIVideoGenerator } = require('./utils/ai-video-generator');
+    const { checkFFmpeg, runFFmpeg } = require('./utils/ffmpeg');
+    const fs = require('fs').promises;
+    const os = require('os');
+    const sharp = require('sharp');
+
+    if (!(await checkFFmpeg())) {
+      this.logger.warn('FFmpeg unavailable — skipping visual asset embedding test');
+      return;
+    }
+
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'yaa-embed-'));
+
+    try {
+      // A saturated red still. The default slide background is a blue/purple
+      // gradient, so "did the image render?" is answerable from channel means.
+      const imagePath = path.join(dir, 'asset.png');
+      await sharp({
+        create: { width: 1920, height: 1080, channels: 3, background: { r: 255, g: 0, b: 0 } }
+      }).png().toFile(imagePath);
+
+      const generator = new AIVideoGenerator({});
+      const script = {
+        title: 'Embedding Test',
+        mainContent: { sections: [{ title: 'Section One', content: 'Body copy.' }] }
+      };
+
+      const outputPath = path.join(dir, 'out.mp4');
+      await generator.generateSlideshowVideo(script, [imagePath], path.join(dir, 'missing.mp3'), outputPath);
+
+      const framePath = path.join(dir, 'frame.png');
+      await runFFmpeg(['-y', '-ss', '1', '-i', outputPath, '-frames:v', '1', framePath]);
+
+      const { channels } = await sharp(framePath).stats();
+      const [red, , blue] = channels.map(channel => channel.mean);
+
+      if (!(red > blue)) {
+        throw new Error(
+          `Visual asset never reached the frame (red ${red.toFixed(1)} <= blue ${blue.toFixed(1)}) — ` +
+          'the slideshow rendered its background instead of the supplied image'
+        );
+      }
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+    }
+
+    this.logger.info('Visual asset embedding test completed successfully');
+  }
+
 
   async testEvergreenTopics() {
     const { ContentStrategyAgent } = require('./agents/content-strategy-agent');

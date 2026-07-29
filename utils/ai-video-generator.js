@@ -325,11 +325,19 @@ class AIVideoGenerator {
 
       // Create HTML for slideshow (only real image files can be embedded)
       const imageAssets = await this.filterImageAssets(visualAssets);
-      await page.setContent(this.createSlideshowHTML(script, imageAssets));
+
+      // Chromium refuses file:// subresources on an about:blank document, which
+      // is what setContent() gives us — every generated still was silently
+      // dropped. Serving the markup from a real file:// document keeps the
+      // origin consistent so the images actually load.
+      await fs.mkdir(slidesDir, { recursive: true });
+      const pagePath = path.join(slidesDir, 'slideshow.html');
+      await fs.writeFile(pagePath, this.createSlideshowHTML(script, imageAssets));
+      await page.goto(pathToFileURL(pagePath).href, { waitUntil: 'load' });
 
       // Freeze CSS transitions/animations so each still is captured fully rendered
       await page.addStyleTag({ content: '* { transition: none !important; animation: none !important; }' });
-      await page.waitForTimeout(1000); // Wait for assets to load
+      await this.waitForImagesToDecode(page);
 
       // Capture ONE still per slide instead of screenshotting at 30fps —
       // FFmpeg turns the stills into a crossfaded video in seconds.
@@ -403,6 +411,22 @@ class AIVideoGenerator {
 
     await runFFmpeg(args);
     return videoPath;
+  }
+
+  // Waiting on decode rather than a fixed timeout means a still that failed to
+  // load is reported instead of quietly screenshotting an empty slide.
+  async waitForImagesToDecode(page) {
+    const broken = await page.evaluate(async () => {
+      const images = Array.from(document.images);
+      await Promise.all(images.map(image => image.decode().catch(() => {})));
+      return images.filter(image => !image.naturalWidth).map(image => image.src);
+    });
+
+    if (broken.length) {
+      this.logger.warn(`${broken.length} slide image(s) failed to load: ${broken.join(', ')}`);
+    }
+
+    return broken;
   }
 
   async filterImageAssets(visualAssets = []) {
