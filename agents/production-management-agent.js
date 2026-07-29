@@ -569,9 +569,15 @@ class ProductionManagementAgent {
         finalVideoPath
       );
       
-      // Get file stats
-      const stats = await fs.stat(finalVideoPath);
-      
+      // If the real .mp4 wasn't produced (simulation mode, no media keys),
+      // fall back to the simulated assembly cleanly instead of erroring.
+      let stats;
+      try {
+        stats = await fs.stat(finalVideoPath);
+      } catch (missing) {
+        return await this.simulateVideoAssembly(productionData);
+      }
+
       productionData.assets.finalVideo = {
         path: finalVideoPath,
         fileSize: stats.size,

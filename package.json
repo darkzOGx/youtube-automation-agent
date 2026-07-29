@@ -8,6 +8,9 @@
     "setup": "node setup.js",
     "scheduler": "node schedules/daily-automation.js",
     "test": "node test.js",
+    "test:gemini": "node test-gemini.js",
+    "test:claude": "node test-claude.js",
+    "test:script": "node test-script.js",
     "agent:strategy": "node agents/content-strategy-agent.js",
     "agent:script": "node agents/script-writer-agent.js",
     "agent:thumbnail": "node agents/thumbnail-designer-agent.js",
@@ -21,8 +24,9 @@
     "credentials:setup": "node utils/credential-manager.js setup"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
     "@google-cloud/local-auth": "^3.0.0",
-    "@google/generative-ai": "^0.1.3",
+    "@google/genai": "^1.52.0",
     "axios": "^1.6.0",
     "chalk": "^4.1.2",
     "cron": "^3.1.6",
@@ -38,6 +42,7 @@
     "openai": "^4.20.0",
     "playwright": "^1.54.2",
     "replicate": "^1.0.1",
+    "sharp": "^0.33.5",
     "sqlite3": "^5.1.6",
     "winston": "^3.11.0"
   },

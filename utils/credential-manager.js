@@ -378,7 +378,9 @@ class CredentialManager {
       // Files might not exist yet
     }
 
-    const requiredCredentials = ['youtube', 'openai'];
+    // Only YouTube is strictly required (for trends, upload, and analytics).
+    // AI providers are optional — the agents fall back to templates without them.
+    const requiredCredentials = ['youtube'];
     const missing = [];
 
     for (const service of requiredCredentials) {
@@ -396,6 +398,15 @@ class CredentialManager {
     if (!this.tokens.youtube) {
       console.log(chalk.yellow('\n⚠️  YouTube authentication required'));
       return false;
+    }
+
+    // Soft check: warn (don't block) if no AI text provider is configured.
+    const hasTextAI = this.credentials.claude || this.credentials.anthropic
+      || process.env.ANTHROPIC_API_KEY || this.credentials.openai
+      || process.env.OPENAI_API_KEY || this.credentials.gemini || process.env.GEMINI_API_KEY;
+    if (!hasTextAI) {
+      console.log(chalk.yellow('\nℹ️  No AI text provider configured. Agents will use built-in templates.'));
+      console.log(chalk.gray('   Set ANTHROPIC_API_KEY in .env for AI-written content.'));
     }
 
     return true;

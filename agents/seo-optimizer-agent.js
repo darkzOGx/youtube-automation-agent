@@ -1,4 +1,5 @@
 const { Logger } = require('../utils/logger');
+const { ClaudeService } = require('../utils/claude-service');
 
 class SEOOptimizerAgent {
   constructor(db, credentials) {
@@ -6,6 +7,9 @@ class SEOOptimizerAgent {
     this.credentials = credentials;
     this.logger = new Logger('SEOOptimizer');
     this.keywordDatabase = new Map();
+
+    const savedCreds = (credentials && credentials.credentials) ? credentials.credentials : {};
+    this.claude = new ClaudeService(savedCreds);
   }
 
   async initialize() {
@@ -67,15 +71,110 @@ class SEOOptimizerAgent {
         },
         createdAt: new Date().toISOString()
       };
-      
+
+      // NEW: if Claude is available, let it rewrite the title, description and
+      // tags for better discoverability. Falls back to the rules above on error.
+      await this.applyClaudeSEO(seoData, script, strategy);
+
+      // Re-score after any AI rewrite so the number reflects what we'll upload.
+      seoData.seoScore = await this.calculateSEOScore(seoData.title, seoData.description, seoData.tags);
+
       // Save to database
       await this.db.saveSEOData(seoData);
-      
-      this.logger.info(`SEO optimization complete. Score: ${seoScore}/100`);
+
+      this.logger.info(`SEO optimization complete. Score: ${seoData.seoScore}/100`);
       return seoData;
     } catch (error) {
       this.logger.error('Failed to optimize SEO:', error);
       throw error;
+    }
+  }
+
+  // ── Claude integration ────────────────────────────────────────────────
+  // Rewrites title, description and tags with AI. Never throws: if Claude is
+  // missing or errors, the rule-based values built in optimize() are kept.
+
+  async applyClaudeSEO(seoData, script, strategy) {
+    if (!this.claude.isConfigured()) {
+      this.logger.info('Claude not configured — using rule-based SEO.');
+      return;
+    }
+
+    try {
+      const prompt = this.buildSEOPrompt(seoData, strategy);
+      const ai = await this.claude.generateJson(prompt);
+
+      if (!ai) {
+        this.logger.warn('Could not read Claude response — keeping rule-based SEO.');
+        return;
+      }
+
+      this.mergeClaudeSEO(seoData, ai);
+      seoData.metadata.generatedBy = 'claude';
+      this.logger.success('SEO title/description/tags written by Claude.');
+    } catch (error) {
+      this.logger.warn(`Claude SEO failed (${error.message}) — keeping rule-based SEO.`);
+    }
+  }
+
+  buildSEOPrompt(seoData, strategy) {
+    return `You are a YouTube SEO expert. Optimize the metadata for this video.
+
+Topic: ${strategy.topic}
+Angle: ${strategy.angle}
+Content type: ${strategy.contentType}
+Target audience: ${strategy.targetAudience || 'a general audience'}
+Main keywords: ${(strategy.keywords || []).join(', ')}
+
+Return ONLY valid JSON (no markdown, no code fences) in exactly this shape:
+{
+  "title": "a compelling, click-worthy title, 50-70 characters, includes the main keyword",
+  "description": "3 short paragraphs (about 120-200 words total). First sentence must hook the viewer and contain the main keyword. Describe what viewers will learn. Do NOT add timestamps or links.",
+  "tags": ["12 to 15 relevant YouTube search tags, lowercase, a mix of short and long-tail phrases"]
+}`;
+  }
+
+  // Merge Claude's SEO text in-place, enforcing YouTube's hard limits so an
+  // over-long value can never break the upload step later.
+  mergeClaudeSEO(seoData, ai) {
+    if (typeof ai.title === 'string' && ai.title.trim()) {
+      // YouTube titles must be <= 100 characters.
+      seoData.title = ai.title.trim().slice(0, 100);
+    }
+
+    if (typeof ai.description === 'string' && ai.description.trim()) {
+      // Keep the accurate auto-generated timestamps by appending them to the
+      // AI-written description. YouTube descriptions must be <= 5000 chars.
+      const timestamps = (seoData.chapters || [])
+        .map(c => `${c.time} ${c.title}`)
+        .join('\n');
+
+      let description = ai.description.trim();
+      if (timestamps) {
+        description += `\n\n⏱️ TIMESTAMPS:\n${timestamps}`;
+      }
+      seoData.description = description.slice(0, 5000);
+    }
+
+    if (Array.isArray(ai.tags) && ai.tags.length > 0) {
+      // Clean, de-duplicate, and keep total tag text within YouTube's 500-char limit.
+      const cleaned = [];
+      const seen = new Set();
+      let totalLength = 0;
+
+      for (const rawTag of ai.tags) {
+        if (typeof rawTag !== 'string') continue;
+        const tag = rawTag.trim().toLowerCase();
+        if (!tag || seen.has(tag)) continue;
+        if (totalLength + tag.length + 1 > 500) break;
+        seen.add(tag);
+        cleaned.push(tag);
+        totalLength += tag.length + 1;
+      }
+
+      if (cleaned.length > 0) {
+        seoData.tags = cleaned;
+      }
     }
   }
 

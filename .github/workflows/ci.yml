@@ -1,0 +1,49 @@
+# GitHub Actions workflow — runs automatically on every push and pull request.
+# It installs the project and runs the test suite, giving PRs a green ✅ check.
+name: CI
+
+# When should this run?
+on:
+  push:
+    branches: ['**']        # any branch
+  pull_request:
+    branches: ['**']        # any PR
+
+jobs:
+  test:
+    name: Install & Test
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        # Test on the Node versions this project supports (18+).
+        node-version: [18.x, 20.x]
+
+    steps:
+      # 1. Download the repository code onto the runner.
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      # 2. Install the requested Node.js version.
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      # 3. Install the project's dependencies.
+      - name: Install dependencies
+        run: npm install
+
+      # 4. Create the runtime folders that are git-ignored but expected at runtime.
+      - name: Create runtime directories
+        run: mkdir -p logs data uploads temp
+
+      # 5. Run the system test suite (database, logger, agent loading, config).
+      - name: Run tests
+        run: npm test
+
+      # 6. Confirm the Gemini integration loads and safely falls back with no key.
+      #    No API key is used here, so this is safe to run in CI.
+      - name: Smoke test — Gemini fallback
+        run: node scripts/ci-smoke-test.js

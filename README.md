@@ -12,29 +12,34 @@ This system runs 24/7 to:
 - 📅 Upload and schedule videos
 - 📊 Analyze performance and improve over time
 
-## 💡 How It Works - No Claude Required!
+## 💡 How It Works - Powered by Claude
 
-**You do NOT need Claude to use this system!** The YouTube Automation Agent is designed to work with multiple AI providers, giving you flexibility and cost control.
+The **creative agents** (Content Strategy, Script Writer, and SEO) are powered by
+**Anthropic's Claude** by default. If Claude isn't configured, every agent falls
+back to built-in templates and rules, so the system never crashes for lack of a key.
 
-### 🤖 AI Provider Options
+### 🤖 AI Providers
 
-1. **OpenAI (Recommended)**
-   - GPT-4 for intelligent content generation
-   - DALL-E 3 for stunning thumbnails
-   - Whisper for speech processing
-   - **Cost**: ~$0.10-0.30 per video
-   - **Best for**: Professional creators wanting highest quality
+1. **Anthropic Claude (default for the creative pipeline)**
+   - Brainstorms topics & angles (Content Strategy agent)
+   - Writes the video narration (Script Writer agent)
+   - Writes the title, description & tags (SEO agent)
+   - **Setup**: `ANTHROPIC_API_KEY` — get one at [console.anthropic.com](https://console.anthropic.com/)
+   - **Model**: defaults to `claude-opus-5`; set `CLAUDE_MODEL=claude-haiku-4-5` for a much cheaper option
+   - **Cost**: pay-as-you-go (no free tier); brainstorming/scripting a video is a small request
 
-2. **Google Gemini (Budget-Friendly)**
-   - Free tier: 60 requests/minute
-   - Can generate multiple videos daily at no cost
-   - **Cost**: FREE for most users
-   - **Best for**: Beginners and hobby creators
+2. **OpenAI (media generation)**
+   - DALL-E 3 for thumbnails and visuals
+   - Text-to-speech for the voice-over
+   - **Setup**: `OPENAI_API_KEY`. Optional — without it, media is *simulated* (placeholder files)
 
-3. **Custom AI Integration**
-   - Support for Anthropic Claude (if you prefer)
-   - Local models via Ollama
-   - Any OpenAI-compatible API
+3. **Google Gemini (optional alternative)**
+   - A `GeminiService` helper (`utils/gemini-service.js`) ships with the project
+   - Not wired into the agents by default, but you can swap any agent back to Gemini
+   - Free tier available — good if you want a no-cost text provider
+
+4. **Others**
+   - Replicate (advanced video), ElevenLabs / Azure (higher-quality voice) — all optional
 
 ### 📊 What Each Agent Does
 
@@ -70,10 +75,14 @@ This system runs 24/7 to:
 | Component | Free Tier | Paid Usage |
 |-----------|-----------|------------|
 | **YouTube API** | ✅ 10,000 units/day | ✅ Same |
-| **OpenAI** | ❌ None | ~$0.20/video |
-| **Google Gemini** | ✅ 60 req/min | $0.00035/1k chars |
+| **Anthropic Claude** (text) | ❌ None | pennies/video on `claude-haiku-4-5`; more on `claude-opus-5` |
+| **OpenAI** (images + voice) | ❌ None | ~$0.20/video (optional; simulated if absent) |
+| **Google Gemini** (optional text) | ✅ Free tier | $0.00035/1k chars |
 | **Hosting** | ✅ Local PC | $5-20/month VPS |
-| **Total Monthly** | **$0** | **$6-50** |
+
+> 💡 **Cheapest real setup:** YouTube API (free) + Claude on `claude-haiku-4-5`
+> keeps text generation to a few cents per video. Media (thumbnails/voice) is
+> only billed if you add an `OPENAI_API_KEY`; otherwise it runs in simulation mode.
 
 ### 🖥️ Deployment Options
 
@@ -87,10 +96,9 @@ This system runs 24/7 to:
 
 ### Prerequisites
 - Node.js 18+ ([Download here](https://nodejs.org/))
-- Google Account (for YouTube API)
-- AI Provider Account (choose one):
-  - OpenAI account ([Sign up](https://platform.openai.com/signup)) OR
-  - Google AI Studio account ([Sign up - FREE](https://makersuite.google.com/))
+- Google Account (for the YouTube Data API — required)
+- Anthropic account for Claude ([console.anthropic.com](https://console.anthropic.com/)) — powers the creative agents
+- *(Optional)* OpenAI account ([Sign up](https://platform.openai.com/signup)) for real thumbnails & voice
 - 10 minutes for initial setup
 
 ### Installation
@@ -152,22 +160,32 @@ This system runs 24/7 to:
 
 **Visual Guide**: [YouTube API Setup Tutorial](https://developers.google.com/youtube/v3/getting-started)
 
-#### Option 2A: OpenAI API (Recommended for Quality)
+#### Option 2: Anthropic Claude API (powers the creative agents)
+1. Visit [console.anthropic.com](https://console.anthropic.com/)
+2. Go to "API Keys" → "Create Key"
+3. Copy the key to your `.env` file as `ANTHROPIC_API_KEY`
+4. *(Optional)* set `CLAUDE_MODEL=claude-haiku-4-5` for the cheapest option
+5. Verify it works: `npm run test:claude`
+
+**Pricing**: pay-as-you-go (no free tier). A single video's text is a small
+request — cheapest on `claude-haiku-4-5`.
+
+#### Option 3: OpenAI API (optional — thumbnails & voice)
 1. Visit [OpenAI Platform](https://platform.openai.com/)
-2. Click "API Keys" in sidebar
-3. Click "Create new secret key"
-4. Copy key to `.env` file as `OPENAI_API_KEY`
-5. Add $5-10 credits to get started
+2. Click "API Keys" → "Create new secret key"
+3. Copy the key to `.env` as `OPENAI_API_KEY`
+4. Add $5-10 credits to get started
 
-**Pricing**: ~$0.01 per 1K tokens (approx 750 words)
+Without this key, thumbnails and voice-over run in **simulation mode**
+(placeholder files), so it's optional.
 
-#### Option 2B: Google Gemini API (FREE Alternative)
-1. Visit [Google AI Studio](https://makersuite.google.com/)
-2. Click "Get API Key"
-3. Create API key for new or existing project
-4. Copy key to `.env` file as `GEMINI_API_KEY`
+#### Option 4: Google Gemini API (optional — free text alternative)
+1. Visit [Google AI Studio](https://aistudio.google.com/app/apikey)
+2. Click "Get API Key" and copy it to `.env` as `GEMINI_API_KEY`
+3. Verify it works: `npm run test:gemini`
 
-**Pricing**: FREE for 60 requests/minute, perfect for most users!
+The `GeminiService` is included but not wired into the agents by default —
+use it if you'd rather run a free text provider. **Pricing**: free tier available.
 
 ### Environment Variables
 
@@ -177,9 +195,14 @@ NODE_ENV=production
 PORT=3456
 LOG_LEVEL=info
 
-# AI Provider (choose one)
+# Claude powers the creative agents (Strategy, Script, SEO)
+ANTHROPIC_API_KEY=your-key-here
+# Optional: claude-opus-5 (default) or claude-haiku-4-5 (cheaper)
+CLAUDE_MODEL=claude-opus-5
+
+# Optional: OpenAI for real thumbnails & voice (simulated if omitted)
 OPENAI_API_KEY=your-key-here
-# OR
+# Optional: Gemini as an alternative text provider
 GEMINI_API_KEY=your-key-here
 
 # YouTube Settings
@@ -208,6 +231,66 @@ curl -X POST http://localhost:3456/generate \
 # Start full automation
 npm start
 ```
+
+> By default the system runs in **simulation mode** — it writes real scripts,
+> titles, descriptions and captions, but the thumbnail/voice/video are
+> placeholders. That's free and perfect for testing. To make real videos, see
+> the next section.
+
+## 🎥 Producing Real Videos (Optional)
+
+Out of the box the pipeline produces everything *except* real media: the
+thumbnail, voice-over, and video are placeholder `.info` files. Turning out an
+actual, uploadable `.mp4` needs three extra pieces. If any one is missing, that
+step simply falls back to a placeholder and the rest of the pipeline keeps
+working — so you can add them one at a time.
+
+### 1. Media AI keys (thumbnails + voice)
+
+- **Thumbnails & visuals** — OpenAI DALL·E 3. Set `OPENAI_API_KEY` in `.env`.
+- **Voice-over** — pick one:
+  - **OpenAI text-to-speech** (reuses the same `OPENAI_API_KEY`), or
+  - **ElevenLabs** — set `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID`, or
+  - **Azure Speech** — set `AZURE_SPEECH_KEY` and `AZURE_SPEECH_REGION`.
+
+### 2. FFmpeg (stitches audio + visuals into the video)
+
+FFmpeg is a free tool the system shells out to when building the final `.mp4`.
+
+- **Windows**: `winget install Gyan.FFmpeg` — or download from
+  [ffmpeg.org](https://ffmpeg.org/download.html) and add its `bin` folder to your PATH
+- **Mac**: `brew install ffmpeg`
+- **Linux**: `sudo apt install ffmpeg`
+- Verify it's installed: `ffmpeg -version`
+
+### 3. A video renderer (choose one)
+
+- **Slideshow (default, free)** — renders animated slides in a headless browser.
+  Install the browser once: `npx playwright install chromium`
+- **AI video (optional, paid)** — Stable Video Diffusion via Replicate. Set
+  `REPLICATE_API_KEY` in `.env`; no browser needed.
+
+### `.env` recap for real videos
+
+```env
+OPENAI_API_KEY=your-key-here          # thumbnails + voice-over
+# Optional higher-quality voice (instead of OpenAI TTS):
+ELEVENLABS_API_KEY=your-key-here
+ELEVENLABS_VOICE_ID=your-voice-id
+# Optional AI video (instead of the free slideshow):
+REPLICATE_API_KEY=your-key-here
+```
+
+### Verify your video setup
+
+```bash
+ffmpeg -version                  # FFmpeg installed and on PATH?
+npx playwright install chromium  # browser for the slideshow renderer
+npm run test:claude              # Claude (text) reachable?
+```
+
+> 💡 Check the `logs/` folder after a run to see which steps ran for real vs.
+> simulated — each agent logs whether it used AI or a fallback.
 
 ## 📋 Daily Usage
 
@@ -243,20 +326,24 @@ curl http://localhost:3456/analytics
 
 ### Switching AI Providers
 
-To use Claude instead of OpenAI:
+The creative agents talk to AI through a small service wrapper. `ClaudeService`
+(`utils/claude-service.js`) and `GeminiService` (`utils/gemini-service.js`) share
+the **same interface** (`isConfigured()` / `generateText()` / `generateJson()`),
+so switching an agent from Claude to Gemini is a one-line change:
 
 ```javascript
-// utils/ai-service.js
-class ClaudeAIService {
-  async generateContent(prompt) {
-    return await anthropic.complete({
-      model: 'claude-3-sonnet',
-      prompt: prompt,
-      max_tokens: 1000
-    });
-  }
-}
+// agents/script-writer-agent.js
+// Default (Claude):
+const { ClaudeService } = require('../utils/claude-service');
+this.claude = new ClaudeService(savedCreds);
+
+// To use Gemini instead, swap the two lines above for:
+const { GeminiService } = require('../utils/gemini-service');
+this.claude = new GeminiService(savedCreds);   // same methods, no other changes
 ```
+
+To change the Claude model, set `CLAUDE_MODEL` in `.env` (e.g. `claude-haiku-4-5`)
+— no code change needed.
 
 ### Adding Custom Content Types
 
@@ -341,8 +428,18 @@ A: Yes! Run multiple instances with different configurations.
 **Q: Is this against YouTube ToS?**
 A: No, as long as you create original content and follow YouTube guidelines.
 
+**Q: Which AI do I need?**
+A: The creative agents use **Claude** by default (`ANTHROPIC_API_KEY`). OpenAI is
+optional and only used for real thumbnails/voice; without it, media is simulated.
+
 **Q: How much does it cost to run?**
-A: Can be completely FREE with Gemini, or ~$10-50/month with OpenAI.
+A: The main cost is Claude for text — a few cents per video on `claude-haiku-4-5`.
+Add OpenAI (~$0.20/video) only if you want real thumbnails and voice-over.
+
+**Q: Do I have to use Claude?**
+A: No — a `GeminiService` ships with the project, so you can swap any agent to
+Gemini's free tier (see "Switching AI Providers"). And with no AI key at all, the
+agents fall back to built-in templates so nothing crashes.
 
 **Q: Can I customize the content style?**
 A: Yes! Full control over tone, style, topics, and format.
@@ -399,8 +496,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- **OpenAI** for GPT models
-- **Google** for YouTube Data API and Gemini
+- **Anthropic** for Claude (powers the creative agents)
+- **OpenAI** for DALL-E and text-to-speech
+- **Google** for the YouTube Data API and Gemini
 - **YouTube Creator Community** for inspiration and feedback
 
 ## 📞 Support

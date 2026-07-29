@@ -187,13 +187,19 @@ class AIVideoGenerator {
     this.logger.info('Generating video from assets...');
     
     try {
-      // Try Replicate for video generation first
+      // Try Replicate for AI video generation first
       if (this.replicate && this.replicate.auth) {
         return await this.generateReplicateVideo(script, visualAssets, audioPath, outputPath);
       }
-      
-      // Fallback to simple slideshow with Playwright
-      return await this.generateSlideshowVideo(script, visualAssets, audioPath, outputPath);
+
+      // The Playwright slideshow needs real AI-generated images (which require
+      // OpenAI). Without them we are in simulation mode, so simulate cleanly
+      // instead of launching a browser that would only fail.
+      if (this.openai) {
+        return await this.generateSlideshowVideo(script, visualAssets, audioPath, outputPath);
+      }
+
+      return await this.simulateVideoGeneration(script, visualAssets, audioPath, outputPath);
     } catch (error) {
       this.logger.error('Video generation failed:', error);
       return await this.simulateVideoGeneration(script, visualAssets, audioPath, outputPath);

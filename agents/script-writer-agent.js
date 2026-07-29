@@ -1,4 +1,5 @@
 const { Logger } = require('../utils/logger');
+const { ClaudeService } = require('../utils/claude-service');
 
 class ScriptWriterAgent {
   constructor(db, credentials) {
@@ -6,6 +7,11 @@ class ScriptWriterAgent {
     this.credentials = credentials;
     this.logger = new Logger('ScriptWriter');
     this.templates = this.loadTemplates();
+
+    // The Claude "translator". We read the saved API key from the credential
+    // manager if it exists; otherwise ClaudeService falls back to .env.
+    const savedCreds = (credentials && credentials.credentials) ? credentials.credentials : {};
+    this.claude = new ClaudeService(savedCreds);
   }
 
   async initialize() {
@@ -71,9 +77,14 @@ class ScriptWriterAgent {
         metadata: {
           strategy: strategy,
           generatedAt: new Date().toISOString(),
-          version: '1.0'
+          version: '1.0',
+          generatedBy: 'templates'
         }
       };
+
+      // NEW: if Claude is available, let it rewrite the wording in-place.
+      // If it isn't configured or fails, we simply keep the template script.
+      await this.applyClaudeWriting(script, strategy);
 
       // Format for readability
       script.fullScript = this.formatFullScript(script);
@@ -86,6 +97,107 @@ class ScriptWriterAgent {
     } catch (error) {
       this.logger.error('Failed to generate script:', error);
       throw error;
+    }
+  }
+
+  // ── Claude integration ────────────────────────────────────────────────
+  // These methods upgrade the template script with real AI-written wording.
+  // They never throw: if anything goes wrong, the template script is kept.
+
+  async applyClaudeWriting(script, strategy) {
+    if (!this.claude.isConfigured()) {
+      this.logger.info('Claude not configured — using template wording.');
+      return;
+    }
+
+    try {
+      const prompt = this.buildClaudePrompt(script, strategy);
+      const ai = await this.claude.generateJson(prompt);
+
+      if (!ai) {
+        this.logger.warn('Could not read Claude response — keeping template wording.');
+        return;
+      }
+
+      this.mergeClaudeIntoScript(script, ai);
+      script.metadata.generatedBy = 'claude';
+      this.logger.success('Script wording written by Claude.');
+    } catch (error) {
+      this.logger.warn(`Claude writing failed (${error.message}) — keeping template wording.`);
+    }
+  }
+
+  // Build the instructions we send to Claude, based on the structure the
+  // templates already decided (topic, content type, and section titles).
+  buildClaudePrompt(script, strategy) {
+    const sectionTitles = script.mainContent.sections
+      .map((s, i) => `${i + 1}. ${s.title}`)
+      .join('\n');
+
+    return `You are a professional YouTube scriptwriter. Write engaging spoken narration.
+
+Topic: ${strategy.topic}
+Suggested angle: ${strategy.angle}
+Content type: ${strategy.contentType}
+Target audience: ${strategy.targetAudience || 'a general audience'}
+Tone: ${script.tone}
+
+Cover exactly ${script.mainContent.sections.length} main sections. Here are their working titles (you may improve the wording):
+${sectionTitles}
+
+Return ONLY valid JSON (no markdown, no code fences) in exactly this shape:
+{
+  "title": "a catchy YouTube title under 70 characters",
+  "hook": "one or two sentence attention-grabbing opening line",
+  "introduction": "2-3 sentences welcoming viewers and previewing the video",
+  "sections": [
+    { "title": "section title", "narration": "2-4 sentences of spoken narration" }
+  ],
+  "conclusion": "2-3 sentence wrap up",
+  "callToAction": "one sentence asking viewers to like and subscribe"
+}
+
+Write natural spoken English. Do not include stage directions, brackets, or sound effects.`;
+  }
+
+  // Copy Claude's words into the existing script object WITHOUT changing its
+  // shape, so the rest of the pipeline (voice-over, captions, video) still works.
+  mergeClaudeIntoScript(script, ai) {
+    if (ai.title) script.title = ai.title;
+
+    if (ai.hook) script.hook.text = ai.hook;
+
+    if (ai.introduction) {
+      script.introduction.greeting = ai.introduction;
+      script.introduction.topicIntro = '';
+      script.introduction.valueProposition = '';
+      script.introduction.credibility = '';
+    }
+
+    if (Array.isArray(ai.sections)) {
+      script.mainContent.sections = script.mainContent.sections.map((original, i) => {
+        const aiSection = ai.sections[i];
+        if (!aiSection || !aiSection.narration) return original;
+
+        // Rebuild as a clean { title, content } section. A string `content`
+        // is what the voice-over and slideshow code expect.
+        return {
+          type: original.type,
+          title: aiSection.title || original.title,
+          content: aiSection.narration,
+          visuals: original.visuals || [],
+          duration: original.duration || 60
+        };
+      });
+    }
+
+    if (ai.conclusion) {
+      script.conclusion.recap = [];
+      script.conclusion.finalThought = ai.conclusion;
+    }
+
+    if (ai.callToAction) {
+      script.callToAction.subscribe = ai.callToAction;
     }
   }
 

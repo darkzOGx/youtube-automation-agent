@@ -1,5 +1,6 @@
 const axios = require('axios');
 const { Logger } = require('../utils/logger');
+const { ClaudeService } = require('../utils/claude-service');
 
 class ContentStrategyAgent {
   constructor(db, credentials) {
@@ -9,6 +10,11 @@ class ContentStrategyAgent {
     this.trendingTopics = [];
     this.competitorData = [];
     this.contentCalendar = [];
+
+    // Claude brainstorms real topics/angles. Falls back to trend-based
+    // selection if no Anthropic key is configured.
+    const savedCreds = (credentials && credentials.credentials) ? credentials.credentials : {};
+    this.claude = new ClaudeService(savedCreds);
   }
 
   async initialize() {
@@ -202,25 +208,87 @@ class ContentStrategyAgent {
       .slice(0, 50);
   }
 
+  // ── Claude brainstorming ──────────────────────────────────────────────
+  // Asks Claude for a real topic + angle. Never throws: returns null on any
+  // problem so generateContentStrategy() falls back to trend-based selection.
+
+  async brainstormWithClaude(requestedTopic) {
+    if (!this.claude.isConfigured()) {
+      this.logger.info('Claude not configured — using trend-based topic selection.');
+      return null;
+    }
+
+    try {
+      const prompt = this.buildBrainstormPrompt(requestedTopic);
+      const ai = await this.claude.generateJson(prompt);
+
+      if (!ai || !ai.topic) {
+        this.logger.warn('Could not read Claude response — using trend-based selection.');
+        return null;
+      }
+
+      this.logger.success(`Claude brainstormed topic: ${ai.topic}`);
+      return ai;
+    } catch (error) {
+      this.logger.warn(`Claude brainstorm failed (${error.message}) — using trend-based selection.`);
+      return null;
+    }
+  }
+
+  buildBrainstormPrompt(requestedTopic) {
+    const channelName = process.env.CHANNEL_NAME || 'a YouTube channel';
+    const audience = process.env.TARGET_AUDIENCE || 'a general audience';
+    const trending = (this.trendingTopics || [])
+      .slice(0, 10)
+      .map(t => t.topic)
+      .filter(Boolean);
+    const recent = this.getRecentTopics();
+
+    return `You are a YouTube content strategist for "${channelName}", whose audience is ${audience}.
+
+${requestedTopic
+      ? `The creator wants a video about: ${requestedTopic}. Refine it into the strongest possible video idea.`
+      : 'Propose the single best next video idea for this channel.'}
+
+Trending keywords right now: ${trending.length ? trending.join(', ') : '(none available)'}.
+Avoid repeating these recent topics: ${recent.length ? recent.join(', ') : '(none)'}.
+
+Return ONLY valid JSON (no markdown, no code fences) in exactly this shape:
+{
+  "topic": "a specific, engaging video topic",
+  "angle": "a compelling title-style angle for the video",
+  "contentType": "one of: Tutorial, Explainer, List, Review, Story, News",
+  "targetAudience": "a short description of who this video is for"
+}`;
+  }
+
   async generateContentStrategy(requestedTopic = null) {
     try {
       let topic, angle, targetAudience, contentType;
+      let generatedBy = 'heuristic';
 
-      if (requestedTopic) {
-        topic = requestedTopic;
-        angle = await this.generateAngle(topic);
+      // Try Claude first for a genuinely creative topic + angle.
+      const ai = await this.brainstormWithClaude(requestedTopic);
+
+      if (ai && ai.topic) {
+        topic = ai.topic;
+        angle = ai.angle || await this.generateAngle(topic);
+        contentType = ai.contentType || this.selectContentType(topic);
+        targetAudience = ai.targetAudience || await this.identifyTargetAudience(topic);
+        generatedBy = 'claude';
       } else {
-        // Select from trending topics
-        const selectedTopic = this.selectOptimalTopic();
-        topic = selectedTopic.topic;
-        angle = await this.generateAngle(topic);
+        // Fallback: the original trend-based / template logic.
+        if (requestedTopic) {
+          topic = requestedTopic;
+          angle = await this.generateAngle(topic);
+        } else {
+          const selectedTopic = this.selectOptimalTopic();
+          topic = selectedTopic.topic;
+          angle = await this.generateAngle(topic);
+        }
+        targetAudience = await this.identifyTargetAudience(topic);
+        contentType = this.selectContentType(topic);
       }
-
-      // Determine target audience
-      targetAudience = await this.identifyTargetAudience(topic);
-
-      // Select content type
-      contentType = this.selectContentType(topic);
 
       // Generate content calendar entry
       const strategy = {
@@ -232,7 +300,8 @@ class ContentStrategyAgent {
         estimatedViews: this.predictViews(topic),
         bestPublishTime: this.calculateBestPublishTime(),
         competitorAnalysis: this.getCompetitorInsights(topic),
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        generatedBy
       };
 
       // Save to database
