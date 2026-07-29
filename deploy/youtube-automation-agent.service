@@ -1,0 +1,47 @@
+# youtube-automation-agent.service
+# Runs the agent 24/7 with Node.js on a Linux server (no Docker).
+#
+# Install:
+#   sudo cp deploy/youtube-automation-agent.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now youtube-automation-agent
+#
+# Prerequisites (see deploy/DEPLOY.md):
+#   - Node.js 18+, ffmpeg, and `npx playwright install --with-deps chromium`
+#   - App cloned to /opt/youtube-automation-agent with `npm install` done
+#   - A completed `npm run setup` (YouTube login) as the service user
+#   - A `.env` file in the working directory with ANTHROPIC_API_KEY etc.
+
+[Unit]
+Description=YouTube Automation Agent
+Documentation=https://github.com/Forty4theFuture/youtube-automation-agent
+After=network-online.target
+Wants=network-online.target
+# If the app keeps exiting (e.g. credentials not set up yet), stop retrying
+# after 5 failures in 5 minutes instead of looping forever.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=ytagent
+Group=ytagent
+WorkingDirectory=/opt/youtube-automation-agent
+# The app loads config from .env in WorkingDirectory (via dotenv).
+# Adjust the node path if you installed Node elsewhere (`which node`).
+ExecStart=/usr/bin/node index.js
+Restart=always
+RestartSec=10
+
+# Basic hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=false
+
+# Logs -> journald:  journalctl -u youtube-automation-agent -f
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

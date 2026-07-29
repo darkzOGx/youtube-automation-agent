@@ -321,6 +321,13 @@ Your credentials (`config/`), database + generated files (`data/`), and logs
 > The container uses `restart: unless-stopped`, so without them it would just
 > exit on boot asking you to configure them.
 
+### Running on a server (VPS / cloud / Raspberry Pi)
+
+For a full 24/7 deployment — provisioning a server, Docker **or** a native
+`systemd` service, firewall, updates, and cost — see **[`deploy/DEPLOY.md`](deploy/DEPLOY.md)**.
+A ready-to-use unit file is included at
+[`deploy/youtube-automation-agent.service`](deploy/youtube-automation-agent.service).
+
 ## 📋 Daily Usage
 
 ### Automation Schedule
