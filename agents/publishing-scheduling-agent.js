@@ -413,7 +413,7 @@ class PublishingSchedulingAgent {
     
     const dates = published.map(p => new Date(p.publishedAt)).sort((a, b) => a - b);
     const totalDays = (dates[dates.length - 1] - dates[0]) / (1000 * 60 * 60 * 24);
-    const frequency = published.length / totalDays;
+    const frequency = (published.length - 1) / totalDays;
     
     if (frequency >= 1) return `${frequency.toFixed(1)} videos per day`;
     if (frequency >= 0.14) return `${(frequency * 7).toFixed(1)} videos per week`;

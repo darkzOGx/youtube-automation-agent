@@ -21,6 +21,7 @@ class SystemTest {
       { name: 'Operator Workflow API', test: () => this.testOperatorWorkflowAPI() },
       { name: 'API Validation and Security', test: () => this.testAPIValidationAndSecurity() },
       { name: 'Publishing Safety', test: () => this.testPublishingSafety() },
+      { name: 'Publishing Frequency', test: () => this.testPublishingFrequency() },
       { name: 'Multi-Provider Credential Validation', test: () => this.testCredentialValidation() },
       { name: 'AI Text Service Token Compatibility', test: () => this.testAITextServiceTokenParams() },
       { name: 'Placeholder Scheduling Guard', test: () => this.testPlaceholderSchedulingGuard() },
@@ -340,6 +341,23 @@ class SystemTest {
     }
 
     this.logger.info('Publishing safety test completed successfully');
+  }
+
+  async testPublishingFrequency() {
+    const { PublishingSchedulingAgent } = require('./agents/publishing-scheduling-agent');
+    const agent = new PublishingSchedulingAgent({}, {});
+    const dailyPublications = [
+      { publishedAt: '2026-01-01T12:00:00.000Z' },
+      { publishedAt: '2026-01-02T12:00:00.000Z' },
+      { publishedAt: '2026-01-03T12:00:00.000Z' }
+    ];
+
+    const frequency = agent.calculatePublishingFrequency(dailyPublications);
+    if (frequency !== '1.0 videos per day') {
+      throw new Error(`Daily publishing cadence was reported as ${frequency}`);
+    }
+
+    this.logger.info('Publishing frequency test completed successfully');
   }
 
   async testCredentialValidation() {
