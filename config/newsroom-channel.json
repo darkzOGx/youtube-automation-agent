@@ -1,0 +1,16 @@
+{
+  "language": "vi",
+  "channelName": "AI Newsroom",
+  "objective": "Giúp người Việt nắm tin AI mới nhất và áp dụng AI vào công việc thực tế.",
+  "audience": "Chủ doanh nghiệp, marketer, nhân viên văn phòng, creator, sales và người dùng AI mức mới/trung cấp nói tiếng Việt, muốn workflow thực tế.",
+  "valueProposition": "Tin AI đã xác minh, giải thích bằng tiếng Việt, giữ nguyên tên model/sản phẩm, và hướng dẫn dùng được ngay.",
+  "contentPillars": [
+    { "id": "ai_news", "label": "AI News", "weight": 35 },
+    { "id": "ai_tutorials", "label": "AI Tutorials", "weight": 30 },
+    { "id": "ai_tools", "label": "AI Tools / Reviews", "weight": 15 },
+    { "id": "ai_comparisons", "label": "AI Comparisons", "weight": 10 },
+    { "id": "weekly_digest", "label": "Weekly Digest / Explainers", "weight": 10 }
+  ],
+  "brandVoice": "Rõ ràng, đáng tin, không giật tít. Nói tiếng Việt tự nhiên. Giữ nguyên tên kỹ thuật.",
+  "constraints": "Không bịa benchmark, giá, ngày phát hành, khả năng model hoặc quote. Breaking News cần nguồn primary đã xác minh và human approval. Không đăng video simulated."
+}
