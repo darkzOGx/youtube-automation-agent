@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Google Blog</title>
+  <entry>
+    <title>Gemini 3.1 comes to Workspace</title>
+    <link rel="alternate" href="https://blog.google/products/gemini-3-1/" />
+    <id>tag:blog.google,2026:gemini-3-1</id>
+    <updated>2026-08-24T08:30:00Z</updated>
+    <summary>Gemini 3.1 is rolling out to Workspace.</summary>
+  </entry>
+</feed>

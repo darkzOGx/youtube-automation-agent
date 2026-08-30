@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Hugging Face Blog</title>
+    <item>
+      <title>Open-source vision model release</title>
+      <guid>https://huggingface.co/blog/vision-model</guid>
+      <pubDate>Mon, 23 Aug 2026 09:00:00 GMT</pubDate>
+      <description>A new open vision model.</description>
+    </item>
+  </channel>
+</rss>

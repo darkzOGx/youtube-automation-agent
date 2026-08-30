@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>OpenAI News</title>
+    <item>
+      <title>Introducing GPT-5.6 for developers</title>
+      <link>https://openai.com/news/gpt-5-6?utm_source=rss&amp;utm_medium=feed#section</link>
+      <guid>https://openai.com/news/gpt-5-6</guid>
+      <pubDate>Tue, 24 Aug 2026 12:00:00 GMT</pubDate>
+      <description><![CDATA[GPT-5.6 is now available in the API.]]></description>
+    </item>
+    <item>
+      <title>Office hours next week</title>
+      <link>javascript:alert(1)</link>
+      <pubDate>Tue, 24 Aug 2026 11:00:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>

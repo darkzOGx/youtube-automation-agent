@@ -63,7 +63,8 @@ class SystemTest {
       { name: 'Reply Approval and Posting', test: () => this.testReplyApprovalAndPosting() },
       { name: 'Engagement AI Provider Wiring', test: () => this.testEngagementAIProviderWiring() },
       { name: 'Engagement Sync Schedule', test: () => this.testEngagementSyncSchedule() },
-      { name: 'Growth Experiment Refresh Schedule', test: () => this.testGrowthExperimentRefreshSchedule() }
+      { name: 'Growth Experiment Refresh Schedule', test: () => this.testGrowthExperimentRefreshSchedule() },
+      { name: 'AI Newsroom', test: () => this.testAINewsroom() }
     ];
 
     let passed = 0;
@@ -2706,8 +2707,13 @@ class SystemTest {
       './agents/production-management-agent',
       './agents/publishing-scheduling-agent',
       './agents/analytics-optimization-agent',
+      './agents/news-radar-agent',
+      './agents/news-verification-agent',
+      './agents/news-research-agent',
+      './agents/news-routing-agent',
       './utils/discoverability-service',
-      './utils/discoverability-adapters/darkzseo'
+      './utils/discoverability-adapters/darkzseo',
+      './utils/newsroom-service'
     ];
 
     for (const agentFile of agentFiles) {
@@ -3288,6 +3294,12 @@ class SystemTest {
     }
     const noService = new DailyAutomation({}, {}, {});
     await noService.refreshGrowthExperiments();
+  }
+
+  async testAINewsroom() {
+    const { runNewsroomTests } = require('./newsroom-tests');
+    await runNewsroomTests();
+    this.logger.info('AI Newsroom test completed successfully');
   }
 }
 
