@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added AI Newsroom: live official RSS, HTML discovery, and Hacker News adapters, event deduplication, deterministic scoring, verification, research, routing, and ContentIdea handoff into the existing approval-first pipeline
+- Breaking News requires both a high score and a verified primary source; community signals cannot confirm a break
+- Added Newsroom scheduler slots, operator API, and dashboard without auto-publishing
+
 ## v2.10.0 — 2026-08-24
 
 - Added a versioned DarkzSEO discoverability preflight over a shell-free Python stdin/stdout adapter, with explicit unavailable and schema-mismatch states

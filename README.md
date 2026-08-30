@@ -29,6 +29,12 @@ DarkzSEO is optional. Install DarkzSEO 1.4+ into Python or set `DARKZSEO_PATH`; 
 
 See the complete release history in [CHANGELOG.md](CHANGELOG.md).
 
+## AI Newsroom
+
+The fork adds an **AI Newsroom** desk for a Vietnamese AI channel: live official RSS, HTML discovery, and Hacker News signals are normalized into **news events**, verified, scored deterministically, researched, and routed (`breaking`, `ai_today`, `tutorial`, `review`, `comparison`, `weekly_digest`). Eligible events become existing `ContentIdea` rows and then use the current Script / Provenance / Quality / Approval / Publishing pipeline. Breaking News still requires a verified primary source and a human. Scheduled scans stay off until `NEWSROOM_ENABLED=true`.
+
+Details: [docs/ai-newsroom.md](docs/ai-newsroom.md).
+
 - **Self-hosted:** your credentials, media, and channel data stay under your control.
 - **Approval-first:** nothing is scheduled until quality, rights, and human-review gates pass by default.
 - **Strategy-driven:** give the Autonomous Channel Operator an objective, audience, pillars, cadence, and guardrails; it turns them into researched content plans and production runs.
@@ -444,6 +450,12 @@ curl -X POST http://localhost:3456/api/experiments \
 curl -X POST http://localhost:3456/api/experiments/:experimentId/approve \
   -H "Content-Type: application/json" -H "x-api-key: $API_KEY" \
   -d '{"confirmed":true}'
+
+# inspect AI Newsroom events and run a manual scan (does not publish)
+curl http://localhost:3456/api/newsroom/events
+curl -X POST http://localhost:3456/api/newsroom/scan \
+  -H "Content-Type: application/json" -H "x-api-key: $API_KEY" \
+  -d '{"runType":"manual"}'
 
 # inspect, edit, and approve content before scheduling
 curl http://localhost:3456/api/content/:contentId
