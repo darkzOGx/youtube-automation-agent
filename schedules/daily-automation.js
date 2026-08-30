@@ -13,6 +13,7 @@ class DailyAutomation {
     this.generateContent = options.generateContent || null;
     this.engagement = options.engagement || null;
     this.experiments = options.experiments || null;
+    this.newsroom = options.newsroom || null;
   }
 
   async initialize() {
@@ -96,6 +97,32 @@ class DailyAutomation {
       cron.schedule('30 */4 * * *', async () => {
         if (this.isEnabled) {
           await this.refreshGrowthExperiments();
+        }
+      }, { scheduled: false })
+    );
+
+    const scanMinutes = Math.max(5, parseInt(process.env.NEWSROOM_SCAN_INTERVAL_MINUTES || '30', 10));
+    const scanExpr = scanMinutes % 60 === 0 ? `0 */${Math.max(1, scanMinutes / 60)} * * *` : `*/${scanMinutes} * * * *`;
+    this.scheduledTasks.set('newsroom-cycle',
+      cron.schedule(scanExpr, async () => {
+        if (this.isEnabled) {
+          await this.runNewsroomCycle('cycle');
+        }
+      }, { scheduled: false })
+    );
+
+    this.scheduledTasks.set('newsroom-ai-today',
+      cron.schedule('0 5 * * *', async () => {
+        if (this.isEnabled) {
+          await this.runNewsroomCycle('ai_today');
+        }
+      }, { scheduled: false })
+    );
+
+    this.scheduledTasks.set('newsroom-weekly-digest',
+      cron.schedule('0 7 * * 0', async () => {
+        if (this.isEnabled) {
+          await this.runNewsroomCycle('weekly_digest');
         }
       }, { scheduled: false })
     );
@@ -328,6 +355,34 @@ class DailyAutomation {
     } catch (error) {
       this.logger.error('Growth experiment refresh failed:', error);
       await this.logAutomationEvent('growth_experiment_refresh', 'error', { error: error.message });
+    }
+  }
+
+  newsroomEnabled() {
+    return process.env.NEWSROOM_ENABLED === 'true' && Boolean(this.newsroom);
+  }
+
+  async runNewsroomCycle(runType = 'cycle') {
+    if (!this.newsroomEnabled()) return;
+    try {
+      this.logger.info(`Starting AI Newsroom ${runType}...`);
+      const result = await this.newsroom.runCycle({ runType });
+      if (result.skipped) {
+        this.logger.info(`AI Newsroom ${runType} skipped: ${result.reason}`);
+        return result;
+      }
+      await this.logAutomationEvent('newsroom_cycle', result.run?.status === 'failed' ? 'error' : 'success', {
+        runType,
+        runId: result.run?.id,
+        status: result.run?.status,
+        signals: result.run?.signals_scanned,
+        created: result.run?.events_created,
+        merged: result.run?.events_merged
+      });
+      return result;
+    } catch (error) {
+      this.logger.error('AI Newsroom cycle failed:', error);
+      await this.logAutomationEvent('newsroom_cycle', 'error', { runType, error: error.message });
     }
   }
 

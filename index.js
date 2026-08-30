@@ -27,6 +27,7 @@ const { AudienceEngagementService } = require('./utils/audience-engagement-servi
 const { GrowthExperimentService } = require('./utils/growth-experiment-service');
 const { AITextService } = require('./utils/ai-text-service');
 const { DiscoverabilityService } = require('./utils/discoverability-service');
+const { NewsroomService } = require('./utils/newsroom-service');
 const { version } = require('./package.json');
 const chalk = require('chalk');
 
@@ -51,6 +52,7 @@ class YouTubeAutomationAgent {
     this.engagement = null;
     this.experiments = null;
     this.discoverability = null;
+    this.newsroom = null;
     this.setupRequired = false;
   }
 
@@ -89,6 +91,13 @@ class YouTubeAutomationAgent {
       this.credentials = new CredentialManager();
       const credentialsValid = await this.credentials.validateAll();
       this.readiness = new ProductionReadinessService(this.db, this.credentials);
+      this.newsroom = new NewsroomService(this.db, {
+        logger: this.logger,
+        credentials: this.credentials.credentials || {},
+        startGenerationJob: input => this.startGenerationJob(input),
+        notify: notification => this.operator.notify(notification)
+      });
+      await this.newsroom.initialize();
       
       if (!credentialsValid) {
         console.log(chalk.yellow('\n⚠️  Some credentials are missing or invalid.'));
@@ -136,7 +145,8 @@ class YouTubeAutomationAgent {
       this.scheduler = new DailyAutomation(this.agents, this.db, {
         generateContent: input => this.queueScheduledContent(input),
         engagement: this.engagement,
-        experiments: this.experiments
+        experiments: this.experiments,
+        newsroom: this.newsroom
       });
       await this.scheduler.initialize();
 
@@ -287,7 +297,20 @@ class YouTubeAutomationAgent {
       if (typeof body.strategyContext !== 'object' || Array.isArray(body.strategyContext)) {
         return { valid: false, status: 400, error: 'strategyContext must be an object' };
       }
-      const limits = { angle: 500, rationale: 1000, audience: 500, objective: 1000, valueProposition: 1000, constraints: 2000, pillar: 100 };
+      const limits = {
+        angle: 500,
+        rationale: 1000,
+        audience: 500,
+        objective: 1000,
+        valueProposition: 1000,
+        constraints: 2000,
+        pillar: 100,
+        language: 10,
+        contentRoute: 40,
+        newsEventId: 80,
+        scriptBlueprint: 40,
+        thumbnailAngle: 300
+      };
       value.strategyContext = {};
       for (const [key, max] of Object.entries(limits)) {
         if (body.strategyContext[key] === undefined || body.strategyContext[key] === null) continue;
@@ -295,6 +318,29 @@ class YouTubeAutomationAgent {
           return { valid: false, status: 400, error: `strategyContext.${key} must be a string of ${max} characters or less` };
         }
         value.strategyContext[key] = body.strategyContext[key].trim();
+      }
+      if (body.strategyContext.researchSources != null) {
+        if (!Array.isArray(body.strategyContext.researchSources)) {
+          return { valid: false, status: 400, error: 'strategyContext.researchSources must be an array' };
+        }
+        const sources = [];
+        for (const item of body.strategyContext.researchSources.slice(0, 20)) {
+          if (!item || typeof item !== 'object') {
+            return { valid: false, status: 400, error: 'Each research source must be an object' };
+          }
+          const url = String(item.url || '').trim();
+          if (!/^https?:\/\//i.test(url) || url.length > 2000) {
+            return { valid: false, status: 400, error: 'Each research source requires a valid http(s) URL' };
+          }
+          sources.push({
+            url,
+            title: String(item.title || url).slice(0, 300),
+            publisher: String(item.publisher || '').slice(0, 200),
+            sourceType: String(item.sourceType || 'other').slice(0, 40),
+            publishedAt: item.publishedAt || null
+          });
+        }
+        value.strategyContext.researchSources = sources;
       }
     }
 
@@ -474,7 +520,7 @@ class YouTubeAutomationAgent {
 
     this.app.get('/api/dashboard', async (_req, res) => {
       try {
-        const [stats, jobs, pipeline, schedule, events, notifications, profile, settings, ideas, analytics, learning, activation, channelStrategy, operatorRuns, readiness, engagement, experiments] = await Promise.all([
+        const [stats, jobs, pipeline, schedule, events, notifications, profile, settings, ideas, analytics, learning, activation, channelStrategy, operatorRuns, readiness, engagement, experiments, newsroom] = await Promise.all([
           this.db.getStats(),
           this.db.listGenerationJobs(20),
           this.db.getPipelineOverview(50),
@@ -508,12 +554,15 @@ class YouTubeAutomationAgent {
               }),
           this.experiments
             ? this.experiments.getSummary()
-            : Promise.resolve({ experiments: [], candidates: [], activeCount: 0, awaitingDecisionCount: 0, evidencePolicy: 'Finish setup to create a controlled growth experiment.' })
+            : Promise.resolve({ experiments: [], candidates: [], activeCount: 0, awaitingDecisionCount: 0, evidencePolicy: 'Finish setup to create a controlled growth experiment.' }),
+          this.newsroom
+            ? this.newsroom.dashboardSummary()
+            : Promise.resolve({ enabled: false, events: [], counts: {}, health: [] })
         ]);
         if (this.telemetry) void this.telemetry.sync(activation);
         res.json({
           stats, jobs, pipeline, schedule, events, notifications, profile, settings, ideas, analytics, learning, activation,
-          channelStrategy, operatorRuns, readiness, engagement, experiments,
+          channelStrategy, operatorRuns, readiness, engagement, experiments, newsroom,
           system: {
             initialized: this.isInitialized,
             setupRequired: this.setupRequired,
@@ -1175,7 +1224,12 @@ class YouTubeAutomationAgent {
     this.app.post('/api/ideas/:ideaId/generate', protect, async (req, res) => {
       const idea = await this.db.updateContentIdea(req.params.ideaId, { status: 'generating' });
       if (!idea) return res.status(404).json({ error: 'Idea not found' });
-      const job = await this.startGenerationJob({ topic: idea.topic, style: idea.style, length: req.body?.length || 'medium', source: 'idea' });
+      let job;
+      if (idea.news_event_id && this.newsroom) {
+        job = await this.newsroom.queueGeneration(idea.news_event_id, idea, req.body || {});
+      } else {
+        job = await this.startGenerationJob({ topic: idea.topic, style: idea.style, length: req.body?.length || 'medium', source: 'idea' });
+      }
       await this.db.updateContentIdea(idea.id, { status: 'generated' });
       return res.status(202).json({ success: true, result: job });
     });
@@ -1228,6 +1282,123 @@ class YouTubeAutomationAgent {
       await this.db.markNotificationRead(req.params.notificationId);
       return res.json({ success: true });
     });
+
+    this.setupNewsroomAPI(protect);
+  }
+
+  setupNewsroomAPI(protect) {
+    const requireNewsroom = (_req, res) => {
+      if (!this.newsroom) {
+        res.status(503).json({ success: false, error: 'AI Newsroom is not initialized' });
+        return false;
+      }
+      return true;
+    };
+
+    this.app.get('/api/newsroom/events', async (req, res) => {
+      try {
+        if (!requireNewsroom(req, res)) return;
+        const events = await this.db.listNewsEvents({
+          status: req.query.status,
+          verificationStatus: req.query.verificationStatus,
+          route: req.query.route,
+          q: req.query.q,
+          limit: req.query.limit
+        });
+        return res.json({ success: true, result: events });
+      } catch (error) {
+        return res.status(error.status || 500).json({ success: false, error: error.message });
+      }
+    });
+
+    this.app.get('/api/newsroom/events/:id', async (req, res) => {
+      try {
+        if (!requireNewsroom(req, res)) return;
+        const bundle = await this.newsroom.getEventBundle(req.params.id);
+        if (!bundle) return res.status(404).json({ success: false, error: 'News event not found' });
+        return res.json({ success: true, result: bundle });
+      } catch (error) {
+        return res.status(error.status || 500).json({ success: false, error: error.message });
+      }
+    });
+
+    this.app.get('/api/newsroom/events/:id/sources', async (req, res) => {
+      try {
+        if (!requireNewsroom(req, res)) return;
+        const event = await this.db.getNewsEvent(req.params.id);
+        if (!event) return res.status(404).json({ success: false, error: 'News event not found' });
+        return res.json({ success: true, result: await this.db.getNewsEventSources(req.params.id) });
+      } catch (error) {
+        return res.status(error.status || 500).json({ success: false, error: error.message });
+      }
+    });
+
+    this.app.get('/api/newsroom/events/:id/research', async (req, res) => {
+      try {
+        if (!requireNewsroom(req, res)) return;
+        const research = await this.db.getNewsResearch(req.params.id);
+        if (!research) return res.status(404).json({ success: false, error: 'Research package not found' });
+        return res.json({ success: true, result: research });
+      } catch (error) {
+        return res.status(error.status || 500).json({ success: false, error: error.message });
+      }
+    });
+
+    this.app.get('/api/newsroom/health', async (_req, res) => {
+      try {
+        if (!requireNewsroom(_req, res)) return;
+        return res.json({
+          success: true,
+          result: {
+            health: await this.db.listNewsSourceHealth(),
+            runs: await this.db.listNewsroomRuns(10)
+          }
+        });
+      } catch (error) {
+        return res.status(error.status || 500).json({ success: false, error: error.message });
+      }
+    });
+
+    this.app.post('/api/newsroom/scan', protect, async (req, res) => {
+      try {
+        if (!requireNewsroom(req, res)) return;
+        const result = await this.newsroom.runCycle({
+          runType: req.body?.runType || 'manual',
+          maxSignals: req.body?.maxSignals,
+          force: req.body?.force === true
+        });
+        return res.status(202).json({ success: true, result });
+      } catch (error) {
+        return res.status(error.status || 500).json({ success: false, error: error.message });
+      }
+    });
+
+    const eventAction = (action) => async (req, res) => {
+      try {
+        if (!requireNewsroom(req, res)) return;
+        const result = await action(req);
+        return res.json({ success: true, result });
+      } catch (error) {
+        return res.status(error.status || 400).json({ success: false, error: error.message });
+      }
+    };
+
+    this.app.post('/api/newsroom/events/:id/verify', protect, eventAction(req => this.newsroom.verifyEvent(req.params.id)));
+    this.app.post('/api/newsroom/events/:id/score', protect, eventAction(req => this.newsroom.scoreEvent(req.params.id)));
+    this.app.post('/api/newsroom/events/:id/research', protect, eventAction(req => this.newsroom.researchEvent(req.params.id)));
+    this.app.post('/api/newsroom/events/:id/route', protect, eventAction(req => {
+      if (req.body?.route) return this.newsroom.changeRoute(req.params.id, req.body.route);
+      return this.newsroom.routeEvent(req.params.id);
+    }));
+    this.app.post('/api/newsroom/events/:id/create-idea', protect, eventAction(req => this.newsroom.createContentIdea(req.params.id, req.body || {})));
+    this.app.post('/api/newsroom/events/:id/approve', protect, eventAction(req => this.newsroom.approveEvent(req.params.id, req.body || {})));
+    this.app.post('/api/newsroom/events/:id/reject', protect, eventAction(req => this.newsroom.rejectEvent(req.params.id, req.body || {})));
+    this.app.post('/api/newsroom/events/:id/hold', protect, eventAction(req => this.newsroom.holdEvent(req.params.id, req.body || {})));
+    this.app.post('/api/newsroom/events/:id/generate', protect, eventAction(async req => {
+      const idea = await this.newsroom.createContentIdea(req.params.id, req.body || {});
+      const job = await this.newsroom.queueGeneration(req.params.id, idea, req.body || {});
+      return { idea, job };
+    }));
   }
 
   async startGenerationJob(input = {}) {
@@ -1435,6 +1606,11 @@ class YouTubeAutomationAgent {
       generated.researchSources = Array.isArray(strategyContext.researchSources)
         ? strategyContext.researchSources
         : [];
+      generated.newsEventId = strategyContext.newsEventId || null;
+      generated.language = strategyContext.language || null;
+      generated.contentRoute = strategyContext.contentRoute || null;
+      generated.scriptBlueprint = strategyContext.scriptBlueprint || null;
+      generated.thumbnailAngle = strategyContext.thumbnailAngle || null;
       return generated;
     });
     this.logger.info(`Strategy generated: ${strategy.topic}`);
@@ -1483,6 +1659,14 @@ class YouTubeAutomationAgent {
     productionData.discoverability = this.discoverability
       ? await this.discoverability.auditProduction(productionData, profile, 'youtube')
       : null;
+    if (strategy.newsEventId) {
+      await this.db.saveNewsEventPublication({
+        newsEventId: strategy.newsEventId,
+        productionId: contentId,
+        route: strategy.contentRoute || null,
+        score: null
+      });
+    }
     this.logger.info(`Content saved with ID: ${contentId}`);
 
     // Step 6: Quality and approval gate
