@@ -2,6 +2,7 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs').promises;
 const { Logger } = require('../utils/logger');
+const { NEWSROOM_TABLE_SQL, NEWSROOM_IDEA_COLUMNS, attachNewsroomStore } = require('./newsroom-db');
 
 class Database {
   constructor() {
@@ -622,7 +623,8 @@ class Database {
         value TEXT NOT NULL,
         description TEXT,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-      )`
+      )`,
+      ...NEWSROOM_TABLE_SQL
     ];
 
     for (const tableQuery of tables) {
@@ -647,13 +649,14 @@ class Database {
     await this.ensureColumns('discoverability_audits', {
       error_code: 'TEXT'
     });
+    await this.ensureColumns('content_ideas', NEWSROOM_IDEA_COLUMNS);
 
     // Insert default settings
     await this.insertDefaultSettings();
   }
 
   async ensureColumns(tableName, columns) {
-    const allowedTables = new Set(['production_scenes', 'channel_strategies', 'discoverability_audits']);
+    const allowedTables = new Set(['production_scenes', 'channel_strategies', 'discoverability_audits', 'content_ideas']);
     if (!allowedTables.has(tableName)) throw new Error(`Unsupported migration table: ${tableName}`);
     const existing = new Set((await this.getAllRows(`PRAGMA table_info(${tableName})`)).map(column => column.name));
     for (const [columnName, definition] of Object.entries(columns)) {
@@ -684,7 +687,8 @@ class Database {
       ['video_clip_duration', '8', 'Requested duration for each generated provider clip'],
       ['video_max_generated_seconds', '60', 'Maximum paid provider seconds per production'],
       ['video_resolution', '720p', 'Requested generated clip resolution'],
-      ['video_aspect_ratio', '16:9', 'Requested generated clip aspect ratio']
+      ['video_aspect_ratio', '16:9', 'Requested generated clip aspect ratio'],
+      ['newsroom_enabled', process.env.NEWSROOM_ENABLED === 'true' ? 'true' : 'false', 'Enable AI Newsroom scheduled scans']
     ];
 
     for (const [key, value, description] of defaultSettings) {
@@ -1590,18 +1594,49 @@ class Database {
     return this.getChannelProfile();
   }
 
+  parseContentIdea(row) {
+    if (!row) return null;
+    return {
+      ...row,
+      research: row.research_json ? JSON.parse(row.research_json) : null,
+      sourceReferences: row.source_references ? JSON.parse(row.source_references) : []
+    };
+  }
+
   async createContentIdea(idea) {
     const id = this.generateId('idea');
     await this.executeQuery(
-      `INSERT INTO content_ideas (id, topic, angle, style, status, rationale, scheduled_for)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [id, idea.topic, idea.angle || null, idea.style || 'explainer', idea.status || 'backlog', idea.rationale || null, idea.scheduledFor || null]
+      `INSERT INTO content_ideas (
+        id, topic, angle, style, status, rationale, scheduled_for,
+        source, news_event_id, content_route, urgency, research_json, source_references,
+        suggested_title, thumbnail_angle, target_audience, content_pillar
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        idea.topic,
+        idea.angle || null,
+        idea.style || 'explainer',
+        idea.status || 'backlog',
+        idea.rationale || null,
+        idea.scheduledFor || null,
+        idea.source || null,
+        idea.newsEventId || idea.news_event_id || null,
+        idea.contentRoute || idea.content_route || null,
+        idea.urgency || null,
+        idea.researchJson ? JSON.stringify(idea.researchJson) : (idea.research_json || null),
+        idea.sourceReferences ? JSON.stringify(idea.sourceReferences) : (idea.source_references || null),
+        idea.suggestedTitle || idea.suggested_title || null,
+        idea.thumbnailAngle || idea.thumbnail_angle || null,
+        idea.targetAudience || idea.target_audience || null,
+        idea.contentPillar || idea.content_pillar || null
+      ]
     );
-    return this.getRow('SELECT * FROM content_ideas WHERE id = ?', [id]);
+    return this.parseContentIdea(await this.getRow('SELECT * FROM content_ideas WHERE id = ?', [id]));
   }
 
   async listContentIdeas() {
-    return this.getAllRows("SELECT * FROM content_ideas WHERE status != 'archived' ORDER BY COALESCE(scheduled_for, '9999-12-31'), created_at DESC");
+    const rows = await this.getAllRows("SELECT * FROM content_ideas WHERE status != 'archived' ORDER BY COALESCE(scheduled_for, '9999-12-31'), created_at DESC");
+    return rows.map(row => this.parseContentIdea(row));
   }
 
   async updateContentIdea(id, changes) {
@@ -1609,7 +1644,9 @@ class Database {
     if (!current) return null;
     await this.executeQuery(
       `UPDATE content_ideas SET topic = ?, angle = ?, style = ?, status = ?,
-       rationale = ?, scheduled_for = ?, updated_at = datetime('now') WHERE id = ?`,
+       rationale = ?, scheduled_for = ?, source = ?, news_event_id = ?, content_route = ?,
+       urgency = ?, research_json = ?, source_references = ?, suggested_title = ?,
+       thumbnail_angle = ?, target_audience = ?, content_pillar = ?, updated_at = datetime('now') WHERE id = ?`,
       [
         changes.topic ?? current.topic,
         changes.angle ?? current.angle,
@@ -1617,10 +1654,20 @@ class Database {
         changes.status ?? current.status,
         changes.rationale ?? current.rationale,
         changes.scheduledFor === undefined ? current.scheduled_for : changes.scheduledFor,
+        changes.source ?? current.source,
+        changes.newsEventId === undefined ? current.news_event_id : changes.newsEventId,
+        changes.contentRoute === undefined ? current.content_route : changes.contentRoute,
+        changes.urgency === undefined ? current.urgency : changes.urgency,
+        changes.researchJson ? JSON.stringify(changes.researchJson) : (changes.research_json ?? current.research_json),
+        changes.sourceReferences ? JSON.stringify(changes.sourceReferences) : (changes.source_references ?? current.source_references),
+        changes.suggestedTitle === undefined ? current.suggested_title : changes.suggestedTitle,
+        changes.thumbnailAngle === undefined ? current.thumbnail_angle : changes.thumbnailAngle,
+        changes.targetAudience === undefined ? current.target_audience : changes.targetAudience,
+        changes.contentPillar === undefined ? current.content_pillar : changes.contentPillar,
         id
       ]
     );
-    return this.getRow('SELECT * FROM content_ideas WHERE id = ?', [id]);
+    return this.parseContentIdea(await this.getRow('SELECT * FROM content_ideas WHERE id = ?', [id]));
   }
 
   async getChannelStrategy() {
@@ -2916,5 +2963,7 @@ class Database {
     }
   }
 }
+
+attachNewsroomStore(Database);
 
 module.exports = { Database };
