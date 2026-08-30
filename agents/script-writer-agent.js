@@ -41,6 +41,16 @@ class ScriptWriterAgent {
         structure: ['hook', 'setup', 'conflict', 'journey', 'climax', 'resolution', 'lesson', 'cta'],
         tone: 'narrative',
         pacing: 'dynamic'
+      },
+      news: {
+        structure: ['hook', 'what_happened', 'verified_facts', 'why_it_matters', 'practical_impact', 'what_to_watch', 'cta'],
+        tone: 'informative',
+        pacing: 'brisk'
+      },
+      comparison: {
+        structure: ['what_changed', 'test_criteria', 'option_a', 'option_b', 'use_cases', 'pros_cons', 'who_should_use_which', 'cta'],
+        tone: 'analytical',
+        pacing: 'detailed'
       }
     };
   }
@@ -49,7 +59,15 @@ class ScriptWriterAgent {
     try {
       this.logger.info(`Generating script for: ${strategy.topic}`);
       
-      const template = this.templates[strategy.contentType.toLowerCase()] || this.templates.explainer;
+      const routeTemplate = {
+        breaking: 'news',
+        ai_today: 'news',
+        weekly_digest: 'list',
+        tutorial: 'tutorial',
+        review: 'review',
+        comparison: 'comparison'
+      }[String(strategy.contentRoute || strategy.scriptBlueprint || '').toLowerCase()];
+      const template = this.templates[(routeTemplate || strategy.contentType || 'explainer').toLowerCase()] || this.templates.explainer;
       const aiScript = await this.generateScriptWithAI(strategy, template);
       if (aiScript) {
         aiScript.fullScript = this.formatFullScript(aiScript);
@@ -135,7 +153,14 @@ Channel constraints: ${strategy.channelConstraints || 'none beyond the factual-s
 Preferred call to action: ${strategy.callToAction || 'invite the viewer to subscribe'}
 Keywords: ${(strategy.keywords || []).join(', ')}
 Research sources: ${JSON.stringify(strategy.researchSources || [])}
-Avoid fabricated statistics, unsupported claims, and fake urgency. List every externally verifiable factual claim in claims. Use only exact URLs from Research sources; use an empty sourceUrls array when the supplied sources do not support a claim.`;
+Language: ${strategy.language || 'en'}
+Content route: ${strategy.contentRoute || strategy.contentType}
+Script structure: ${(template.structure || []).join(' → ')}
+${strategy.language === 'vi' ? 'Write the spoken script in Vietnamese. Keep product and model names in their original English. Natural, practical, not sensational.' : ''}
+${['breaking', 'ai_today', 'weekly_digest'].includes(strategy.contentRoute) ? 'Use HOOK → WHAT HAPPENED → VERIFIED FACTS → WHY IT MATTERS → PRACTICAL IMPACT → WHAT TO WATCH NEXT → CTA. Distinguish verified facts, analysis, and prediction/opinion. Never present a prediction as a confirmed fact.' : ''}
+${strategy.contentRoute === 'tutorial' ? 'Use PROBLEM → RESULT → REQUIREMENTS → STEP-BY-STEP → DEMO → COMMON MISTAKES → USE CASES → CTA.' : ''}
+${strategy.contentRoute === 'comparison' ? 'Use WHAT CHANGED → TEST CRITERIA → MODEL/TOOL A → MODEL/TOOL B → REAL USE CASES → PROS/CONS → WHO SHOULD USE WHICH.' : ''}
+Avoid fabricated statistics, unsupported claims, and fake urgency. List every externally verifiable factual claim in claims. Use only exact URLs from Research sources; use an empty sourceUrls array when the supplied sources do not support a claim. Mark analysis and predictions separately from verified facts.`;
 
     try {
       const response = await this.aiTextService.generateText(prompt, {
