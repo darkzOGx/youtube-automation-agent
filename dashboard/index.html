@@ -29,6 +29,7 @@
         <button class="nav-item" data-view="calendar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16.5" rx="2"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4M7.5 13.5h3v3h-3z"/></svg> Calendar & ideas</button>
         <button class="nav-item" data-view="analytics"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 20.5h17"/><path d="M6.5 20V11M11 20V4.5M15.5 20v-7M20 20V8.5"/></svg> Analytics</button>
         <button class="nav-item" data-view="engagement"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 01-9.1 8.4 9 9 0 01-3.8-.9L3 20l1-4.9A8.4 8.4 0 1121 11.5z"/><path d="M8 10h8M8 13.5h5"/></svg> Engagement</button>
+        <button class="nav-item" data-view="newsroom"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 12h8M8 15h5"/></svg> AI Newsroom <b id="newsroom-badge" class="badge hidden">0</b></button>
         <button class="nav-item" data-view="readiness"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8l7.5 3v6c0 4.8-3.2 8.2-7.5 9.4-4.3-1.2-7.5-4.6-7.5-9.4v-6z"/><path d="M8.8 12.2l2.3 2.3 4.4-4.6"/></svg> Production readiness</button>
         <button class="nav-item" data-view="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.34 1.87l.06.06a2 2 0 11-2.83 2.83l-.06-.06A1.7 1.7 0 0015 19.4a1.7 1.7 0 00-1 1.55V21a2 2 0 11-4 0v-.09A1.7 1.7 0 009 19.4a1.7 1.7 0 00-1.87.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.7 1.7 0 004.6 15a1.7 1.7 0 00-1.55-1H3a2 2 0 110-4h.09A1.7 1.7 0 004.6 9a1.7 1.7 0 00-.33-1.87l-.06-.06a2 2 0 112.83-2.83l.06.06A1.7 1.7 0 009 4.6a1.7 1.7 0 001-1.55V3a2 2 0 114 0v.09a1.7 1.7 0 001 1.51 1.7 1.7 0 001.87-.34l.06-.06a2 2 0 112.83 2.83l-.06.06A1.7 1.7 0 0019.4 9c.28.66.9 1.05 1.55 1H21a2 2 0 110 4h-.09a1.7 1.7 0 00-1.51 1z"/></svg> Channel setup</button>
       </nav>
@@ -233,6 +234,52 @@
         </div>
       </section>
 
+      <section id="newsroom-view" class="view">
+        <div class="section-intro">
+          <div>
+            <h2>AI Newsroom</h2>
+            <p>Live AI signals become verified events, then Content Ideas. Publishing still requires provenance, quality, and human approval.</p>
+          </div>
+          <div class="form-actions">
+            <span id="newsroom-enabled-status" class="status">disabled</span>
+            <button id="newsroom-scan-button" class="button primary">Scan now</button>
+          </div>
+        </div>
+        <div class="stats-grid" id="newsroom-stats"></div>
+        <div class="newsroom-grid">
+          <article class="panel">
+            <div class="panel-heading">
+              <div><p class="eyebrow">LIVE RADAR</p><h2>Events</h2></div>
+              <select id="newsroom-filter" aria-label="Filter events">
+                <option value="">All</option>
+                <option value="breaking">Breaking</option>
+                <option value="ai_today">AI Today</option>
+                <option value="tutorial">Tutorial</option>
+                <option value="review">Review</option>
+                <option value="comparison">Comparison</option>
+                <option value="watchlist">Watchlist</option>
+                <option value="rejected">Rejected</option>
+              </select>
+            </div>
+            <div id="newsroom-events" class="card-list"></div>
+          </article>
+          <article class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">EVENT DESK</p><h2 id="newsroom-detail-title">Select an event</h2></div><span id="newsroom-detail-status" class="status">idle</span></div>
+            <div id="newsroom-detail" class="newsroom-detail"></div>
+          </article>
+        </div>
+        <div class="newsroom-grid">
+          <article class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">SOURCE HEALTH</p><h2>Adapters</h2></div></div>
+            <div id="newsroom-health" class="card-list compact"></div>
+          </article>
+          <article class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">RUN HISTORY</p><h2>Newsroom cycles</h2></div></div>
+            <div id="newsroom-runs" class="timeline"></div>
+          </article>
+        </div>
+      </section>
+
       <section id="readiness-view" class="view">
         <div class="section-intro readiness-intro">
           <div><h2>Production readiness</h2><p>Verify the real path from providers to a publishable YouTube upload before autonomy spends time or credits.</p></div>
@@ -315,6 +362,7 @@
   </dialog>
 
   <script src="/app.js" defer></script>
+  <script src="/newsroom.js" defer></script>
   <script src="/enhance.js" defer></script>
 </body>
 </html>

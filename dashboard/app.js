@@ -141,6 +141,7 @@ function renderDashboard() {
   renderAnalytics(state.analytics, state.learning);
   renderGrowthExperiments(state.experiments || {});
   renderEngagement(ui.state.engagement || {});
+  if (typeof window.renderNewsroom === 'function') window.renderNewsroom(state.newsroom || {});
   renderActivation(state.activation);
   renderReadiness(state.readiness);
   renderOperator(state.channelStrategy, state.operatorRuns || [], { ...state.system, readiness: state.readiness });
@@ -791,6 +792,7 @@ function switchView(view) {
     calendar: ['EDITORIAL PLANNING', 'Plan before you generate.'],
     analytics: ['PERFORMANCE', 'Turn results into the next move.'],
     engagement: ['AUDIENCE ENGAGEMENT', 'Talk with the people watching.'],
+    newsroom: ['AI NEWSROOM', 'Cover verified AI news without bypassing review.'],
     readiness: ['PRODUCTION READINESS', 'Verify before autonomy runs.'],
     settings: ['CHANNEL GUARDRAILS', 'Make every agent sound like you.']
   };
@@ -1714,6 +1716,6 @@ $('#api-key-button').addEventListener('click', () => {
 });
 
 const initialView = location.hash.slice(1);
-if (['overview', 'operator', 'pipeline', 'calendar', 'analytics', 'engagement', 'readiness', 'settings'].includes(initialView)) switchView(initialView);
+if (['overview', 'operator', 'pipeline', 'calendar', 'analytics', 'engagement', 'newsroom', 'readiness', 'settings'].includes(initialView)) switchView(initialView);
 refreshDashboard();
 setInterval(() => refreshDashboard(true), 8000);

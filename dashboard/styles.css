@@ -1037,6 +1037,10 @@ body.scrolled .topbar { border-color: rgba(151, 167, 195, .32); }
 }
 
 .engagement-grid { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); margin-bottom: 20px; }
+.newsroom-grid { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); margin-bottom: 20px; }
+.newsroom-detail { display: grid; gap: 12px; }
+.newsroom-detail h3 { margin: 8px 0 0; font-size: 0.95rem; }
+.form-actions.wrap { flex-wrap: wrap; }
 .engagement-policy { opacity: 0.75; font-size: 0.85rem; margin: 0 0 12px; }
 .engagement-meta { display: flex; flex-wrap: wrap; gap: 10px; font-size: 0.85rem; opacity: 0.8; margin-bottom: 12px; }
 .comment-card { border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: grid; gap: 8px; margin-bottom: 12px; }
