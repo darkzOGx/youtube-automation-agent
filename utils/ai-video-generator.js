@@ -64,18 +64,20 @@ class AIVideoGenerator {
     this.lastNarrationResult = null;
     let provider = 'simulation';
     let model = null;
+    const preferredProvider = String(process.env.TTS_PROVIDER || 'auto').toLowerCase();
+    const allows = candidate => preferredProvider === 'auto' || preferredProvider === candidate;
 
     try {
       let generatedPath;
-      if (this.elevenLabsApiKey && this.elevenLabsVoiceId) {
+      if (allows('elevenlabs') && this.elevenLabsApiKey && this.elevenLabsVoiceId) {
         provider = 'elevenlabs';
         model = this.elevenLabsModel;
         generatedPath = await this.generateElevenLabsTTS(text, outputPath);
-      } else if (this.openai) {
+      } else if (allows('openai') && this.openai) {
         provider = 'openai';
         model = 'gpt-4o-mini-tts';
         generatedPath = await this.generateOpenAITTS(text, outputPath);
-      } else if (this.gemini) {
+      } else if (allows('gemini') && this.gemini) {
         provider = 'gemini';
         model = process.env.GEMINI_TTS_MODEL || 'gemini-3.1-flash-tts-preview';
         generatedPath = await this.generateGeminiTTS(text, outputPath);

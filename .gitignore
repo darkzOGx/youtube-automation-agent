@@ -10,6 +10,8 @@ yarn-error.log*
 .env.production
 config/credentials.json
 config/tokens.json
+config/flow-profile/
+config/flow-session.json
 config/*.key
 config/*.pem
 
@@ -90,3 +92,9 @@ data/thumbnails/
 
 # Claude worktrees
 .claude/worktrees/
+data/short-batch/
+data/short-batch-cartoon/
+data/finance-fact-sample/
+data/finance-sample/
+data/youtube-rate-limit.json
+data/.youtube-rate-limit.lock/

@@ -1,4 +1,5 @@
 const OpenAI = require('openai');
+const axios = require('axios');
 const { Logger } = require('./logger');
 
 const GEMINI_MODELS = [
@@ -51,6 +52,7 @@ class AITextService {
     this.logger = new Logger('AITextService');
     this.client = null;
     this.gemini = null;
+    this.anthropic = null;
     this.model = null;
     this.providerName = null;
 
@@ -64,6 +66,11 @@ class AITextService {
 
     if (provider && PROVIDERS[provider] && apiKey) {
       return this._initOpenAICompatible(PROVIDERS[provider], apiKey, model);
+    }
+
+    const anthropicKey = credentials.anthropic?.apiKey || process.env.ANTHROPIC_API_KEY;
+    if (anthropicKey) {
+      return this._initAnthropic(anthropicKey, credentials.anthropic?.model);
     }
 
     for (const [, preset] of Object.entries(PROVIDERS)) {
@@ -100,10 +107,42 @@ class AITextService {
     }
   }
 
+  _initAnthropic(apiKey, model) {
+    this.anthropic = { apiKey };
+    this.model = model || process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5';
+    this.providerName = 'Anthropic Claude';
+    this.logger.info(`Anthropic Claude initialized (model: ${this.model})`);
+  }
+
   async generateText(prompt, options = {}) {
     const model = options.model || this.model;
     const maxTokens = options.maxTokens || 2048;
     const temperature = options.temperature ?? 0.7;
+
+    if (this.anthropic) {
+      const response = await axios.post(
+        'https://api.anthropic.com/v1/messages',
+        {
+          model,
+          max_tokens: maxTokens,
+          temperature,
+          messages: [{ role: 'user', content: prompt }],
+        },
+        {
+          headers: {
+            'content-type': 'application/json',
+            'x-api-key': this.anthropic.apiKey,
+            'anthropic-version': '2023-06-01',
+          },
+          timeout: 120000,
+        },
+      );
+
+      return (response.data.content || [])
+        .filter(part => part.type === 'text')
+        .map(part => part.text)
+        .join('\n');
+    }
 
     if (this.gemini) {
       const config = { maxOutputTokens: maxTokens };
@@ -178,7 +217,7 @@ class AITextService {
   }
 
   isAvailable() {
-    return !!(this.client || this.gemini);
+    return !!(this.client || this.gemini || this.anthropic);
   }
 }
 

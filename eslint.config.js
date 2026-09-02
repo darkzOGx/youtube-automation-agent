@@ -6,6 +6,7 @@ module.exports = [
       'node_modules/**',
       'coverage/**',
       'logs/**',
+      'config/flow-profile/**',
       'temp/**',
       'tmp/**',
       'uploads/**',
@@ -14,7 +15,9 @@ module.exports = [
       'data/captions/**',
       'data/scripts/**',
       'data/videos/**',
-      'data/thumbnails/**'
+      'data/thumbnails/**',
+      'data/short-batch/**',
+      'data/short-batch-cartoon/**'
     ]
   },
   js.configs.recommended,

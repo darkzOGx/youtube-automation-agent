@@ -238,6 +238,7 @@ graph LR
 | **OpenAI** | GPT-5.6 Sol, Terra, Luna | `api.openai.com/v1` | provider pricing |
 | **OpenRouter** | 400+ models; curated defaults are validated against its live catalog | `openrouter.ai/api/v1` | varies by model |
 | **Google Gemini** | Gemini 3.7 Flash, 3.1 Pro Preview, 3.5 Flash-Lite | via `@google/genai` SDK | free tiers vary by model and modality |
+| **Anthropic Claude** | Claude Sonnet / Opus | `api.anthropic.com` | varies by model |
 | **Kimi (Moonshot AI)** | Kimi K3, K2.7 Code, K2.6 | `api.moonshot.ai/v1` | provider pricing |
 | **MiMo (Xiaomi)** | MiMo V2.5 Pro, V2.5 | `api.xiaomimimo.com/v1` | provider pricing |
 | **GLM (Zhipu AI)** | GLM-5.3, 5.2, 5.1 | `api.z.ai/api/paas/v4/` | provider pricing |
@@ -299,6 +300,8 @@ Long-form productions use hybrid assembly: Lumen generates bounded provider clip
 OPENAI_API_KEY=sk-...
 # OPENROUTER_API_KEY=sk-or-...
 # GEMINI_API_KEY=...
+# ANTHROPIC_API_KEY=...
+# ANTHROPIC_MODEL=claude-sonnet-4-5
 # MOONSHOT_API_KEY=...
 # MIMO_API_KEY=...
 # GLM_API_KEY=...
@@ -316,6 +319,11 @@ OPENAI_API_KEY=sk-...
 # KLING_ACCESS_KEY=...
 # KLING_SECRET_KEY=...
 # DASHSCOPE_API_KEY=...    # Wan 2.7
+
+# Optional: manually exported Google Flow images for the finance sample.
+# Name files scene_01.png through scene_08.png and place them in this directory.
+# FLOW_IMAGE_DIR=./data/finance-sample/flow-images
+# FLOW_CDP_PORT=9222
 
 # App config
 NODE_ENV=production
@@ -343,6 +351,76 @@ GENERATION_RETRY_BASE_MS=1000
 The dashboard calculates setup, first-real-MP4, approval, publication, and repeat-generation milestones locally from SQLite and files on disk. A video counts only when a non-simulated `.mp4` with an MP4 container signature still exists.
 
 Anonymous milestone reporting is disabled by default and has no built-in collector. It activates only when you explicitly set both telemetry variables. The allowlisted payload contains the milestone name and time, Lumen version, OS family, Node major version, and a random installation ID. It never includes credentials, channel data, prompts, topics, titles, filenames, or video contents.
+
+### Free Google Flow Stills
+
+The Flow connector uses a dedicated Edge profile and a local debugging port.
+It generates still images only; it never approves paid Flow animation jobs.
+
+```bash
+npm run flow:connect
+npm run flow:images
+npm run finance:sample
+```
+
+Keep the Flow project open while `flow:images` runs. Existing scene files are
+skipped, and the renderer uses local fallback artwork for any missing scene.
+
+## Finance Short Batch
+
+The first version of the finance batch changed the scene labels but reused the
+same small set of Flow stills for every Short. That made the visuals generic
+and repeated. The current batch uses a deterministic visual plan for each of
+the 20 topics and creates 12 topic-specific cartoon panels locally with SVG and
+Sharp. Each panel has a semantic illustration such as a repair bill, cash jar,
+calendar, shield, asset bucket, chart, or scam warning.
+
+The default output is the separate `data/short-batch-cartoon/` directory. The
+existing `data/short-batch/` manifest and public checkpoints are preserved and
+are never treated as cartoon renders. Flow stills are optional and are used
+only as a thumbnail reference when available. The card renderer still applies
+1080x1920 cards, Ken Burns motion, FFmpeg crossfades, and burned narration
+captions.
+
+This is cartoon-style 2D illustrated motion, not true AI character or object
+animation. Actual object or character animation would require a paid or
+external video model. No Gemini image generation or paid Flow animation is
+used by this batch.
+
+```bash
+# Default: generate all 20 locally for review; no YouTube calls
+npm run shorts:batch
+
+# Generate a smaller local preview
+npm run shorts:batch -- --count 5 --preview
+
+# Only after reviewing data/short-batch-cartoon/manifest.json, MP4s, and SRTs:
+npm run shorts:batch -- --count 20 --upload --public
+```
+
+The final MP4 burns short phrase captions with timing measured from the
+narration audio. The matching SRT remains beside each MP4. Gemini free TTS is
+used when available; on Windows, a local System.Speech fallback continues the
+batch after Gemini's free request quota is exhausted. Use
+`--youtube-captions` only when a separate YouTube caption track is needed;
+burned captions are included without that extra API call. Missing or simulated
+TTS fails the batch rather than silently publishing; use `--allow-silent` only
+for an intentional silent preview. `--public` requires `--upload`, and local
+generation is never an implicit upload. `data/short-batch-cartoon/manifest.json`
+records `visualStyle: "local cartoon illustrations"`, the 12 semantic
+`visualKinds`, the visual plan, completed files, and any YouTube checkpoints so
+reruns do not insert a completed cartoon Short again. Use `--output-dir` for a
+separate preview directory; the legacy `data/short-batch/` directory is
+blocked by the batch command to protect its public checkpoints.
+
+If YouTube temporarily rejects thumbnail requests, resume video uploads with
+`--skip-thumbnails`; the manifest keeps those thumbnails pending for a later
+retry.
+
+Public Shorts use a file-backed, cross-process-safe limit of 20 per calendar
+day. Set `YOUTUBE_RATE_LIMIT_TIMEZONE` (default `UTC`) for the date boundary
+and optionally lower `YOUTUBE_PUBLIC_SHORTS_PER_DAY`; values above 20 are
+ clamped. A failed public upload releases its reservation.
 
 ## Automation Schedule
 
@@ -452,6 +530,27 @@ curl -X POST http://localhost:3456/api/content/:contentId/approve \
   -H "x-api-key: $API_KEY" \
   -d '{"privacyStatus":"private","factChecked":true,"rightsConfirmed":true}'
 ```
+
+## Generate a Gemini Omni Flash Short
+
+The one-shot workflow accepts a prompt, saves a real MP4, and can upload it to
+YouTube through the existing OAuth connection. Uploads are private by default.
+
+```bash
+# Generate and review locally
+npm run short -- "A close-up cinematic shot of a glassblower shaping glowing blue glass"
+
+# Generate and upload privately
+npm run short -- "A close-up cinematic shot of a glassblower shaping glowing blue glass" --upload --privacy private
+
+# Publish publicly only when explicitly requested
+npm run short -- "A close-up cinematic shot of a glassblower shaping glowing blue glass" --upload --privacy public --title "Glassblower at Midnight"
+```
+
+The command uses `gemini-omni-flash-preview`, requests a 10-second 9:16 video,
+and writes the MP4 under `data/videos/`. Configure `GEMINI_API_KEY` and finish
+YouTube OAuth with `node modern-auth.js` before using `--upload`. Do not put API
+keys or OAuth tokens in prompts or commit them to the repository.
 
 ## Production Pipeline
 

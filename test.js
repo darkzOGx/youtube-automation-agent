@@ -45,7 +45,11 @@ class SystemTest {
       { name: 'Placeholder Scheduling Guard', test: () => this.testPlaceholderSchedulingGuard() },
       { name: 'FFmpeg Resolution', test: () => this.testFFmpegResolution() },
       { name: 'Gemini Media Provider Selection', test: () => this.testGeminiMediaProvider() },
+      { name: 'Gemini Omni Short Workflow', test: () => this.testGeminiOmniShortWorkflow() },
       { name: 'Slideshow Renderer', test: () => this.testSlideshowRenderer() },
+      { name: 'Short Renderer Caption Helpers', test: () => this.testShortRendererCaptionHelpers() },
+      { name: 'Cartoon Illustrations and Visual Plans', test: () => this.testCartoonIllustrationsAndVisualPlans() },
+      { name: 'Public Short Rate Limit Guard', test: () => this.testPublicShortRateLimitGuard() },
       { name: 'Evergreen Template Topics', test: () => this.testEvergreenTopics() },
       { name: 'Walkthrough Module', test: () => this.testWalkthroughModule() },
       { name: 'Logger System', test: () => this.testLogger() },
@@ -2181,7 +2185,7 @@ class SystemTest {
     const manager = new CredentialManager();
 
     // Isolate the test from any API keys set in the environment
-    const envKeys = [...Object.values(PROVIDERS).map(p => p.envKey), 'GEMINI_API_KEY'];
+    const envKeys = [...Object.values(PROVIDERS).map(p => p.envKey), 'GEMINI_API_KEY', 'ANTHROPIC_API_KEY'];
     const savedEnv = {};
     for (const key of envKeys) {
       savedEnv[key] = process.env[key];
@@ -2457,6 +2461,80 @@ class SystemTest {
     this.logger.info('Gemini media provider selection test completed successfully');
   }
 
+  async testGeminiOmniShortWorkflow() {
+    const {
+      buildShortPrompt,
+      createDefaultTitle,
+      extractVideoPart,
+      parseArgs,
+      sanitizeTags,
+      validateOptions
+    } = require('./shorts');
+
+    const options = parseArgs([
+      'A',
+      'robot',
+      'walking',
+      'through',
+      'rain',
+      '--upload',
+      '--privacy',
+      'private',
+      '--duration',
+      '8',
+      '--aspect-ratio',
+      '9:16'
+    ]);
+
+    validateOptions(options);
+    const prompt = buildShortPrompt(options);
+    if (!prompt.includes('8-second') || !prompt.includes('9:16') || !prompt.includes('robot')) {
+      throw new Error('Short prompt was not assembled correctly');
+    }
+
+    const videoPart = extractVideoPart({
+      candidates: [{
+        content: {
+          parts: [{ inlineData: { mimeType: 'video/mp4', data: 'ZmFrZQ==' } }]
+        }
+      }]
+    });
+    if (!videoPart || videoPart.type !== 'base64' || videoPart.data !== 'ZmFrZQ==') {
+      throw new Error('Inline video response was not extracted');
+    }
+
+    const uriPart = extractVideoPart({
+      candidates: [{
+        content: {
+          parts: [{ fileData: { fileUri: 'files/short-video', mimeType: 'video/mp4' } }]
+        }
+      }]
+    });
+    if (!uriPart || uriPart.type !== 'uri' || uriPart.uri !== 'files/short-video') {
+      throw new Error('URI video response was not extracted');
+    }
+
+    if (sanitizeTags([' first ', '', 'second']).join(',') !== 'first,second') {
+      throw new Error('YouTube tags were not sanitized');
+    }
+
+    if (!createDefaultTitle('A simple test prompt').startsWith('AI Short:')) {
+      throw new Error('Default YouTube title was not created');
+    }
+
+    let invalidPrivacyRejected = false;
+    try {
+      validateOptions({ ...options, upload: false, privacy: 'public' });
+    } catch (error) {
+      invalidPrivacyRejected = /requires --upload/.test(error.message);
+    }
+    if (!invalidPrivacyRejected) {
+      throw new Error('Public privacy without upload was not rejected');
+    }
+
+    this.logger.info('Gemini Omni short workflow test completed successfully');
+  }
+
   async testSlideshowRenderer() {
     const { AIVideoGenerator } = require('./utils/ai-video-generator');
     const { checkFFmpeg } = require('./utils/ffmpeg');
@@ -2550,6 +2628,159 @@ class SystemTest {
     }
 
     this.logger.info('Slideshow renderer test completed successfully');
+  }
+
+  async testShortRendererCaptionHelpers() {
+    const {
+      buildSubtitleFilter,
+      calculateCardDurations,
+      chunkWords,
+      createSrtCaptions,
+      escapeSubtitleFilterPath,
+      formatSrtTime
+    } = require('./utils/short-video-renderer');
+
+    const chunks = chunkWords('one two three four five six seven', 3);
+    if (chunks.length !== 3 || chunks.some(chunk => chunk.length > 3)) {
+      throw new Error('Short caption chunks did not respect the word limit');
+    }
+
+    const captions = createSrtCaptions('one two three four five six seven', 10, { maxWords: 3 });
+    if (!captions.includes('00:00:00,000') || !captions.includes('00:00:10,000')) {
+      throw new Error('SRT captions did not span the measured duration');
+    }
+    if (formatSrtTime(1.25) !== '00:00:01,250') {
+      throw new Error('SRT timestamp formatting was incorrect');
+    }
+
+    const timing = calculateCardDurations(12, Array.from({ length: 12 }, () => ({ title: 'beat' })));
+    const renderedDuration = timing.durations.reduce((sum, value) => sum + value, 0)
+      - (timing.fadeDuration * 11);
+    if (Math.abs(renderedDuration - 12) > 0.01) {
+      throw new Error('Card timing did not account for xfade overlap');
+    }
+
+    const escaped = escapeSubtitleFilterPath('C:\\Users\\Admin\\caption file.srt');
+    if (!escaped.includes('\\:') || escaped.includes('\\Users')) {
+      throw new Error('Windows subtitle path was not escaped safely');
+    }
+    const filter = buildSubtitleFilter('C:\\Users\\Admin\\caption file.srt');
+    if (!filter.includes('force_style=') || !filter.includes('subtitles=filename=')) {
+      throw new Error('ASS-style subtitle filter was not assembled');
+    }
+
+    this.logger.info('Short renderer caption helper test completed successfully');
+  }
+
+  async testCartoonIllustrationsAndVisualPlans() {
+    const {
+      FINANCE_TOPICS,
+      VISUAL_BEATS_COUNT,
+      VISUAL_PLANS,
+      buildVisualScenes
+    } = require('./short-batch');
+    const {
+      ILLUSTRATION_HEIGHT,
+      ILLUSTRATION_WIDTH,
+      SUPPORTED_KINDS,
+      buildIllustrationSvg,
+      createCartoonIllustrations,
+      isSupportedKind
+    } = require('./utils/cartoon-illustrations');
+    const fs = require('fs').promises;
+    const os = require('os');
+    const sharp = require('sharp');
+
+    if (FINANCE_TOPICS.length !== 20 || Object.keys(VISUAL_PLANS).length !== 20) {
+      throw new Error('The finance batch and cartoon plan do not cover all 20 topics');
+    }
+    if (!['cash', 'jar', 'calendar', 'shield', 'credit-card', 'scale', 'chart', 'house', 'receipt', 'warning', 'target', 'clock', 'people', 'tax', 'scam'].every(kind => SUPPORTED_KINDS.includes(kind) && isSupportedKind(kind))) {
+      throw new Error('The cartoon module is missing a required semantic kind');
+    }
+
+    for (const topic of FINANCE_TOPICS) {
+      const scenes = buildVisualScenes(topic);
+      if (scenes.length !== VISUAL_BEATS_COUNT || scenes.some(scene => !scene.kind || !isSupportedKind(scene.kind))) {
+        throw new Error(`Visual plan for ${topic.key} is incomplete or has an unsupported kind`);
+      }
+      if (new Set(scenes.map(scene => `${scene.title}:${scene.detail}`)).size !== VISUAL_BEATS_COUNT) {
+        throw new Error(`Visual plan for ${topic.key} repeats a scene description`);
+      }
+    }
+
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'yaa-cartoon-'));
+    try {
+      const scenes = buildVisualScenes(FINANCE_TOPICS[0]);
+      const panelPaths = await createCartoonIllustrations(scenes, dir, { topicKey: FINANCE_TOPICS[0].key });
+      if (panelPaths.length !== VISUAL_BEATS_COUNT || new Set(panelPaths).size !== VISUAL_BEATS_COUNT) {
+        throw new Error('Cartoon illustration generation did not create 12 unique panel files');
+      }
+      const metadata = await sharp(panelPaths[0]).metadata();
+      if (metadata.format !== 'png' || metadata.width !== ILLUSTRATION_WIDTH || metadata.height !== ILLUSTRATION_HEIGHT) {
+        throw new Error('Cartoon illustration was not rendered as a vertical PNG');
+      }
+      const svg = buildIllustrationSvg({ kind: 'scam', title: 'Verify first', detail: 'Pause before trusting a money offer' });
+      if (!svg.includes('<svg') || !svg.includes('SCAM PANEL')) {
+        throw new Error('Cartoon SVG helper did not render the requested semantic kind');
+      }
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+    }
+
+    this.logger.info('Cartoon illustration and visual plan test completed successfully');
+  }
+
+  async testPublicShortRateLimitGuard() {
+    const {
+      countPublicShorts,
+      getPublicShortStatus,
+      markPublicShortUploaded,
+      reservePublicShort,
+      releasePublicShort
+    } = require('./utils/youtube-rate-limit');
+    const fs = require('fs').promises;
+    const os = require('os');
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'yaa-rate-limit-'));
+    const common = {
+      statePath: path.join(dir, 'state.json'),
+      lockPath: path.join(dir, 'lock'),
+      limit: 2,
+      timeZone: 'UTC',
+      now: new Date('2026-08-26T12:00:00.000Z')
+    };
+
+    try {
+      const first = await reservePublicShort('first', common);
+      const duplicate = await reservePublicShort('first', common);
+      if (first.count !== 1 || !duplicate.alreadyReserved || duplicate.count !== 1) {
+        throw new Error('Rate-limit reservation was not idempotent');
+      }
+
+      await reservePublicShort('second', common);
+      let limitRejected = false;
+      try {
+        await reservePublicShort('third', common);
+      } catch (error) {
+        limitRejected = error.code === 'YOUTUBE_PUBLIC_SHORTS_DAILY_LIMIT';
+      }
+      if (!limitRejected) throw new Error('Daily public Short cap did not reject the third reservation');
+
+      await releasePublicShort('second', common);
+      const third = await reservePublicShort('third', common);
+      await markPublicShortUploaded(third.key, common);
+      const releasedUploaded = await releasePublicShort(third.key, common);
+      const status = await getPublicShortStatus(common);
+      if (releasedUploaded.released || status.reservations !== 1 || status.uploads !== 1) {
+        throw new Error('Rate-limit release/upload lifecycle was incorrect');
+      }
+      if (await countPublicShorts(common) !== 2) {
+        throw new Error('Rate-limit count helper returned the wrong active count');
+      }
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+    }
+
+    this.logger.info('Public Short rate-limit guard test completed successfully');
   }
 
   async testEvergreenTopics() {
