@@ -4,6 +4,12 @@ const fsSync = require('fs');
 const path = require('path');
 const { Logger } = require('../utils/logger');
 const { assertValidYouTubeMetadata } = require('../utils/youtube-metadata-validator');
+const {
+  isExplicitShort,
+  markPublicShortUploaded,
+  reservePublicShort,
+  releasePublicShort
+} = require('../utils/youtube-rate-limit');
 
 class PublishingSchedulingAgent {
   constructor(db, credentials) {
@@ -65,6 +71,8 @@ class PublishingSchedulingAgent {
         return existing;
       }
 
+      const explicitMetadata = productionData.metadata || {};
+
       const scheduleEntry = {
         productionId: productionData.id,
         title: productionData.script.title,
@@ -79,9 +87,11 @@ class PublishingSchedulingAgent {
           captions: productionData.assets.captions,
           privacyStatus: productionData.privacyStatus || process.env.DEFAULT_PRIVACY_STATUS || 'private',
           containsSyntheticMedia: productionData.containsSyntheticMedia === true,
-          contentType: productionData.contentType || 'long_form',
           sourceProductionId: productionData.sourceProductionId || productionData.id,
-          shortClipId: productionData.shortClipId || null
+          shortClipId: productionData.shortClipId || null,
+          isShort: productionData.isShort === true || explicitMetadata.isShort === true,
+          contentType: productionData.contentType || explicitMetadata.contentType || 'long_form',
+          aspectRatio: productionData.aspectRatio || explicitMetadata.aspectRatio
         },
         createdAt: new Date().toISOString()
       };
@@ -224,23 +234,38 @@ class PublishingSchedulingAgent {
     
     // Resolve the file before marking the network upload as attempted.
     const videoStream = await this.getVideoStream(metadata.video.path);
+    const publicShort = videoMetadata.status.privacyStatus === 'public' && isExplicitShort(metadata);
+    const reservation = publicShort
+      ? await reservePublicShort(`scheduled:${scheduleEntry.productionId || scheduleEntry.id}`)
+      : null;
     scheduleEntry.uploadAttempted = true;
-    const videoUpload = await this.youtube.videos.insert({
-      part: 'snippet,status',
-      requestBody: videoMetadata,
-      media: {
-        body: videoStream
-      }
-    });
-    
-    const videoId = videoUpload.data.id;
-    this.logger.info(`Video uploaded with ID: ${videoId}`);
-    scheduleEntry.status = 'uploaded';
-    scheduleEntry.youtubeId = videoId;
-    scheduleEntry.youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
-    scheduleEntry.error = null;
-    await this.db.updateScheduleEntry(scheduleEntry);
-    
+    let inserted = false;
+    let videoUpload;
+    let videoId;
+    try {
+      videoUpload = await this.youtube.videos.insert({
+        part: 'snippet,status',
+        requestBody: videoMetadata,
+        media: {
+          body: videoStream
+        }
+      });
+
+      videoId = videoUpload.data.id;
+      if (!videoId) throw new Error('YouTube did not return an uploaded video ID');
+      inserted = true;
+      if (reservation) await markPublicShortUploaded(reservation.key);
+      this.logger.info(`Video uploaded with ID: ${videoId}`);
+      scheduleEntry.status = 'uploaded';
+      scheduleEntry.youtubeId = videoId;
+      scheduleEntry.youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+      scheduleEntry.error = null;
+      await this.db.updateScheduleEntry(scheduleEntry);
+    } catch (error) {
+      if (reservation && !inserted) await releasePublicShort(reservation.key).catch(() => {});
+      throw error;
+    }
+
     // Upload thumbnail
     if (metadata.thumbnail && metadata.thumbnail.path) {
       await this.uploadThumbnail(videoId, metadata.thumbnail.path);

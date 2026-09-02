@@ -105,9 +105,9 @@ class CredentialManager {
     const scopes = [
       'https://www.googleapis.com/auth/youtube.upload',
       'https://www.googleapis.com/auth/youtube',
+      'https://www.googleapis.com/auth/youtube.force-ssl',
       'https://www.googleapis.com/auth/youtube.readonly',
-      'https://www.googleapis.com/auth/yt-analytics.readonly',
-      'https://www.googleapis.com/auth/youtube.force-ssl'
+      'https://www.googleapis.com/auth/yt-analytics.readonly'
     ];
 
     const authUrl = oauth2Client.generateAuthUrl({
@@ -513,13 +513,18 @@ class CredentialManager {
   }
   // Validation methods
   hasAITextProvider() {
-    if (this.credentials.openai?.apiKey || this.credentials.gemini?.apiKey || this.credentials.aiProvider?.apiKey) {
+    if (
+      this.credentials.openai?.apiKey ||
+      this.credentials.gemini?.apiKey ||
+      this.credentials.anthropic?.apiKey ||
+      this.credentials.aiProvider?.apiKey
+    ) {
       return true;
     }
 
     // Environment-variable based configuration (see utils/ai-text-service.js)
     const envKeys = [...Object.values(PROVIDERS).map(p => p.envKey), 'GEMINI_API_KEY'];
-    return envKeys.some(key => process.env[key]);
+    return envKeys.some(key => process.env[key]) || Boolean(process.env.ANTHROPIC_API_KEY);
   }
 
   getMissingCredentials() {
@@ -636,6 +641,7 @@ class CredentialManager {
         choices: [
           { name: 'OpenAI (GPT-5.6)', value: 'openai' },
           { name: 'Google Gemini (Gemini 3.7)', value: 'gemini' },
+          { name: 'Anthropic Claude', value: 'anthropic' },
           { name: 'OpenRouter (400+ models, one API key)', value: 'openrouter' },
           { name: 'Kimi (Moonshot AI — K3)', value: 'kimi' },
           { name: 'MiMo (Xiaomi — V2.5 Pro)', value: 'mimo' },
@@ -647,11 +653,41 @@ class CredentialManager {
     switch (service) {
       case 'openai': return await this.setupOpenAICredentials();
       case 'gemini': return await this.setupGeminiCredentials();
+      case 'anthropic': return await this.setupAnthropicCredentials();
       case 'openrouter': return await this.setupOpenRouterCredentials();
       case 'kimi': return await this.setupKimiCredentials();
       case 'mimo': return await this.setupMiMoCredentials();
       case 'glm': return await this.setupGLMCredentials();
     }
+  }
+
+  async setupAnthropicCredentials() {
+    console.log(chalk.cyan('\n🧠 Anthropic Claude Setup'));
+    console.log(chalk.gray('Get your API key from: https://console.anthropic.com/settings/keys'));
+
+    const answers = await inquirer.prompt([
+      {
+        type: 'password',
+        name: 'apiKey',
+        message: 'Enter your Anthropic API Key:',
+        validate: input => input.length > 0 || 'API key is required'
+      },
+      {
+        type: 'input',
+        name: 'model',
+        message: 'Enter the Claude model ID:',
+        default: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5',
+        validate: input => input.trim().length > 0 || 'Model ID is required'
+      }
+    ]);
+
+    this.credentials.anthropic = {
+      apiKey: answers.apiKey,
+      model: answers.model.trim()
+    };
+
+    await this.saveCredentials();
+    console.log(chalk.green('✅ Anthropic Claude configured successfully!'));
   }
 
   async setupTTSService() {
