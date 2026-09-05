@@ -23,6 +23,13 @@ const PROVIDERS = {
     models: ['openai/gpt-5.6-sol', 'anthropic/claude-fable-5', 'google/gemini-3.7-flash', 'moonshotai/kimi-k3', 'z-ai/glm-5.3'],
     envKey: 'OPENROUTER_API_KEY',
   },
+  atlascloud: {
+    name: 'Atlas Cloud',
+    baseURL: 'https://api.atlascloud.ai/v1',
+    defaultModel: 'qwen/qwen3.5-flash',
+    models: ['qwen/qwen3.5-flash', 'deepseek-ai/deepseek-v4-pro'],
+    envKey: 'ATLASCLOUD_API_KEY',
+  },
   kimi: {
     name: 'Kimi (Moonshot AI)',
     baseURL: 'https://api.moonshot.ai/v1',

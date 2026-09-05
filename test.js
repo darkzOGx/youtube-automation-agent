@@ -2199,6 +2199,11 @@ class SystemTest {
         throw new Error('OpenRouter configuration was incorrectly reported as missing credentials');
       }
 
+      manager.credentials = { youtube: { client_id: 'x' }, aiProvider: { provider: 'atlascloud', apiKey: 'atlas-test' } };
+      if (manager.getMissingCredentials().length !== 0) {
+        throw new Error('Atlas Cloud configuration was incorrectly reported as missing credentials');
+      }
+
       manager.credentials = { youtube: { client_id: 'x' } };
       const missingProvider = manager.getMissingCredentials();
       if (missingProvider.length !== 1 || !/AI provider/.test(missingProvider[0])) {
