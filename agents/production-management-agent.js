@@ -2,6 +2,7 @@ const path = require('path');
 const fs = require('fs').promises;
 const { Logger } = require('../utils/logger');
 const { AIVideoGenerator } = require('../utils/ai-video-generator');
+const { SceneRepairService } = require('../utils/scene-repair-service');
 
 class ProductionManagementAgent {
   constructor(db, credentials) {
@@ -10,7 +11,8 @@ class ProductionManagementAgent {
     this.logger = new Logger('ProductionManagement');
     this.pipeline = [];
     this.assets = new Map();
-    this.aiVideoGenerator = new AIVideoGenerator(credentials);
+    this.aiVideoGenerator = new AIVideoGenerator(credentials, { db });
+    this.sceneRepair = new SceneRepairService(db, this.aiVideoGenerator, { logger: this.logger });
   }
 
   async initialize() {
@@ -48,7 +50,7 @@ class ProductionManagementAgent {
     try {
       this.logger.info('Processing content for production...');
       
-      const { strategy, script, thumbnail, seo } = contentData;
+      const { strategy, script, thumbnail, seo, jobId = null } = contentData;
       
       // Create production entry
       const productionId = this.generateProductionId();
@@ -81,6 +83,7 @@ class ProductionManagementAgent {
         estimatedDuration: script.duration,
         createdAt: new Date().toISOString()
       };
+      productionData.jobId = jobId;
       
       // Add to pipeline
       this.pipeline.push(productionData);
@@ -99,6 +102,9 @@ class ProductionManagementAgent {
       
       // Final assembly
       await this.assembleVideo(productionData);
+
+      // Persist a scene-addressable production manifest for selective review and repair.
+      await this.sceneRepair.initializeProduction(productionData, this.aiVideoGenerator.lastVideoResult || {});
 
       // Mark as ready — or simulated, when no real video could be produced
       const simulated = Boolean(productionData.assets.finalVideo?.simulated);
@@ -291,7 +297,7 @@ class ProductionManagementAgent {
     this.logger.info('Generating AI video content...');
     
     try {
-      const { strategy, script } = productionData;
+      const { script } = productionData;
       
       // Generate visual assets using DALL-E
       const visualPrompts = this.createVisualPromptsFromScript(script);
@@ -336,7 +342,7 @@ class ProductionManagementAgent {
     
     // Content sections
     if (script.mainContent && script.mainContent.sections) {
-      script.mainContent.sections.forEach((section, index) => {
+      script.mainContent.sections.forEach((section) => {
         // Section title
         elements.push({
           type: 'section_title',
@@ -413,30 +419,38 @@ class ProductionManagementAgent {
     this.logger.info('Generating AI audio narration...');
     
     try {
-      const { script } = productionData;
       const audioPath = path.join(__dirname, '..', 'data', 'audio', `${productionData.id}_narration.mp3`);
       
       // Read the TTS script
       const ttsText = await fs.readFile(productionData.assets.script.ttsPath, 'utf8');
       
-      // Generate audio using AI TTS
-      await this.aiVideoGenerator.generateTTSAudio(ttsText, audioPath);
-      
+      // Generate audio using AI TTS and retain the provider evidence returned by the generator.
+      const generatedPath = await this.aiVideoGenerator.generateTTSAudio(ttsText, audioPath);
+      const evidence = this.aiVideoGenerator.lastNarrationResult || {};
+      const usable = await this.aiVideoGenerator.isUsableAudioFile(generatedPath);
+
       productionData.assets.audio = {
-        path: audioPath,
+        path: generatedPath,
         duration: productionData.estimatedDuration,
         format: 'mp3',
         generatedWith: 'AI',
-        quality: 'high'
+        quality: usable ? 'high' : null,
+        status: usable ? 'ready' : 'unavailable',
+        simulated: !usable,
+        provider: evidence.provider || null,
+        model: evidence.model || null,
+        externalTaskId: evidence.externalTaskId || null,
+        generatedAt: evidence.generatedAt || new Date().toISOString(),
+        cost: evidence.cost || {},
+        error: usable ? null : 'No live narration provider returned usable audio',
+        intentionalSilence: false
       };
-      
-      productionData.timeline.audioGenerated = new Date().toISOString();
-      
-      return audioPath;
+
+      if (usable) productionData.timeline.audioGenerated = new Date().toISOString();
+      return generatedPath;
     } catch (error) {
       this.logger.error('AI audio generation failed:', error);
-      // Fallback to simulation
-      return await this.simulateAudioGeneration(productionData);
+      return await this.simulateAudioGeneration(productionData, error);
     }
   }
 
@@ -554,13 +568,23 @@ class ProductionManagementAgent {
     
     try {
       const finalVideoPath = path.join(__dirname, '..', 'data', 'videos', `${productionData.id}_final.mp4`);
+      const narrationReady = await this.aiVideoGenerator.isUsableAudioFile(productionData.assets.audio?.path);
+      if (!narrationReady && productionData.assets.audio?.intentionalSilence !== true) {
+        this.logger.warn('Final assembly is blocked until narration succeeds or the operator explicitly confirms an intentional silent video.');
+        return await this.simulateVideoAssembly(productionData, 'Narration is missing');
+      }
 
       // Use AI Video Generator to create the final video
       const producedPath = await this.aiVideoGenerator.generateVideo(
         productionData.script,
         productionData.assets.video.visualAssets || [],
         productionData.assets.audio.path,
-        finalVideoPath
+        finalVideoPath,
+        {
+          jobId: productionData.jobId,
+          productionId: productionData.id,
+          estimatedDuration: productionData.estimatedDuration
+        }
       );
 
       // The generator falls back to a placeholder .info file when it cannot render
@@ -577,8 +601,13 @@ class ProductionManagementAgent {
         duration: productionData.estimatedDuration,
         generatedWith: 'AI',
         resolution: '1920x1080',
-        format: 'mp4'
+        format: 'mp4',
+        provider: this.aiVideoGenerator.lastVideoResult || { actualProvider: 'slideshow', model: 'local-ffmpeg' }
       };
+      productionData.containsSyntheticMedia = Boolean(
+        this.aiVideoGenerator.lastVideoResult?.actualProvider &&
+        !['slideshow', 'simulation'].includes(this.aiVideoGenerator.lastVideoResult.actualProvider)
+      );
       
       this.logger.info('AI video assembly complete');
       return finalVideoPath;
@@ -650,7 +679,7 @@ class ProductionManagementAgent {
   }
 
   // Fallback simulation methods
-  async simulateAudioGeneration(productionData) {
+  async simulateAudioGeneration(productionData, failure = null) {
     const audioPath = path.join(__dirname, '..', 'data', 'audio', `${productionData.id}_narration.mp3`);
     
     await fs.writeFile(audioPath + '.info', JSON.stringify({
@@ -662,17 +691,26 @@ class ProductionManagementAgent {
       path: audioPath + '.info',
       duration: productionData.estimatedDuration,
       format: 'mp3',
-      simulated: true
+      status: 'unavailable',
+      simulated: true,
+      provider: this.aiVideoGenerator.lastNarrationResult?.provider || 'simulation',
+      model: this.aiVideoGenerator.lastNarrationResult?.model || null,
+      externalTaskId: this.aiVideoGenerator.lastNarrationResult?.externalTaskId || null,
+      generatedAt: this.aiVideoGenerator.lastNarrationResult?.generatedAt || new Date().toISOString(),
+      cost: this.aiVideoGenerator.lastNarrationResult?.cost || { billed: false },
+      error: failure?.message || this.aiVideoGenerator.lastNarrationResult?.error || 'No live narration provider is configured',
+      intentionalSilence: false
     };
     
     return audioPath + '.info';
   }
 
-  async simulateVideoAssembly(productionData) {
+  async simulateVideoAssembly(productionData, reason = null) {
     const finalVideoPath = path.join(__dirname, '..', 'data', 'videos', `${productionData.id}_final.mp4`);
     
     const assemblyInstructions = {
       message: 'AI video would be assembled here',
+      blockedReason: reason,
       assets: productionData.assets,
       timestamp: new Date().toISOString()
     };
@@ -686,7 +724,8 @@ class ProductionManagementAgent {
       path: finalVideoPath + '.assembly.json',
       fileSize: 0,
       duration: productionData.estimatedDuration,
-      simulated: true
+      simulated: true,
+      blockedReason: reason
     };
     
     return finalVideoPath + '.assembly.json';

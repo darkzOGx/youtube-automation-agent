@@ -70,6 +70,7 @@ build/
 *.gif
 !examples/*.png
 !examples/*.jpg
+!assets/youtube-automation-agent.jpg
 
 # Backup files
 *.backup
@@ -86,3 +87,6 @@ data/captions/
 data/scripts/
 data/videos/
 data/thumbnails/
+
+# Claude worktrees
+.claude/worktrees/

@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "snapshotDate": "2026-08-18",
+  "capturedAt": "2026-08-18T19:51:41.427Z",
+  "repository": "darkzOGx/youtube-automation-agent",
+  "repositoryForkCount": 587,
+  "totalForks": 597,
+  "comparedCandidates": 40,
+  "aheadForks": 3,
+  "starredForks": 18,
+  "comparisonFailures": [],
+  "manualReview": [
+    {
+      "owner": "caglar203aydemir-create",
+      "fullName": "caglar203aydemir-create/youtube-automation-agent",
+      "htmlUrl": "https://github.com/caglar203aydemir-create/youtube-automation-agent",
+      "description": "🎬 Fully automated YouTube channel management with AI agents. Creates, optimizes & publishes videos 24/7. Works with FREE Gemini API or OpenAI. No coding required!",
+      "stars": 1,
+      "pushedAt": "2026-05-28T15:35:19Z",
+      "aheadBy": 1,
+      "behindBy": 20,
+      "status": "diverged",
+      "changedFiles": [
+        ".github/workflows/node.js.yml"
+      ]
+    },
+    {
+      "owner": "SMC-OS",
+      "fullName": "SMC-OS/youtube-automation-agent",
+      "htmlUrl": "https://github.com/SMC-OS/youtube-automation-agent",
+      "description": "🎬 Fully automated YouTube channel management with AI agents. Creates, optimizes & publishes videos 24/7. Works with FREE Gemini API or OpenAI. No coding required!",
+      "stars": 0,
+      "pushedAt": "2026-08-17T23:39:59Z",
+      "aheadBy": 2,
+      "behindBy": 3,
+      "status": "diverged",
+      "changedFiles": [
+        ".gitignore",
+        "agents/publishing-scheduling-agent.js",
+        "database/db.js",
+        "index.js",
+        "oauth-server.js",
+        "schedules/daily-automation.js",
+        "test.js",
+        "test/publishing-workflow.test.js",
+        "utils/credential-manager.js",
+        "utils/ffmpeg.js",
+        "utils/media-validator.js"
+      ]
+    },
+    {
+      "owner": "trendnearby",
+      "fullName": "trendnearby/youtube-automation-agent",
+      "htmlUrl": "https://github.com/trendnearby/youtube-automation-agent",
+      "description": "🎬 Fully automated YouTube channel management with AI agents. Creates, optimizes & publishes videos 24/7. Works with FREE Gemini API or OpenAI. No coding required!",
+      "stars": 0,
+      "pushedAt": "2026-08-18T09:12:22Z",
+      "aheadBy": 1,
+      "behindBy": 3,
+      "status": "diverged",
+      "changedFiles": [
+        ".dockerignore",
+        "Dockerfile",
+        "render.yaml"
+      ]
+    }
+  ]
+}

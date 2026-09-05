@@ -1,19 +1,26 @@
 const OpenAI = require('openai');
 const { Logger } = require('./logger');
 
+const GEMINI_MODELS = [
+  'gemini-3.7-flash',
+  'gemini-3.1-pro-preview',
+  'gemini-3.5-flash-lite',
+];
+const GEMINI_DEFAULT_MODEL = GEMINI_MODELS[0];
+
 const PROVIDERS = {
   openai: {
     name: 'OpenAI',
     baseURL: 'https://api.openai.com/v1',
-    defaultModel: 'gpt-5.5',
-    models: ['gpt-5.5', 'gpt-5.5-instant', 'gpt-5.4'],
+    defaultModel: 'gpt-5.6',
+    models: ['gpt-5.6', 'gpt-5.6-terra', 'gpt-5.6-luna'],
     envKey: 'OPENAI_API_KEY',
   },
   openrouter: {
     name: 'OpenRouter',
     baseURL: 'https://openrouter.ai/api/v1',
-    defaultModel: 'openai/gpt-5.5',
-    models: ['openai/gpt-5.5', 'anthropic/claude-opus-4-8', 'google/gemini-3.5-flash', 'moonshotai/kimi-k2.6', 'zhipu/glm-5'],
+    defaultModel: 'openai/gpt-5.6-sol',
+    models: ['openai/gpt-5.6-sol', 'anthropic/claude-fable-5', 'google/gemini-3.7-flash', 'moonshotai/kimi-k3', 'z-ai/glm-5.3'],
     envKey: 'OPENROUTER_API_KEY',
   },
   atlascloud: {
@@ -26,8 +33,8 @@ const PROVIDERS = {
   kimi: {
     name: 'Kimi (Moonshot AI)',
     baseURL: 'https://api.moonshot.ai/v1',
-    defaultModel: 'kimi-k2.6',
-    models: ['kimi-k2.6', 'kimi-k2.5', 'moonshot-v1-auto'],
+    defaultModel: 'kimi-k3',
+    models: ['kimi-k3', 'kimi-k2.7-code', 'kimi-k2.6'],
     envKey: 'MOONSHOT_API_KEY',
   },
   mimo: {
@@ -40,8 +47,8 @@ const PROVIDERS = {
   glm: {
     name: 'GLM (Zhipu AI)',
     baseURL: 'https://api.z.ai/api/paas/v4/',
-    defaultModel: 'glm-5',
-    models: ['glm-5', 'glm-5.1'],
+    defaultModel: 'glm-5.3',
+    models: ['glm-5.3', 'glm-5.2', 'glm-5.1'],
     envKey: 'GLM_API_KEY',
   },
 };
@@ -92,7 +99,7 @@ class AITextService {
     try {
       const { GoogleGenAI } = require('@google/genai');
       this.gemini = new GoogleGenAI({ apiKey });
-      this.model = model || 'gemini-3.5-flash';
+      this.model = model || GEMINI_DEFAULT_MODEL;
       this.providerName = 'Google Gemini';
       this.logger.info(`Gemini initialized (model: ${this.model})`);
     } catch (error) {
@@ -106,26 +113,75 @@ class AITextService {
     const temperature = options.temperature ?? 0.7;
 
     if (this.gemini) {
+      const config = { maxOutputTokens: maxTokens };
+      if (!/^gemini-3\.(?:[5-9]|\d{2,})-/.test(model)) config.temperature = temperature;
       const response = await this.gemini.models.generateContent({
         model,
         contents: prompt,
-        config: { maxOutputTokens: maxTokens, temperature },
+        config,
       });
-      return response.text;
+      const text = response && response.text;
+      if (typeof text !== 'string' || !text.trim()) {
+        throw new Error(
+          `${this.providerName} returned an empty response. Check the API key and model quota — free-tier Gemini keys are rate-limited and can return empty output.`
+        );
+      }
+      return text;
     }
 
     if (!this.client) {
       throw new Error('No AI text provider configured');
     }
 
-    const response = await this.client.chat.completions.create({
+    const params = {
       model,
       messages: [{ role: 'user', content: prompt }],
-      max_tokens: maxTokens,
       temperature,
-    });
+    };
 
-    return response.choices[0].message.content;
+    try {
+      // Newer OpenAI models (gpt-5.x and later) reject the legacy max_tokens
+      // parameter with a 400 error and require max_completion_tokens instead.
+      const response = await this.client.chat.completions.create({
+        ...params,
+        max_completion_tokens: maxTokens,
+      });
+      return this._extractContent(response);
+    } catch (error) {
+      // Older models and some providers reject max_completion_tokens with a 400;
+      // retry the same request using the legacy max_tokens spelling.
+      if (
+        error &&
+        error.status === 400 &&
+        /max(_completion)?_tokens/i.test(error.message || '')
+      ) {
+        const response = await this.client.chat.completions.create({
+          ...params,
+          max_tokens: maxTokens,
+        });
+        return this._extractContent(response);
+      }
+      throw error;
+    }
+  }
+
+  _extractContent(response) {
+    const content =
+      response &&
+      response.choices &&
+      response.choices[0] &&
+      response.choices[0].message
+        ? response.choices[0].message.content
+        : null;
+
+    if (typeof content !== 'string' || !content.trim()) {
+      // A null/empty body used to surface as cryptic "Unexpected end of JSON input"
+      // in the agents' JSON parsers. Report the real cause instead.
+      throw new Error(
+        `${this.providerName} returned an empty response. Check the API key and model quota.`
+      );
+    }
+    return content;
   }
 
   isAvailable() {
@@ -133,4 +189,4 @@ class AITextService {
   }
 }
 
-module.exports = { AITextService, PROVIDERS };
+module.exports = { AITextService, PROVIDERS, GEMINI_MODELS, GEMINI_DEFAULT_MODEL };

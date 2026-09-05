@@ -1,12 +1,13 @@
 {
   "name": "youtube-automation-agent",
-  "version": "2.4.0",
-  "description": "Fully automated YouTube channel management system with specialized AI agents",
+  "version": "2.10.0",
+  "description": "Lumen is an open-source AI agent that runs a YouTube channel end to end",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
     "setup": "node setup.js",
     "walkthrough": "node walkthrough.js",
+    "growth:snapshot": "node scripts/growth/snapshot-github.js",
     "scheduler": "node schedules/daily-automation.js",
     "test": "node test.js",
     "agent:strategy": "node agents/content-strategy-agent.js",

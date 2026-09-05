@@ -6,14 +6,20 @@ const fs = require('fs').promises;
 const path = require('path');
 const { exec } = require('child_process');
 const { CredentialManager } = require('./utils/credential-manager');
-const { AITextService, PROVIDERS } = require('./utils/ai-text-service');
+const {
+  AITextService,
+  PROVIDERS,
+  GEMINI_MODELS,
+  GEMINI_DEFAULT_MODEL
+} = require('./utils/ai-text-service');
 const { Database } = require('./database/db');
 const { checkFFmpeg, ffmpegInstallHint } = require('./utils/ffmpeg');
+const { VideoProviderRegistry } = require('./utils/video-providers');
 
 // Everything a beginner needs to know about each provider, in one place
 const AI_PROVIDER_GUIDE = {
   gemini: {
-    label: 'Google Gemini — FREE tier, no credit card (recommended for beginners)',
+    label: 'Google Gemini — free text/TTS tiers; paid AI images',
     keyUrl: 'https://aistudio.google.com/apikey',
     keyHint: 'starts with "AIza"',
     instructions: [
@@ -21,16 +27,16 @@ const AI_PROVIDER_GUIDE = {
       'Click "Create API key"',
       'Copy the key it shows you'
     ],
-    models: ['gemini-3.5-flash', 'gemini-3.1-pro-preview', 'gemini-2.5-pro'],
-    defaultModel: 'gemini-3.5-flash',
-    covers: 'scripts + images + voice narration (full free pipeline)',
+    models: [...GEMINI_MODELS],
+    defaultModel: GEMINI_DEFAULT_MODEL,
+    covers: 'scripts + voice narration on supported free tiers; AI images require paid access',
     save(credentials, apiKey, model) {
       credentials.gemini = { apiKey, model };
     },
     validationCreds: (apiKey, model) => ({ gemini: { apiKey, model } })
   },
   openai: {
-    label: 'OpenAI — paid (~$0.05–0.20/video), premium image + voice quality',
+    label: 'OpenAI — paid text, image, and voice models',
     keyUrl: 'https://platform.openai.com/api-keys',
     keyHint: 'starts with "sk-"',
     instructions: [
@@ -38,8 +44,8 @@ const AI_PROVIDER_GUIDE = {
       'Click "Create new secret key"',
       'Copy the key — it is shown only once'
     ],
-    models: ['gpt-5.5', 'gpt-5.5-pro', 'gpt-5.4'],
-    defaultModel: 'gpt-5.5',
+    models: [...PROVIDERS.openai.models],
+    defaultModel: PROVIDERS.openai.defaultModel,
     covers: 'scripts + images + voice narration',
     save(credentials, apiKey, model) {
       credentials.openai = { apiKey, model };
@@ -47,15 +53,15 @@ const AI_PROVIDER_GUIDE = {
     validationCreds: (apiKey, model) => ({ aiProvider: { provider: 'openai', apiKey, model } })
   },
   openrouter: {
-    label: 'OpenRouter — one key, 300+ models (pay per use)',
+    label: 'OpenRouter — one key, 400+ models (pay per use)',
     keyUrl: 'https://openrouter.ai/keys',
     keyHint: 'starts with "sk-or-"',
     instructions: [
       'Sign in and add a few dollars of credit',
       'Create a key and copy it'
     ],
-    models: ['openai/gpt-5.5', 'anthropic/claude-opus-4-8', 'google/gemini-3.5-flash', 'moonshotai/kimi-k2.6', 'zhipu/glm-5'],
-    defaultModel: 'google/gemini-3.5-flash',
+    models: [...PROVIDERS.openrouter.models],
+    defaultModel: 'google/gemini-3.7-flash',
     covers: 'scripts only (add a Gemini or OpenAI key for images/voice)',
     save(credentials, apiKey, model) {
       credentials.aiProvider = { provider: 'openrouter', apiKey, model };
@@ -80,12 +86,12 @@ const AI_PROVIDER_GUIDE = {
     validationCreds: (apiKey, model) => ({ aiProvider: { provider: 'atlascloud', apiKey, model } })
   },
   kimi: {
-    label: 'Kimi (Moonshot AI) — very cheap, strong quality',
+    label: 'Kimi (Moonshot AI) — K3 and K2 family text models',
     keyUrl: 'https://platform.kimi.ai',
     keyHint: 'from the Moonshot platform console',
     instructions: ['Create an account', 'Open the API keys page and create a key'],
-    models: ['kimi-k2.6', 'kimi-k2.5', 'moonshot-v1-auto'],
-    defaultModel: 'kimi-k2.6',
+    models: [...PROVIDERS.kimi.models],
+    defaultModel: PROVIDERS.kimi.defaultModel,
     covers: 'scripts only (add a Gemini or OpenAI key for images/voice)',
     save(credentials, apiKey, model) {
       credentials.aiProvider = { provider: 'kimi', apiKey, model };
@@ -97,8 +103,8 @@ const AI_PROVIDER_GUIDE = {
     keyUrl: 'https://mimo.mi.com',
     keyHint: 'from the MiMo console',
     instructions: ['Create an account', 'Create an API key in the console'],
-    models: ['mimo-v2.5-pro', 'mimo-v2.5'],
-    defaultModel: 'mimo-v2.5-pro',
+    models: [...PROVIDERS.mimo.models],
+    defaultModel: PROVIDERS.mimo.defaultModel,
     covers: 'scripts only (add a Gemini or OpenAI key for images/voice)',
     save(credentials, apiKey, model) {
       credentials.aiProvider = { provider: 'mimo', apiKey, model };
@@ -106,12 +112,12 @@ const AI_PROVIDER_GUIDE = {
     validationCreds: (apiKey, model) => ({ aiProvider: { provider: 'mimo', apiKey, model } })
   },
   glm: {
-    label: 'GLM (Zhipu AI) — ~$1/M input tokens',
+    label: 'GLM (Zhipu AI) — GLM-5 family text models',
     keyUrl: 'https://z.ai',
     keyHint: 'from the Z.ai console',
     instructions: ['Create an account', 'Create an API key in the console'],
-    models: ['glm-5', 'glm-5.1'],
-    defaultModel: 'glm-5',
+    models: [...PROVIDERS.glm.models],
+    defaultModel: PROVIDERS.glm.defaultModel,
     covers: 'scripts only (add a Gemini or OpenAI key for images/voice)',
     save(credentials, apiKey, model) {
       credentials.aiProvider = { provider: 'glm', apiKey, model };
@@ -120,10 +126,49 @@ const AI_PROVIDER_GUIDE = {
   }
 };
 
+const VIDEO_PROVIDER_GUIDE = {
+  slideshow: {
+    label: 'Local slideshow — no external video charges',
+    keyUrl: null,
+    covers: 'local FFmpeg assembly using generated stills and narration'
+  },
+  seedance: {
+    label: 'ByteDance Seedance 2.5 — cinematic 30-second multimodal scenes',
+    keyUrl: 'https://replicate.com/account/api-tokens',
+    credentialName: 'Replicate API token',
+    save(credentials, value) { credentials.replicate = { ...(credentials.replicate || {}), apiKey: value }; }
+  },
+  minimax_h3: {
+    label: 'MiniMax H3 — multimodal native-audio video up to 2K',
+    keyUrl: 'https://platform.minimax.io/user-center/basic-information/interface-key',
+    credentialName: 'MiniMax API key',
+    save(credentials, value) { credentials.minimax = { apiKey: value }; }
+  },
+  google_omni: {
+    label: 'Google Gemini Omni Flash — fast conversational video generation',
+    keyUrl: 'https://aistudio.google.com/apikey',
+    credentialName: 'Gemini API key',
+    save(credentials, value) { credentials.gemini = { ...(credentials.gemini || {}), apiKey: value }; }
+  },
+  kling: {
+    label: 'Kuaishou Kling 3.0 Omni — storyboards and character performance',
+    keyUrl: 'https://kling.ai/global/dev',
+    credentialName: 'Kling access key',
+    secretName: 'Kling secret key',
+    save(credentials, value, secret) { credentials.kling = { accessKey: value, secretKey: secret }; }
+  },
+  wan: {
+    label: 'Alibaba Wan 2.7 — efficient multimodal and continuation workflows',
+    keyUrl: 'https://modelstudio.console.alibabacloud.com/',
+    credentialName: 'DashScope API key',
+    save(credentials, value) { credentials.wan = { apiKey: value }; }
+  }
+};
+
 class SetupWalkthrough {
   constructor() {
     this.cm = new CredentialManager();
-    this.totalSteps = 5;
+    this.totalSteps = 6;
   }
 
   header(step, title) {
@@ -155,6 +200,7 @@ class SetupWalkthrough {
     try {
       await this.stepSystemCheck();
       await this.stepAIProvider();
+      await this.stepVideoProvider();
       await this.stepYouTube();
       await this.stepChannelBasics();
       await this.stepFinish();
@@ -227,8 +273,8 @@ class SetupWalkthrough {
       if (!redo) return;
     } else {
       console.log(chalk.white('The agent needs one AI service. If you don\'t want to spend money,'));
-      console.log(chalk.white('pick Google Gemini — its free tier covers the whole pipeline:'));
-      console.log(chalk.white('scripts, images, and voice narration.'));
+      console.log(chalk.white('Google Gemini offers free tiers for supported text and TTS usage.'));
+      console.log(chalk.white('AI image generation requires paid access; gradient visuals are the fallback.'));
     }
 
     const { providerId } = await inquirer.prompt([{
@@ -317,9 +363,49 @@ class SetupWalkthrough {
     }
   }
 
-  // ── Step 3: YouTube ────────────────────────────────────────────────────
+  async stepVideoProvider() {
+    this.header(3, 'Video generation provider');
+    console.log(chalk.white('Long-form videos use hybrid assembly: selected AI clips plus local FFmpeg rendering.'));
+    console.log(chalk.white('Local slideshow stays available and is the default so setup never spends credits unexpectedly.'));
+    const { providerId } = await inquirer.prompt([{
+      type: 'list',
+      name: 'providerId',
+      message: 'Which video provider should Lumen use?',
+      choices: Object.entries(VIDEO_PROVIDER_GUIDE).map(([value, guide]) => ({ name: guide.label, value }))
+    }]);
+    const guide = VIDEO_PROVIDER_GUIDE[providerId];
+    const db = new Database();
+    await db.initialize();
+    try {
+      if (providerId === 'slideshow') {
+        await db.setSetting('video_provider', 'slideshow');
+        console.log(chalk.green('  ✓ Local slideshow selected.'));
+        return;
+      }
+      console.log(chalk.white(`  → ${chalk.blue(guide.keyUrl)} (opening in your browser)`));
+      this.openBrowser(guide.keyUrl);
+      const answers = await inquirer.prompt([
+        { type: 'password', name: 'key', mask: '*', message: `Paste your ${guide.credentialName} (empty to skip):` },
+        { type: 'password', name: 'secret', mask: '*', message: `Paste your ${guide.secretName}:`, when: current => Boolean(guide.secretName && current.key) }
+      ]);
+      if (!answers.key?.trim()) {
+        console.log(chalk.yellow('  Skipped — local slideshow remains selected.'));
+        await db.setSetting('video_provider', 'slideshow');
+        return;
+      }
+      guide.save(this.cm.credentials, answers.key.trim(), answers.secret?.trim());
+      await this.cm.saveCredentials();
+      await db.setSetting('video_provider', providerId);
+      console.log(chalk.green(`  ✓ ${guide.label} selected.`));
+      console.log(chalk.gray('  Run the paid video probe in Production readiness before enabling autonomous generation.'));
+    } finally {
+      await db.close();
+    }
+  }
+
+  // ── Step 4: YouTube ────────────────────────────────────────────────────
   async stepYouTube() {
-    this.header(3, 'Connecting your YouTube channel');
+    this.header(4, 'Connecting your YouTube channel');
 
     if (this.cm.credentials.youtube && this.cm.tokens.youtube) {
       const { redo } = await inquirer.prompt([{
@@ -408,9 +494,9 @@ class SetupWalkthrough {
     }
   }
 
-  // ── Step 4: channel basics ─────────────────────────────────────────────
+  // ── Step 5: channel basics ─────────────────────────────────────────────
   async stepChannelBasics() {
-    this.header(4, 'Channel & content basics');
+    this.header(5, 'Channel & content basics');
 
     const existing = this.cm.credentials.channel || {};
     const answers = await inquirer.prompt([
@@ -460,9 +546,9 @@ class SetupWalkthrough {
     console.log(chalk.gray('  set DEFAULT_PRIVACY_STATUS=public in .env when you\'re confident.'));
   }
 
-  // ── Step 5: summary ────────────────────────────────────────────────────
+  // ── Step 6: summary ────────────────────────────────────────────────────
   async stepFinish() {
-    this.header(5, 'All set — here\'s what your pipeline can do');
+    this.header(6, 'All set — here\'s what your pipeline can do');
 
     await this.cm.loadCredentials();
     await this.cm.loadTokens();
@@ -473,12 +559,15 @@ class SetupWalkthrough {
     const hasMedia = Boolean(creds.openai?.apiKey || process.env.OPENAI_API_KEY || hasGemini);
     const hasFFmpeg = await checkFFmpeg();
     const hasUpload = Boolean(creds.youtube && this.cm.tokens.youtube);
+    const videoProviders = new VideoProviderRegistry(creds).list();
+    const hasVideoProvider = videoProviders.some(provider => provider.available && provider.id !== 'slideshow');
 
     const rows = [
       { ok: hasText, name: 'Write scripts & pick topics', fix: 'step 2 (AI provider)' },
       { ok: hasMedia, name: 'Generate images & voice narration', fix: 'step 2 — use a Gemini or OpenAI key' },
       { ok: hasFFmpeg, name: 'Assemble real .mp4 videos', fix: ffmpegInstallHint() },
-      { ok: hasUpload, name: 'Upload to YouTube', fix: 'step 3 (YouTube connection)' }
+      { ok: hasVideoProvider, name: 'Generate AI video clips', fix: 'step 3 — or keep the local slideshow provider' },
+      { ok: hasUpload, name: 'Upload to YouTube', fix: 'step 4 (YouTube connection)' }
     ];
 
     for (const row of rows) {
@@ -504,4 +593,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { SetupWalkthrough, AI_PROVIDER_GUIDE };
+module.exports = { SetupWalkthrough, AI_PROVIDER_GUIDE, VIDEO_PROVIDER_GUIDE };

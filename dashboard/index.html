@@ -1,447 +1,320 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="en" class="preboot">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ethereal Dreamscript - YouTube Automation Dashboard</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: #333;
-            min-height: 100vh;
-        }
-        
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        
-        .header {
-            text-align: center;
-            color: white;
-            margin-bottom: 30px;
-        }
-        
-        .header h1 {
-            font-size: 2.5em;
-            margin-bottom: 10px;
-        }
-        
-        .header p {
-            font-size: 1.2em;
-            opacity: 0.9;
-        }
-        
-        .status-bar {
-            background: rgba(255, 255, 255, 0.95);
-            padding: 20px;
-            border-radius: 15px;
-            margin-bottom: 30px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-        }
-        
-        .status-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-bottom: 20px;
-        }
-        
-        .status-card {
-            text-align: center;
-            padding: 15px;
-            background: linear-gradient(45deg, #f093fb 0%, #f5576c 100%);
-            border-radius: 10px;
-            color: white;
-        }
-        
-        .status-card h3 {
-            font-size: 2em;
-            margin-bottom: 5px;
-        }
-        
-        .status-card p {
-            opacity: 0.9;
-        }
-        
-        .dashboard-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-            gap: 20px;
-        }
-        
-        .dashboard-card {
-            background: rgba(255, 255, 255, 0.95);
-            padding: 25px;
-            border-radius: 15px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-        }
-        
-        .dashboard-card h2 {
-            color: #667eea;
-            margin-bottom: 15px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        .card-content {
-            line-height: 1.6;
-        }
-        
-        .loading {
-            text-align: center;
-            color: #666;
-            font-style: italic;
-        }
-        
-        .btn {
-            background: linear-gradient(45deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            margin: 5px;
-            transition: transform 0.2s;
-        }
-        
-        .btn:hover {
-            transform: translateY(-2px);
-        }
-        
-        .schedule-item {
-            background: #f8f9ff;
-            padding: 10px;
-            margin: 10px 0;
-            border-radius: 5px;
-            border-left: 4px solid #667eea;
-        }
-        
-        .log-entry {
-            font-family: 'Courier New', monospace;
-            font-size: 0.9em;
-            padding: 5px;
-            margin: 2px 0;
-            background: #f5f5f5;
-            border-radius: 3px;
-        }
-        
-        .success { color: #28a745; }
-        .warning { color: #ffc107; }
-        .error { color: #dc3545; }
-        .info { color: #17a2b8; }
-        
-        .refresh-btn {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            width: 60px;
-            height: 60px;
-            border-radius: 50%;
-            background: linear-gradient(45deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            font-size: 1.5em;
-            cursor: pointer;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-            transition: transform 0.2s;
-        }
-        
-        .refresh-btn:hover {
-            transform: scale(1.1);
-        }
-    </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#06080c">
+  <title>YouTube Automation Studio</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23ff4d5e'/%3E%3Cpath d='M12 9.5v13l11-6.5z' fill='white'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>🎬 Ethereal Dreamscript</h1>
-            <p>YouTube Automation Dashboard</p>
+  <div class="aurora" aria-hidden="true"></div>
+  <div class="spotlight" aria-hidden="true"></div>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="#overview" aria-label="YouTube Automation Studio home">
+        <span class="brand-mark"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg></span>
+        <span><strong id="brand-name">Automation Studio</strong><small>Operator console</small></span>
+      </a>
+      <p class="sidebar-label" aria-hidden="true">Workspace</p>
+      <nav aria-label="Main navigation">
+        <button class="nav-item active" data-view="overview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7.5" height="9.5" rx="1.5"/><rect x="13.5" y="3" width="7.5" height="5.5" rx="1.5"/><rect x="13.5" y="11.5" width="7.5" height="9.5" rx="1.5"/><rect x="3" y="15.5" width="7.5" height="5.5" rx="1.5"/></svg> Overview</button>
+        <button class="nav-item" data-view="operator"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1"/></svg> Autonomous operator</button>
+        <button class="nav-item" data-view="pipeline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M4 12h16M4 18h7"/><circle cx="17.5" cy="6" r="2"/><circle cx="14.5" cy="18" r="2"/></svg> Pipeline <b id="review-badge" class="badge hidden">0</b></button>
+        <button class="nav-item" data-view="calendar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16.5" rx="2"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4M7.5 13.5h3v3h-3z"/></svg> Calendar & ideas</button>
+        <button class="nav-item" data-view="analytics"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 20.5h17"/><path d="M6.5 20V11M11 20V4.5M15.5 20v-7M20 20V8.5"/></svg> Analytics</button>
+        <button class="nav-item" data-view="engagement"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 01-9.1 8.4 9 9 0 01-3.8-.9L3 20l1-4.9A8.4 8.4 0 1121 11.5z"/><path d="M8 10h8M8 13.5h5"/></svg> Engagement</button>
+        <button class="nav-item" data-view="readiness"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8l7.5 3v6c0 4.8-3.2 8.2-7.5 9.4-4.3-1.2-7.5-4.6-7.5-9.4v-6z"/><path d="M8.8 12.2l2.3 2.3 4.4-4.6"/></svg> Production readiness</button>
+        <button class="nav-item" data-view="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.34 1.87l.06.06a2 2 0 11-2.83 2.83l-.06-.06A1.7 1.7 0 0015 19.4a1.7 1.7 0 00-1 1.55V21a2 2 0 11-4 0v-.09A1.7 1.7 0 009 19.4a1.7 1.7 0 00-1.87.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.7 1.7 0 004.6 15a1.7 1.7 0 00-1.55-1H3a2 2 0 110-4h.09A1.7 1.7 0 004.6 9a1.7 1.7 0 00-.33-1.87l-.06-.06a2 2 0 112.83-2.83l.06.06A1.7 1.7 0 009 4.6a1.7 1.7 0 001-1.55V3a2 2 0 114 0v.09a1.7 1.7 0 001 1.51 1.7 1.7 0 001.87-.34l.06-.06a2 2 0 112.83 2.83l-.06.06A1.7 1.7 0 0019.4 9c.28.66.9 1.05 1.55 1H21a2 2 0 110 4h-.09a1.7 1.7 0 00-1.51 1z"/></svg> Channel setup</button>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="system-pill"><i id="system-dot"></i><span id="system-label">Connecting…</span></div>
+        <button id="automation-toggle" class="button secondary full">Pause automation</button>
+      </div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div>
+          <p class="eyebrow" id="view-eyebrow">OPERATOR OVERVIEW</p>
+          <h1 id="view-title">Know what happens next.</h1>
         </div>
-        
-        <div class="status-bar">
-            <div class="status-grid">
-                <div class="status-card">
-                    <h3 id="system-status">🟢</h3>
-                    <p>System Status</p>
-                </div>
-                <div class="status-card">
-                    <h3 id="content-count">-</h3>
-                    <p>Content Generated</p>
-                </div>
-                <div class="status-card">
-                    <h3 id="published-count">-</h3>
-                    <p>Videos Published</p>
-                </div>
-                <div class="status-card">
-                    <h3 id="next-generation">-</h3>
-                    <p>Next Generation</p>
-                </div>
-            </div>
-            <div style="text-align: center;">
-                <button class="btn" onclick="generateContent()">🎬 Generate Content Now</button>
-                <button class="btn" onclick="viewAnalytics()">📊 View Analytics</button>
-                <button class="btn" onclick="viewSchedule()">📅 View Schedule</button>
-            </div>
+        <div class="top-actions">
+          <button id="refresh-button" class="icon-button" title="Refresh dashboard" aria-label="Refresh dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 11-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
+          <button id="generate-button" class="button primary">＋ Create video</button>
         </div>
-        
-        <div class="dashboard-grid">
-            <div class="dashboard-card">
-                <h2>📈 System Overview</h2>
-                <div class="card-content">
-                    <div id="system-overview" class="loading">Loading system status...</div>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <h2>📅 Upcoming Schedule</h2>
-                <div class="card-content">
-                    <div id="upcoming-schedule" class="loading">Loading schedule...</div>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <h2>🎯 Content Strategy</h2>
-                <div class="card-content">
-                    <div id="content-strategy">
-                        <p><strong>Current Focus:</strong> Animated Storytelling</p>
-                        <p><strong>Target Audience:</strong> Creative individuals interested in storytelling and imagination</p>
-                        <p><strong>Content Types:</strong> Story-driven content, Explainers, Tutorials</p>
-                        <p><strong>Posting Frequency:</strong> Daily</p>
-                        <p><strong>Optimal Time:</strong> 2:00 PM</p>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <h2>📊 Recent Activity</h2>
-                <div class="card-content">
-                    <div id="recent-activity" class="loading">Loading activity...</div>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <h2>🤖 Agent Status</h2>
-                <div class="card-content">
-                    <div id="agent-status" class="loading">Loading agent status...</div>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <h2>📈 Performance Metrics</h2>
-                <div class="card-content">
-                    <div id="performance-metrics" class="loading">Loading metrics...</div>
-                </div>
-            </div>
+      </header>
+
+      <div id="loading" class="loading-bar"></div>
+      <div id="toast" class="toast hidden" role="status"></div>
+
+      <section id="overview-view" class="view active">
+        <div id="setup-banner" class="setup-banner hidden"><div><strong>Finish setup to activate your agents</strong><p>The operator console is ready, but generation and publishing stay disabled until credentials are configured.</p></div><code>npm run walkthrough</code></div>
+        <div class="stats-grid">
+          <article class="stat"><span>Needs review</span><strong id="stat-review">—</strong><small>waiting for a decision</small></article>
+          <article class="stat"><span>Scheduled</span><strong id="stat-scheduled">—</strong><small>next 30 days</small></article>
+          <article class="stat"><span>Published</span><strong id="stat-published">—</strong><small>all time</small></article>
+          <article class="stat"><span>Average score</span><strong id="stat-score">—</strong><small>recent content performance</small></article>
         </div>
-    </div>
-    
-    <button class="refresh-btn" onclick="refreshDashboard()" title="Refresh Dashboard">
-        🔄
-    </button>
-    
-    <script>
-        // Dashboard functionality
-        async function loadDashboard() {
-            try {
-                // Load system health
-                const healthResponse = await fetch('/health');
-                const healthData = await healthResponse.json();
-                updateSystemStatus(healthData);
-                
-                // Load schedule
-                const scheduleResponse = await fetch('/schedule');
-                const scheduleData = await scheduleResponse.json();
-                updateSchedule(scheduleData);
-                
-                // Load analytics
-                try {
-                    const analyticsResponse = await fetch('/analytics');
-                    const analyticsData = await analyticsResponse.json();
-                    updateMetrics(analyticsData);
-                } catch (error) {
-                    console.log('Analytics not available yet');
-                }
-                
-            } catch (error) {
-                console.error('Dashboard load error:', error);
-                document.getElementById('system-status').textContent = '🔴';
-            }
-        }
-        
-        function updateSystemStatus(data) {
-            document.getElementById('system-status').textContent = data.status === 'healthy' ? '🟢' : '🔴';
-            
-            const overview = document.getElementById('system-overview');
-            overview.innerHTML = `
-                <p><strong>Status:</strong> ${data.initialized ? 'Initialized' : 'Initializing'}</p>
-                <p><strong>Agents Active:</strong> ${data.agents ? data.agents.length : 0}/7</p>
-                <p><strong>Uptime:</strong> ${formatUptime(data.uptime || 0)}</p>
-                <p><strong>Last Updated:</strong> ${new Date().toLocaleTimeString()}</p>
-            `;
-            
-            const agentStatus = document.getElementById('agent-status');
-            if (data.agents) {
-                agentStatus.innerHTML = data.agents.map(agent => 
-                    `<div class="schedule-item">✅ ${agent} Agent</div>`
-                ).join('');
-            }
-        }
-        
-        function updateSchedule(data) {
-            const schedule = document.getElementById('upcoming-schedule');
-            
-            if (data && data.length > 0) {
-                schedule.innerHTML = data.slice(0, 3).map(item => `
-                    <div class="schedule-item">
-                        <strong>${item.title || 'Content Generation'}</strong><br>
-                        <small>${new Date(item.publishTime || item.scheduledTime).toLocaleString()}</small>
-                    </div>
-                `).join('');
-                
-                // Update next generation time
-                const nextItem = data[0];
-                if (nextItem) {
-                    const nextTime = new Date(nextItem.publishTime || nextItem.scheduledTime);
-                    document.getElementById('next-generation').textContent = 
-                        nextTime.toLocaleDateString() === new Date().toLocaleDateString() 
-                            ? nextTime.toLocaleTimeString() 
-                            : 'Tomorrow';
-                }
-            } else {
-                schedule.innerHTML = `
-                    <div class="schedule-item">
-                        <strong>📅 Daily Content Generation</strong><br>
-                        <small>Scheduled for 6:00 AM daily</small>
-                    </div>
-                    <div class="schedule-item">
-                        <strong>📊 Analytics Collection</strong><br>
-                        <small>Scheduled for 9:00 AM daily</small>
-                    </div>
-                    <div class="schedule-item">
-                        <strong>🔧 Optimization Tasks</strong><br>
-                        <small>Scheduled for 10:00 PM daily</small>
-                    </div>
-                `;
-                document.getElementById('next-generation').textContent = '6:00 AM';
-            }
-        }
-        
-        function updateMetrics(data) {
-            const metrics = document.getElementById('performance-metrics');
-            if (data && data.totalVideos !== undefined) {
-                document.getElementById('content-count').textContent = data.totalVideos || '0';
-                document.getElementById('published-count').textContent = data.totalVideos || '0';
-                
-                metrics.innerHTML = `
-                    <p><strong>Average Performance:</strong> ${data.averagePerformanceScore || 'N/A'}</p>
-                    <p><strong>Total Content:</strong> ${data.totalVideos || 0}</p>
-                    <p><strong>System Health:</strong> Excellent</p>
-                `;
-            } else {
-                metrics.innerHTML = `
-                    <p><strong>Status:</strong> System just started</p>
-                    <p><strong>First Content:</strong> Will generate within 24 hours</p>
-                    <p><strong>Automation:</strong> Active and ready</p>
-                `;
-            }
-            
-            // Update activity log
-            const activity = document.getElementById('recent-activity');
-            activity.innerHTML = `
-                <div class="log-entry success">✅ System initialized successfully</div>
-                <div class="log-entry info">ℹ️ All 7 agents are active</div>
-                <div class="log-entry info">ℹ️ Content strategy loaded</div>
-                <div class="log-entry info">ℹ️ Automation scheduler started</div>
-                <div class="log-entry success">✅ Ready for content generation</div>
-            `;
-        }
-        
-        function formatUptime(seconds) {
-            const hours = Math.floor(seconds / 3600);
-            const minutes = Math.floor((seconds % 3600) / 60);
-            return `${hours}h ${minutes}m`;
-        }
-        
-        // API key handling for protected endpoints (API_KEY in .env)
-        function getStoredApiKey() {
-            return localStorage.getItem('yaa_api_key') || '';
-        }
 
-        function promptForApiKey() {
-            const key = prompt('This server requires an API key (the API_KEY value from your .env):', getStoredApiKey());
-            if (key === null) return null; // user cancelled
-            localStorage.setItem('yaa_api_key', key.trim());
-            return key.trim();
-        }
+        <div class="overview-grid">
+          <article class="panel review-panel">
+            <div class="panel-heading"><div><p class="eyebrow">DECISION QUEUE</p><h2>Ready for you</h2></div><button class="text-button" data-go="pipeline">View pipeline →</button></div>
+            <div id="review-list" class="card-list"></div>
+          </article>
+          <article class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">ACTIVE WORK</p><h2>Generation jobs</h2></div></div>
+            <div id="job-list" class="card-list compact"></div>
+          </article>
+        </div>
 
-        async function postWithApiKey(url, body) {
-            const doFetch = (key) => fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...(key ? { 'x-api-key': key } : {})
-                },
-                body: JSON.stringify(body)
-            });
+        <div class="overview-grid lower">
+          <article class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">UP NEXT</p><h2>Publishing calendar</h2></div><button class="text-button" data-go="calendar">Open calendar →</button></div>
+            <div id="next-schedule" class="timeline"></div>
+          </article>
+          <article class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">INBOX</p><h2>Recent activity</h2></div></div>
+            <div id="notification-list" class="activity-list"></div>
+          </article>
+        </div>
+      </section>
 
-            let response = await doFetch(getStoredApiKey());
-            if (response.status === 401) {
-                const key = promptForApiKey();
-                if (key !== null) {
-                    response = await doFetch(key);
-                }
-            }
-            return response;
-        }
+      <section id="operator-view" class="view">
+        <div class="section-intro"><div><h2>Autonomous Channel Operator</h2><p>Set the destination once. Lumen researches, plans, produces, and manages the channel workflow around it.</p></div><span id="operator-strategy-status" class="status">Not configured</span></div>
+        <div class="operator-grid">
+          <form id="strategy-form" class="panel settings-form">
+            <div class="panel-heading"><div><p class="eyebrow">CHANNEL MANDATE</p><h2>What should this channel achieve?</h2></div></div>
+            <div class="form-grid">
+              <label class="full-row"><span>Objective</span><textarea name="objective" rows="3" maxlength="1000" placeholder="Become the most trusted practical channel for small businesses adopting AI." required></textarea></label>
+              <label class="full-row"><span>Audience</span><textarea name="audience" rows="2" maxlength="500" placeholder="Owners and operators at 5–50 person service businesses" required></textarea></label>
+              <label class="full-row"><span>Value proposition</span><textarea name="valueProposition" rows="2" maxlength="1000" placeholder="Clear, tested advice viewers can apply this week"></textarea></label>
+              <label class="full-row"><span>Content pillars</span><input name="contentPillars" placeholder="AI workflows, automation playbooks, tool reviews" required><small>Separate 1–8 durable themes with commas.</small></label>
+              <label><span>Videos per week</span><input name="cadencePerWeek" type="number" min="1" max="7" value="1"></label>
+              <label><span>Videos per planning run</span><input name="videosPerRun" type="number" min="1" max="5" value="1"></label>
+              <label><span>Default format</span><select name="defaultFormat"><option value="explainer">Explainer</option><option value="tutorial">Tutorial</option><option value="list">List</option><option value="review">Review</option><option value="story">Story</option></select></label>
+              <label><span>Default length</span><select name="defaultLength"><option value="short">Short · 2–4 min</option><option value="medium">Medium · 8–12 min</option><option value="long">Long · 15–20 min</option></select></label>
+              <label><span>Primary outcome</span><select name="primaryKpi"><option value="views">Views</option><option value="watch_hours">Watch hours</option><option value="subscribers">Net subscribers</option><option value="engagement">Engagement rate</option><option value="revenue">Estimated revenue</option></select></label>
+              <label><span>Target value</span><input name="targetValue" type="number" min="0.01" step="0.01" placeholder="100"></label>
+              <label><span>Target window</span><select name="targetWindowDays"><option value="7">7 days</option><option value="28" selected>28 days</option><option value="90">90 days</option><option value="365">365 days</option></select></label>
+              <label><span>Monthly production budget</span><span class="currency-input"><select name="outcomeCurrency" aria-label="Outcome currency"><option value="USD">USD</option><option value="CAD">CAD</option><option value="EUR">EUR</option><option value="GBP">GBP</option><option value="AUD">AUD</option></select><input name="monthlyBudget" type="number" min="0" step="0.01" placeholder="Optional"></span></label>
+              <label class="full-row"><span>Outcome context</span><input name="successMetric" maxlength="300" placeholder="Grow qualified subscribers who return for practical automation tutorials"><small>Used by planning alongside the measurable primary outcome.</small></label>
+              <label class="full-row"><span>Boundaries and constraints</span><textarea name="constraints" rows="3" maxlength="2000" placeholder="No hype, no unverified statistics, explain costs and tradeoffs."></textarea></label>
+            </div>
+            <p class="callout">The operator uses YouTube trend signals, configured competitors, and channel history. Publishing still obeys your quality, factual-review, rights, and approval gates.</p>
+            <div class="form-actions"><button type="submit" class="button secondary">Save strategy</button><button id="activate-operator-button" type="button" class="button primary">Activate & run now</button><button id="pause-operator-button" type="button" class="button danger hidden">Pause operator</button></div>
+          </form>
+          <div class="operator-side">
+            <article class="panel">
+              <div class="panel-heading"><div><p class="eyebrow">CURRENT RUN</p><h2 id="operator-run-title">Waiting for a strategy</h2></div><div class="run-actions"><button id="resume-operator-run" class="text-button approve hidden">Resume run</button><button id="cancel-operator-run" class="text-button hidden">Stop run</button></div></div>
+              <div id="operator-run-summary"></div>
+            </article>
+            <article class="panel">
+              <div class="panel-heading"><div><p class="eyebrow">EDITORIAL PLAN</p><h2>What Lumen decided to make</h2></div></div>
+              <div id="operator-plan" class="plan-list"></div>
+            </article>
+          </div>
+        </div>
+      </section>
 
-        async function generateContent() {
-            if (!confirm('Generate content now? This will create a new video for your channel.')) {
-                return;
-            }
+      <section id="pipeline-view" class="view">
+        <div class="section-intro"><div><h2>Content pipeline</h2><p>Every generated video, its real state, and the next available action.</p></div><select id="pipeline-filter"><option value="all">All content</option><option value="needs_review">Needs review</option><option value="needs_attention">Needs attention</option><option value="approved">Approved</option><option value="published">Published</option></select></div>
+        <div id="pipeline-list" class="pipeline-list"></div>
+      </section>
 
-            try {
-                const response = await postWithApiKey('/generate', { topic: null, style: 'story' });
-                const result = await response.json().catch(() => ({}));
+      <section id="calendar-view" class="view">
+        <div class="split-heading"><div><h2>Calendar & idea backlog</h2><p>Shape the queue before generation starts.</p></div><button id="add-idea-button" class="button secondary">＋ Add idea</button></div>
+        <div class="calendar-grid">
+          <article class="panel"><div class="panel-heading"><div><p class="eyebrow">SCHEDULED</p><h2>Upcoming releases</h2></div></div><div id="calendar-list" class="calendar-list"></div></article>
+          <article class="panel"><div class="panel-heading"><div><p class="eyebrow">BACKLOG</p><h2>Content ideas</h2></div></div><div id="idea-list" class="idea-list"></div></article>
+        </div>
+      </section>
 
-                if (!response.ok) {
-                    alert(`Content generation failed: ${result.error || response.statusText}`);
-                    return;
-                }
+      <section id="analytics-view" class="view">
+        <div class="section-intro"><div><h2>Performance signals</h2><p>Data translated into decisions, not vanity metrics.</p></div></div>
+        <div class="stats-grid analytics-stats">
+          <article class="stat"><span>Analyzed videos</span><strong id="analytics-total">—</strong><small>last 30 days</small></article>
+          <article class="stat"><span>Performance score</span><strong id="analytics-score">—</strong><small>channel average</small></article>
+          <article class="stat wide"><span>Recommended action</span><strong id="analytics-action" class="recommendation">Collecting enough data to recommend a move.</strong></article>
+        </div>
+        <article class="panel outcome-studio">
+          <div class="panel-heading"><div><p class="eyebrow">OUTCOME &amp; ROI STUDIO</p><h2>Is the channel achieving its mandate?</h2></div><span id="outcome-status" class="status">Not configured</span></div>
+          <div id="outcome-summary" class="outcome-summary"></div>
+          <div id="outcome-economics" class="outcome-economics"></div>
+          <div id="outcome-breakdowns" class="outcome-breakdowns"></div>
+          <p id="outcome-policy" class="callout">Configure a primary outcome in the Autonomous Operator to align channel learning with a measurable goal.</p>
+        </article>
+        <div class="learning-grid">
+          <article class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">CHANNEL BASELINE</p><h2>What real results say</h2></div><span id="learning-snapshot-count" class="status">0 snapshots</span></div>
+            <div id="learning-baseline" class="baseline-grid"></div>
+            <p class="callout">Only real YouTube analytics enter this evidence layer. Simulated fallback data is excluded.</p>
+          </article>
+          <article class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">WHAT THE AGENT LEARNED</p><h2>Review recommendations</h2></div><span id="learning-approved-count" class="status">0 approved</span></div>
+            <div id="learning-recommendations" class="learning-list"></div>
+          </article>
+        </div>
+        <article class="panel growth-experiment-studio">
+          <div class="panel-heading experiment-heading">
+            <div><p class="eyebrow">CONTROLLED GROWTH EXPERIMENTS</p><h2>Prove the next move</h2><p>Run approved title and thumbnail arms against real YouTube evidence, then separately approve the winner.</p></div>
+            <span id="experiment-status" class="status">0 running</span>
+          </div>
+          <form id="experiment-create-form" class="experiment-create-form">
+            <label><span>Published production</span><select name="productionId" id="experiment-candidate" required></select></label>
+            <label><span>Hours per arm</span><select name="armDurationHours"><option value="24">24 hours</option><option value="48" selected>48 hours</option><option value="72">72 hours</option></select></label>
+            <label><span>Minimum impressions</span><input name="minImpressions" type="number" min="100" max="1000000" step="100" value="1000" required></label>
+            <button id="experiment-create-button" class="button secondary small" type="submit">Create test plan</button>
+          </form>
+          <div id="growth-experiments" class="growth-experiment-list"></div>
+          <p id="experiment-policy" class="callout"></p>
+        </article>
+        <article class="panel retention-studio">
+          <div class="panel-heading retention-heading">
+            <div><p class="eyebrow">SCENE-AWARE RETENTION</p><h2>Where viewers stay—and leave</h2><p>Real YouTube retention points mapped onto the exact production timeline.</p></div>
+            <div class="retention-controls">
+              <label><span class="sr-only">Retention snapshot</span><select id="retention-snapshot-select" aria-label="Choose a retention snapshot"></select></label>
+              <button id="refresh-retention-button" class="button secondary small" disabled>Refresh curve</button>
+            </div>
+          </div>
+          <div id="retention-meta" class="scene-summary"></div>
+          <div id="retention-chart" class="retention-chart"></div>
+          <div id="retention-scenes" class="retention-scene-list"></div>
+          <p class="callout retention-policy">Scene findings remain evidence only. They influence future scripts and pacing only after their recommendation is approved above; published videos are never edited automatically.</p>
+        </article>
+        <article class="panel"><div class="panel-heading"><div><p class="eyebrow">TOP PERFORMERS</p><h2>What is working</h2></div></div><div id="top-performers" class="card-list"></div></article>
+        <article class="panel activation-panel"><div class="panel-heading"><div><p class="eyebrow">LOCAL ACTIVATION</p><h2>First-run journey</h2></div></div><p class="callout">Calculated locally from your database and video files. Nothing is transmitted unless anonymous telemetry is explicitly enabled.</p><div id="activation-list" class="timeline"></div></article>
+      </section>
 
-                alert(`Content generation started! Title: ${result.result?.title || 'New Content'}`);
-                refreshDashboard();
-            } catch (error) {
-                alert('Content generation failed. Please try again.');
-            }
-        }
-        
-        function viewAnalytics() {
-            window.open('/analytics', '_blank');
-        }
-        
-        function viewSchedule() {
-            window.open('/schedule', '_blank');
-        }
-        
-        function refreshDashboard() {
-            loadDashboard();
-        }
-        
-        // Auto-refresh every 30 seconds
-        setInterval(refreshDashboard, 30000);
-        
-        // Load dashboard on page load
-        loadDashboard();
-    </script>
+      <section id="engagement-view" class="view">
+        <div class="engagement-grid">
+          <article class="panel">
+            <div class="panel-heading">
+              <div><p class="eyebrow">AUDIENCE VOICE</p><h2>What commenters are saying</h2></div>
+              <span class="status" id="engagement-posting-status">posting locked</span>
+            </div>
+            <p id="engagement-policy" class="engagement-policy"></p>
+            <div class="panel-heading">
+              <select id="engagement-video-select" aria-label="Choose a synced video"></select>
+              <button id="engagement-sync-button" class="button secondary small">Sync now</button>
+            </div>
+            <div id="engagement-meta" class="engagement-meta"></div>
+            <div id="engagement-themes"></div>
+          </article>
+          <article class="panel">
+            <div class="panel-heading">
+              <div><p class="eyebrow">REPLY QUEUE</p><h2>Approve before anything posts</h2></div>
+              <span class="status" id="engagement-drafts-count">0 drafts</span>
+            </div>
+            <div class="panel-heading"><button id="engagement-draft-button" class="button secondary small">Draft replies</button></div>
+            <div id="engagement-drafts"></div>
+          </article>
+        </div>
+        <div class="engagement-grid">
+          <article class="panel">
+            <div class="panel-heading">
+              <div><p class="eyebrow">NEEDS ATTENTION</p><h2>Likely spam and scams</h2></div>
+              <span class="status warning" id="engagement-attention-count">0 flagged</span>
+            </div>
+            <div id="engagement-attention"></div>
+          </article>
+          <article class="panel">
+            <div class="panel-heading">
+              <div><p class="eyebrow">AUDIENCE-REQUESTED IDEAS</p><h2>Approve to feed the operator</h2></div>
+              <span class="status" id="engagement-ideas-count">0 pending</span>
+            </div>
+            <div id="engagement-ideas"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="readiness-view" class="view">
+        <div class="section-intro readiness-intro">
+          <div><h2>Production readiness</h2><p>Verify the real path from providers to a publishable YouTube upload before autonomy spends time or credits.</p></div>
+          <span id="readiness-status" class="status unverified">Unverified</span>
+        </div>
+        <article class="panel readiness-hero">
+          <div>
+            <p class="eyebrow">VERIFIED DRY RUN</p>
+            <h2 id="readiness-title">Prove the pipeline, without uploading.</h2>
+            <p id="readiness-summary">The check makes small live text and narration requests, verifies channel access, builds a local audio/video MP4, and validates queued metadata. It never creates or uploads a YouTube video.</p>
+            <div id="readiness-meta" class="meta-line">No readiness run recorded.</div>
+          </div>
+          <div class="readiness-actions">
+            <label class="toggle paid-probe"><input id="paid-image-probe" type="checkbox"><span></span> Include paid image probe</label>
+            <label class="toggle paid-probe"><input id="paid-video-probe" type="checkbox"><span></span> Include paid video probe</label>
+            <button id="run-readiness-button" class="button primary">Run verified check</button>
+            <small>Live provider probes can consume a small amount of quota or credits.</small>
+          </div>
+        </article>
+        <div id="readiness-checks" class="readiness-grid"></div>
+        <p class="callout readiness-policy">A recorded blocking failure stops autonomous generation and publishing until a later run passes. An unverified or stale result remains visible but does not interrupt manual work.</p>
+      </section>
+
+      <section id="settings-view" class="view">
+        <div class="section-intro"><div><h2>Channel setup</h2><p>These guardrails guide every agent in the pipeline.</p></div></div>
+        <form id="profile-form" class="panel settings-form">
+          <div class="form-grid">
+            <label><span>Channel name</span><input name="channelName" maxlength="120" required></label>
+            <label><span>Default format</span><select name="defaultStyle"><option value="explainer">Explainer</option><option value="tutorial">Tutorial</option><option value="list">List</option><option value="review">Review</option><option value="story">Story</option></select></label>
+            <label class="full-row"><span>Channel goal</span><textarea name="goal" rows="2"></textarea></label>
+            <label class="full-row"><span>Target audience</span><textarea name="targetAudience" rows="2"></textarea></label>
+            <label><span>Brand voice</span><input name="brandVoice" placeholder="Clear, credible, engaging"></label>
+            <label><span>Timezone</span><input name="timezone" placeholder="America/Chicago"></label>
+            <label class="full-row"><span>Default call to action</span><input name="callToAction"></label>
+            <label class="full-row"><span>Visual direction</span><input name="visualStyle"></label>
+            <label class="full-row"><span>Blocked topics or terms</span><input name="bannedTopics" placeholder="term one, term two"><small>Quality review blocks content containing these terms.</small></label>
+          </div>
+          <div class="settings-row">
+            <label class="toggle"><input id="approval-required" type="checkbox"><span></span> Require approval before scheduling</label>
+            <label class="toggle"><input id="notifications-enabled" type="checkbox"><span></span> Save operator notifications</label>
+          </div>
+          <div class="form-grid video-provider-settings">
+            <label><span>Video provider</span><select name="videoProvider"><option value="slideshow">Local slideshow · no provider cost</option><option value="auto">Automatic capability routing</option><option value="seedance">ByteDance Seedance 2.5</option><option value="minimax_h3">MiniMax H3</option><option value="google_omni">Google Gemini Omni Flash</option><option value="kling">Kuaishou Kling 3.0 Omni</option><option value="wan">Alibaba Wan 2.7</option></select><small id="video-provider-status">Provider credentials are checked at runtime.</small></label>
+            <label><span>Generation mode</span><select name="videoGenerationMode"><option value="hybrid">Hybrid · generated clips + local assembly</option><option value="slideshow">Local slideshow only</option></select></label>
+            <label><span>Clip duration</span><input name="videoClipDuration" type="number" min="3" max="30" step="1"></label>
+            <label><span>Paid seconds cap</span><input name="videoMaxGeneratedSeconds" type="number" min="0" max="600" step="1"><small>Maximum provider-generated seconds per production.</small></label>
+          </div>
+          <div class="form-actions"><button type="submit" class="button primary">Save channel setup</button><button id="api-key-button" type="button" class="button secondary">Set dashboard API key</button></div>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="generate-dialog" class="dialog">
+    <form id="generate-form" method="dialog">
+      <div class="dialog-heading"><div><p class="eyebrow">NEW GENERATION JOB</p><h2>Create a video</h2></div><button type="button" class="close-button" data-close>×</button></div>
+      <label><span>Topic <small>optional—leave blank for agent selection</small></span><input name="topic" maxlength="200" placeholder="How small teams can automate repetitive work"></label>
+      <div class="form-grid two">
+        <label><span>Format</span><select name="style"><option value="explainer">Explainer</option><option value="tutorial">Tutorial</option><option value="list">List</option><option value="review">Review</option><option value="story">Story</option></select></label>
+        <label><span>Length</span><select name="length"><option value="short">Short · 2–4 min</option><option value="medium" selected>Medium · 8–12 min</option><option value="long">Long · 15–20 min</option></select></label>
+      </div>
+      <p class="callout">Generation runs in the background. You can follow each stage and cancel between stages.</p>
+      <div class="form-actions"><button type="submit" class="button primary">Start generation</button><button type="button" class="button ghost" data-close>Cancel</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="content-dialog" class="dialog content-dialog">
+    <div id="content-detail"></div>
+  </dialog>
+
+  <dialog id="idea-dialog" class="dialog">
+    <form id="idea-form" method="dialog">
+      <div class="dialog-heading"><div><p class="eyebrow">BACKLOG</p><h2>Add a content idea</h2></div><button type="button" class="close-button" data-close>×</button></div>
+      <label><span>Topic</span><input name="topic" maxlength="200" required></label>
+      <label><span>Angle</span><textarea name="angle" rows="3" placeholder="What makes this take distinctive?"></textarea></label>
+      <label><span>Why it is worth making</span><textarea name="rationale" rows="2"></textarea></label>
+      <label><span>Format</span><select name="style"><option value="explainer">Explainer</option><option value="tutorial">Tutorial</option><option value="list">List</option><option value="review">Review</option><option value="story">Story</option></select></label>
+      <div class="form-actions"><button type="submit" class="button primary">Add to backlog</button><button type="button" class="button ghost" data-close>Cancel</button></div>
+    </form>
+  </dialog>
+
+  <script src="/app.js" defer></script>
+  <script src="/enhance.js" defer></script>
 </body>
 </html>

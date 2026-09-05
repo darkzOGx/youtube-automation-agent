@@ -1,5 +1,6 @@
 const { google } = require('googleapis');
 const { Logger } = require('../utils/logger');
+const { ChannelLearningEngine } = require('../utils/channel-learning-engine');
 
 class AnalyticsOptimizationAgent {
   constructor(db, credentials) {
@@ -9,6 +10,7 @@ class AnalyticsOptimizationAgent {
     this.youtubeAnalytics = null;
     this.youtube = null;
     this.performanceData = new Map();
+    this.learning = new ChannelLearningEngine(db);
   }
 
   async initialize() {
@@ -34,7 +36,16 @@ class AnalyticsOptimizationAgent {
     try {
       const history = await this.db.getAnalyticsHistory();
       history.forEach(record => {
-        this.performanceData.set(record.videoId, record);
+        const normalized = {
+          ...record,
+          videoId: record.videoId || record.video_id,
+          analyzedAt: record.analyzedAt || record.analyzed_at,
+          performance: record.performance || {
+            score: record.performance_score || 0,
+            grade: record.performance_grade || 'N/A'
+          }
+        };
+        this.performanceData.set(normalized.videoId, normalized);
       });
       this.logger.info(`Loaded ${this.performanceData.size} historical records`);
     } catch (error) {
@@ -42,18 +53,31 @@ class AnalyticsOptimizationAgent {
     }
   }
 
-  async analyzeVideoPerformance(videoId) {
+  async analyzeVideoPerformance(videoId, options = {}) {
     try {
       this.logger.info(`Analyzing performance for video: ${videoId}`);
       
       // Get video details
       const videoDetails = await this.getVideoDetails(videoId);
       
+      const measurementWindow = options.measurementWindow || 'rolling';
+      const period = this.learning.measurementPeriod(videoDetails.publishedAt, measurementWindow);
+
       // Get analytics data
-      const analytics = await this.getVideoAnalytics(videoId);
+      const channelStrategy = this.db.getChannelStrategy ? await this.db.getChannelStrategy() : null;
+      const analytics = await this.getVideoAnalytics(videoId, period, {
+        currency: channelStrategy?.outcome_currency || 'USD'
+      });
+      const context = await this.db.getPublishedContentContext(videoId);
+
+      // Fetch the granular retention curve separately so its absence never
+      // converts otherwise-real channel analytics into simulated data.
+      const retention = analytics.simulated
+        ? { available: false, simulated: true, reason: 'base_analytics_unavailable', points: [] }
+        : await this.getAudienceRetention(videoId, period, videoDetails.duration);
       
       // Analyze thumbnail performance
-      const thumbnailMetrics = await this.analyzeThumbnailPerformance(videoId);
+      const thumbnailMetrics = await this.analyzeThumbnailPerformance(videoId, period);
       
       // Analyze title and SEO performance
       const seoMetrics = await this.analyzeSEOPerformance(videoDetails, analytics);
@@ -65,10 +89,12 @@ class AnalyticsOptimizationAgent {
         videoId,
         videoDetails,
         analytics,
+        retention,
         thumbnailMetrics,
         seoMetrics,
         insights,
         performance: this.calculatePerformanceScore(analytics),
+        measurementWindow,
         analyzedAt: new Date().toISOString()
       };
       
@@ -77,6 +103,27 @@ class AnalyticsOptimizationAgent {
       
       // Save to database
       await this.db.saveAnalyticsReport(performanceReport);
+      performanceReport.learningSnapshot = await this.learning.capture(
+        performanceReport,
+        context,
+        measurementWindow
+      );
+      if (retention.available) {
+        performanceReport.retentionSnapshot = await this.learning.captureRetention(
+          {
+            ...retention,
+            videoId,
+            title: videoDetails.title,
+            publishedAt: videoDetails.publishedAt
+          },
+          context,
+          measurementWindow,
+          {
+            views: analytics.views?.totalViews,
+            impressions: analytics.views?.totalImpressions
+          }
+        );
+      }
       
       this.logger.info(`Analysis complete. Performance score: ${performanceReport.performance.score}/100`);
       return performanceReport;
@@ -112,9 +159,9 @@ class AnalyticsOptimizationAgent {
     };
   }
 
-  async getVideoAnalytics(videoId) {
-    const endDate = new Date().toISOString().split('T')[0];
-    const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  async getVideoAnalytics(videoId, period = null, options = {}) {
+    const endDate = period?.endDate || new Date().toISOString().split('T')[0];
+    const startDate = period?.startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     
     try {
       // Get various analytics metrics
@@ -123,22 +170,26 @@ class AnalyticsOptimizationAgent {
         watchTimeData,
         demographicsData,
         trafficSourcesData,
-        deviceData
+        deviceData,
+        outcomeData
       ] = await Promise.all([
         this.getViewsAnalytics(videoId, startDate, endDate),
         this.getWatchTimeAnalytics(videoId, startDate, endDate),
         this.getDemographicsAnalytics(videoId, startDate, endDate),
         this.getTrafficSourcesAnalytics(videoId, startDate, endDate),
-        this.getDeviceAnalytics(videoId, startDate, endDate)
+        this.getDeviceAnalytics(videoId, startDate, endDate),
+        this.getOutcomeAnalytics(videoId, startDate, endDate, options.currency || 'USD')
       ]);
       
       return {
+        simulated: false,
         period: { startDate, endDate },
         views: viewsData,
         watchTime: watchTimeData,
         demographics: demographicsData,
         trafficSources: trafficSourcesData,
         devices: deviceData,
+        outcomes: outcomeData,
         engagement: await this.calculateEngagementMetrics(videoId)
       };
     } catch (error) {
@@ -262,6 +313,40 @@ class AnalyticsOptimizationAgent {
     };
   }
 
+  async getOutcomeAnalytics(videoId, startDate, endDate, currency = 'USD') {
+    const query = (metrics, includeCurrency = false) => this.youtubeAnalytics.reports.query({
+      ids: 'channel==MINE',
+      startDate,
+      endDate,
+      metrics,
+      filters: `video==${videoId}`,
+      ...(includeCurrency ? { currency } : {})
+    });
+    const [subscriberResult, revenueResult] = await Promise.allSettled([
+      query('subscribersGained,subscribersLost'),
+      query('estimatedRevenue,monetizedPlaybacks,playbackBasedCpm', true)
+    ]);
+    const subscribers = subscriberResult.status === 'fulfilled'
+      ? subscriberResult.value.data.rows?.[0] || [0, 0]
+      : null;
+    const revenue = revenueResult.status === 'fulfilled'
+      ? revenueResult.value.data.rows?.[0] || [0, 0, 0]
+      : null;
+    if (!subscribers) this.logger.warn(`Subscriber outcomes unavailable for ${videoId}: ${subscriberResult.reason?.message || 'unknown error'}`);
+    if (!revenue) this.logger.info(`Revenue outcomes unavailable for ${videoId}; monetization data will remain unavailable`);
+    return {
+      subscribersAvailable: Boolean(subscribers),
+      subscribersGained: subscribers ? Number(subscribers[0] || 0) : null,
+      subscribersLost: subscribers ? Number(subscribers[1] || 0) : null,
+      netSubscribers: subscribers ? Number(subscribers[0] || 0) - Number(subscribers[1] || 0) : null,
+      revenueAvailable: Boolean(revenue),
+      currency: revenue ? currency : null,
+      estimatedRevenue: revenue ? Number(revenue[0] || 0) : null,
+      monetizedPlaybacks: revenue ? Number(revenue[1] || 0) : null,
+      playbackBasedCpm: revenue ? Number(revenue[2] || 0) : null
+    };
+  }
+
   async calculateEngagementMetrics(videoId) {
     const videoDetails = await this.getVideoDetails(videoId);
     const stats = videoDetails.statistics;
@@ -282,13 +367,13 @@ class AnalyticsOptimizationAgent {
     };
   }
 
-  async analyzeThumbnailPerformance(videoId) {
+  async analyzeThumbnailPerformance(videoId, period = null) {
     // Analyze thumbnail click-through rate and impressions
     try {
       const response = await this.youtubeAnalytics.reports.query({
         ids: 'channel==MINE',
-        startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        endDate: new Date().toISOString().split('T')[0],
+        startDate: period?.startDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        endDate: period?.endDate || new Date().toISOString().split('T')[0],
         metrics: 'impressions,impressionClickThroughRate',
         filters: `video==${videoId}`
       });
@@ -621,12 +706,18 @@ class AnalyticsOptimizationAgent {
   }
 
   // Simulation methods for when API is not available
-  getSimulatedAnalytics(videoId) {
+  getSimulatedAnalytics(_videoId) {
     return {
+      simulated: true,
       views: { totalViews: Math.floor(Math.random() * 50000), averageCTR: Math.random() * 10 },
       watchTime: { averageViewPercentage: Math.random() * 100 },
       engagement: { engagementRate: Math.random() * 10 },
-      trafficSources: { sources: [{ source: 'SEARCH', percentage: '30' }] }
+      trafficSources: { sources: [{ source: 'SEARCH', percentage: '30' }] },
+      outcomes: {
+        subscribersAvailable: false, subscribersGained: null, subscribersLost: null,
+        netSubscribers: null, revenueAvailable: false, estimatedRevenue: null,
+        monetizedPlaybacks: null, playbackBasedCpm: null
+      }
     };
   }
 
@@ -676,6 +767,60 @@ class AnalyticsOptimizationAgent {
       topPerformers: recentReports.slice(0, 5),
       insights: this.generateChannelInsights(recentReports)
     };
+  }
+
+  async getAudienceRetention(videoId, period = null, isoDuration = null) {
+    const endDate = period?.endDate || new Date().toISOString().split('T')[0];
+    const startDate = period?.startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    try {
+      const response = await this.youtubeAnalytics.reports.query({
+        ids: 'channel==MINE',
+        startDate,
+        endDate,
+        metrics: 'audienceWatchRatio,relativeRetentionPerformance,startedWatching,stoppedWatching,totalSegmentImpressions',
+        dimensions: 'elapsedVideoTimeRatio',
+        filters: `video==${videoId}`
+      });
+      const headers = (response.data.columnHeaders || []).map(header => header.name);
+      const index = name => headers.indexOf(name);
+      const value = (row, name) => {
+        const position = index(name);
+        return position >= 0 ? Number(row[position] || 0) : 0;
+      };
+      const points = (response.data.rows || []).map(row => ({
+        elapsedRatio: value(row, 'elapsedVideoTimeRatio'),
+        audienceWatchRatio: value(row, 'audienceWatchRatio'),
+        relativeRetentionPerformance: value(row, 'relativeRetentionPerformance'),
+        startedWatching: value(row, 'startedWatching'),
+        stoppedWatching: value(row, 'stoppedWatching'),
+        totalSegmentImpressions: value(row, 'totalSegmentImpressions')
+      })).filter(point => point.elapsedRatio > 0);
+      return {
+        available: points.length > 0,
+        simulated: false,
+        reason: points.length ? null : 'no_retention_rows',
+        period: { startDate, endDate },
+        durationSeconds: this.parseISODurationSeconds(isoDuration),
+        points
+      };
+    } catch (error) {
+      this.logger.warn(`Audience retention curve unavailable for ${videoId}: ${error.message}`);
+      return { available: false, simulated: false, reason: 'retention_api_unavailable', points: [] };
+    }
+  }
+
+  parseISODurationSeconds(value) {
+    const match = String(value || '').match(/^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$/);
+    if (!match) return 0;
+    return Number(match[1] || 0) * 86400 + Number(match[2] || 0) * 3600 + Number(match[3] || 0) * 60 + Number(match[4] || 0);
+  }
+
+  getLearningSummary() {
+    return this.learning.getSummary();
+  }
+
+  getDueMeasurementWindows(video) {
+    return this.learning.getDueMeasurementWindows(video);
   }
 
   calculateAverageScore(reports) {

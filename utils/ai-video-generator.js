@@ -2,18 +2,23 @@ const OpenAI = require('openai');
 const Replicate = require('replicate');
 const fs = require('fs').promises;
 const path = require('path');
-const { pathToFileURL } = require('url');
 const axios = require('axios');
+const sharp = require('sharp');
 const { Logger } = require('./logger');
 const { runFFmpeg, checkFFmpeg, ffmpegInstallHint } = require('./ffmpeg');
+const { MediaGenerationService } = require('./media-generation-service');
 
 class AIVideoGenerator {
-  constructor(credentials) {
+  constructor(credentials, options = {}) {
     this.logger = new Logger('AIVideoGenerator');
+    const resolvedCredentials = credentials?.credentials || credentials || {};
+    this.db = options.db || null;
+    this.lastVideoResult = null;
+    this.lastNarrationResult = null;
     
     // Initialize AI services with graceful fallback
-    const openaiKey = credentials.openai?.apiKey || process.env.OPENAI_API_KEY;
-    const replicateKey = credentials.replicate?.apiKey || process.env.REPLICATE_API_KEY;
+    const openaiKey = resolvedCredentials.openai?.apiKey || process.env.OPENAI_API_KEY;
+    const replicateKey = resolvedCredentials.replicate?.apiKey || process.env.REPLICATE_API_TOKEN || process.env.REPLICATE_API_KEY;
     
     if (openaiKey) {
       this.openai = new OpenAI({ apiKey: openaiKey });
@@ -30,7 +35,7 @@ class AIVideoGenerator {
     }
 
     // Gemini media generation (images + native TTS) — free-tier alternative to OpenAI
-    const geminiKey = credentials.gemini?.apiKey || process.env.GEMINI_API_KEY;
+    const geminiKey = resolvedCredentials.gemini?.apiKey || process.env.GEMINI_API_KEY;
     if (geminiKey) {
       try {
         const { GoogleGenAI } = require('@google/genai');
@@ -42,36 +47,60 @@ class AIVideoGenerator {
     }
     
     // ElevenLabs configuration
-    this.elevenLabsApiKey = credentials.elevenLabs?.apiKey || process.env.ELEVENLABS_API_KEY;
-    this.elevenLabsVoiceId = credentials.elevenLabs?.voiceId || process.env.ELEVENLABS_VOICE_ID;
+    this.elevenLabsApiKey = resolvedCredentials.elevenLabs?.apiKey || process.env.ELEVENLABS_API_KEY;
+    this.elevenLabsVoiceId = resolvedCredentials.elevenLabs?.voiceId || process.env.ELEVENLABS_VOICE_ID;
+    this.elevenLabsModel = process.env.ELEVENLABS_TTS_MODEL || 'eleven_v3';
     
     // Azure Speech configuration
-    this.azureSpeechKey = credentials.azure?.speechKey || process.env.AZURE_SPEECH_KEY;
-    this.azureSpeechRegion = credentials.azure?.speechRegion || process.env.AZURE_SPEECH_REGION;
+    this.azureSpeechKey = resolvedCredentials.azure?.speechKey || process.env.AZURE_SPEECH_KEY;
+    this.azureSpeechRegion = resolvedCredentials.azure?.speechRegion || process.env.AZURE_SPEECH_REGION;
+    this.mediaGeneration = options.mediaGeneration || (this.db
+      ? new MediaGenerationService(this.db, resolvedCredentials, { logger: this.logger })
+      : null);
   }
 
   async generateTTSAudio(text, outputPath) {
     this.logger.info('Generating TTS audio...');
-    
+    this.lastNarrationResult = null;
+    let provider = 'simulation';
+    let model = null;
+
     try {
-      // Try ElevenLabs first (higher quality)
+      let generatedPath;
       if (this.elevenLabsApiKey && this.elevenLabsVoiceId) {
-        return await this.generateElevenLabsTTS(text, outputPath);
-      }
-      
-      // Fallback to OpenAI TTS
-      if (this.openai) {
-        return await this.generateOpenAITTS(text, outputPath);
+        provider = 'elevenlabs';
+        model = this.elevenLabsModel;
+        generatedPath = await this.generateElevenLabsTTS(text, outputPath);
+      } else if (this.openai) {
+        provider = 'openai';
+        model = 'gpt-4o-mini-tts';
+        generatedPath = await this.generateOpenAITTS(text, outputPath);
+      } else if (this.gemini) {
+        provider = 'gemini';
+        model = process.env.GEMINI_TTS_MODEL || 'gemini-3.1-flash-tts-preview';
+        generatedPath = await this.generateGeminiTTS(text, outputPath);
+      } else {
+        generatedPath = await this.simulateTTSGeneration(text, outputPath);
       }
 
-      // Fallback to Gemini native TTS (free tier)
-      if (this.gemini) {
-        return await this.generateGeminiTTS(text, outputPath);
-      }
-
-      // Final fallback to simulation
-      return await this.simulateTTSGeneration(text, outputPath);
+      const usable = await this.isUsableAudioFile(generatedPath);
+      this.lastNarrationResult = {
+        status: usable ? 'ready' : 'unavailable',
+        path: generatedPath,
+        provider,
+        model,
+        externalTaskId: null,
+        generatedAt: new Date().toISOString(),
+        simulated: !usable,
+        cost: { provider, amount: null, currency: null, invoiceRequired: provider !== 'simulation' }
+      };
+      return generatedPath;
     } catch (error) {
+      this.lastNarrationResult = {
+        status: 'failed', path: null, provider, model, externalTaskId: null,
+        generatedAt: new Date().toISOString(), simulated: false, error: error.message,
+        cost: { provider, amount: null, currency: null, invoiceRequired: provider !== 'simulation' }
+      };
       this.logger.error('TTS generation failed:', error);
       throw error;
     }
@@ -82,7 +111,7 @@ class AIVideoGenerator {
     
     const data = {
       text: text,
-      model_id: "eleven_v3",
+      model_id: this.elevenLabsModel,
       voice_settings: {
         stability: 0.5,
         similarity_boost: 0.8,
@@ -225,16 +254,41 @@ class AIVideoGenerator {
 
     const response = await this.gemini.models.generateContent({
       model,
-      contents: prompt
+      contents: prompt,
+      config: {
+        responseModalities: ['IMAGE'],
+        imageConfig: {
+          aspectRatio: '16:9',
+          imageSize: '1K'
+        }
+      }
     });
 
     const parts = response.candidates?.[0]?.content?.parts || [];
-    const imagePart = parts.find(part => part.inlineData?.data);
+    const imageParts = parts.filter(part =>
+      part.inlineData?.data && (!part.inlineData.mimeType || part.inlineData.mimeType.startsWith('image/'))
+    );
+    const renderedImages = imageParts.filter(part => part.thought !== true);
+    const imagePart = (renderedImages.length ? renderedImages : imageParts).at(-1);
     if (!imagePart) {
       throw new Error('Gemini image generation returned no image data');
     }
 
-    await fs.writeFile(imagePath, Buffer.from(imagePart.inlineData.data, 'base64'));
+    const imageBuffer = Buffer.from(imagePart.inlineData.data, 'base64');
+    const metadata = await sharp(imageBuffer, { failOn: 'error' }).metadata();
+    if (!metadata.width || !metadata.height) {
+      throw new Error('Gemini image generation returned an invalid image asset');
+    }
+
+    const extension = path.extname(imagePath).toLowerCase();
+    const output = sharp(imageBuffer, { failOn: 'error' });
+    if (extension === '.jpg' || extension === '.jpeg') {
+      await output.jpeg({ quality: 92 }).toFile(imagePath);
+    } else if (extension === '.webp') {
+      await output.webp({ quality: 92 }).toFile(imagePath);
+    } else {
+      await output.png().toFile(imagePath);
+    }
     return imagePath;
   }
 
@@ -267,21 +321,124 @@ class AIVideoGenerator {
     });
   }
 
-  async generateVideo(script, visualAssets, audioPath, outputPath) {
+  async generateVideo(script, visualAssets, audioPath, outputPath, options = {}) {
     this.logger.info('Generating video from assets...');
-    
+    this.lastVideoResult = null;
     try {
-      // Try Replicate for video generation first
-      if (this.replicate && this.replicate.auth) {
-        return await this.generateReplicateVideo(script, visualAssets, audioPath, outputPath);
+      if (this.mediaGeneration && options.productionId) {
+        const generated = await this.mediaGeneration.generateClips({
+          jobId: options.jobId || null,
+          productionId: options.productionId,
+          script,
+          visualAssets,
+          outputDir: path.dirname(outputPath)
+        });
+        if (generated.clips.length) {
+          const produced = await this.generateHybridVideo(
+            generated.clips,
+            visualAssets,
+            audioPath,
+            outputPath,
+            options.estimatedDuration || this.calculateScriptDuration(script)
+          );
+          this.lastVideoResult = {
+            requestedProvider: generated.requestedProvider,
+            actualProvider: generated.actualProvider,
+            model: generated.model,
+            mode: generated.settings.mode,
+            generatedSeconds: generated.clips.reduce((total, clip) => total + clip.duration, 0),
+            tasks: generated.clips.map(clip => ({ scene: clip.index, taskId: clip.taskId, provider: clip.provider, model: clip.model })),
+            scenes: generated.clips.map(clip => ({
+              index: clip.index, label: clip.label, prompt: clip.prompt, duration: clip.duration,
+              path: clip.path, taskId: clip.taskId, provider: clip.provider, model: clip.model
+            }))
+          };
+          return produced;
+        }
       }
-      
-      // Fallback to simple slideshow with Playwright
-      return await this.generateSlideshowVideo(script, visualAssets, audioPath, outputPath);
+
+      const produced = await this.generateSlideshowVideo(script, visualAssets, audioPath, outputPath);
+      this.lastVideoResult = { requestedProvider: 'slideshow', actualProvider: 'slideshow', model: 'local-ffmpeg', mode: 'slideshow', generatedSeconds: 0, tasks: [], scenes: [] };
+      return produced;
     } catch (error) {
-      this.logger.error('Video generation failed:', error);
-      return await this.simulateVideoGeneration(script, visualAssets, audioPath, outputPath);
+      // The Logger's console line only shows the message string, so put the real
+      // reason inline. Previously the stack alone went to the file transport and
+      // the console printed "Video generation failed:" with no detail.
+      const reason = error && error.message ? error.message : String(error);
+      this.logger.error(`Video provider generation failed; using the local slideshow: ${reason}`, error);
+      try {
+        const produced = await this.generateSlideshowVideo(script, visualAssets, audioPath, outputPath);
+        this.lastVideoResult = {
+          requestedProvider: this.lastVideoResult?.requestedProvider || 'configured-provider',
+          actualProvider: 'slideshow', model: 'local-ffmpeg', mode: 'fallback', generatedSeconds: 0,
+          fallbackReason: reason, tasks: [], scenes: []
+        };
+        return produced;
+      } catch (fallbackError) {
+        this.logger.error(`Local slideshow fallback failed: ${fallbackError.message}`, fallbackError);
+        const produced = await this.simulateVideoGeneration(script, visualAssets, audioPath, outputPath);
+        this.lastVideoResult = {
+          requestedProvider: 'configured-provider', actualProvider: 'simulation', model: null,
+          mode: 'simulation', generatedSeconds: 0, fallbackReason: `${reason}; ${fallbackError.message}`, tasks: [], scenes: []
+        };
+        return produced;
+      }
     }
+  }
+
+  async generateHybridVideo(clips, visualAssets, audioPath, outputPath, totalDuration) {
+    if (!(await checkFFmpeg())) throw new Error(ffmpegInstallHint());
+    const validImages = await this.filterLocalImageAssets(visualAssets);
+    const segments = clips.map(clip => ({ type: 'video', path: clip.path, duration: clip.duration }));
+    const generatedDuration = segments.reduce((sum, item) => sum + item.duration, 0);
+    const remaining = Math.max(0, this.parseDurationSeconds(totalDuration) - generatedDuration);
+    if (remaining && validImages.length) {
+      const perImage = Math.max(2, remaining / validImages.length);
+      for (const imagePath of validImages) segments.push({ type: 'image', path: imagePath, duration: perImage });
+    }
+    if (!segments.length) throw new Error('No usable provider clips or still images were generated');
+
+    const visualPath = outputPath.replace(/\.mp4$/i, '_hybrid_visual.mp4');
+    await this.renderMediaTimeline(segments, visualPath);
+    await this.addAudioToVideo(visualPath, audioPath, outputPath, { loopVideo: true });
+    await fs.unlink(visualPath).catch(() => {});
+    return outputPath;
+  }
+
+  async renderMediaTimeline(segments, outputPath) {
+    const args = ['-y'];
+    for (const segment of segments) {
+      if (segment.type === 'image') args.push('-loop', '1', '-t', Number(segment.duration).toFixed(2), '-framerate', '30', '-i', segment.path);
+      else args.push('-stream_loop', '-1', '-i', segment.path);
+    }
+    const filters = segments.map((segment, index) =>
+      `[${index}:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black,fps=30,format=yuv420p,trim=duration=${Number(segment.duration).toFixed(2)},setpts=PTS-STARTPTS[v${index}]`
+    );
+    filters.push(`${segments.map((_, index) => `[v${index}]`).join('')}concat=n=${segments.length}:v=1:a=0[vout]`);
+    args.push('-filter_complex', filters.join(';'), '-map', '[vout]', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', outputPath);
+    await runFFmpeg(args);
+    return outputPath;
+  }
+
+  async filterLocalImageAssets(visualAssets = []) {
+    const imageExtensions = new Set(['.png', '.jpg', '.jpeg', '.webp']);
+    const images = [];
+    for (const asset of visualAssets) {
+      if (typeof asset !== 'string' || !imageExtensions.has(path.extname(asset).toLowerCase())) continue;
+      try {
+        await fs.access(asset);
+        images.push(asset);
+      } catch (_error) { /* ignore missing assets */ }
+    }
+    return images;
+  }
+
+  parseDurationSeconds(value) {
+    if (Number.isFinite(Number(value))) return Math.max(0, Number(value));
+    const parts = String(value || '').split(':').map(Number);
+    if (parts.length === 2 && parts.every(Number.isFinite)) return Math.max(0, parts[0] * 60 + parts[1]);
+    if (parts.length === 3 && parts.every(Number.isFinite)) return Math.max(0, parts[0] * 3600 + parts[1] * 60 + parts[2]);
+    return 0;
   }
 
   async generateReplicateVideo(script, visualAssets, audioPath, outputPath) {
@@ -407,6 +564,11 @@ class AIVideoGenerator {
 
   async filterImageAssets(visualAssets = []) {
     const imageExtensions = new Set(['.png', '.jpg', '.jpeg', '.webp']);
+    const mimeTypes = {
+      jpeg: 'image/jpeg',
+      png: 'image/png',
+      webp: 'image/webp'
+    };
     const images = [];
 
     for (const asset of visualAssets) {
@@ -415,10 +577,14 @@ class AIVideoGenerator {
       }
 
       try {
-        await fs.access(asset);
-        images.push(pathToFileURL(asset).href);
-      } catch (error) {
-        // Skip missing files
+        const imageBuffer = await fs.readFile(asset);
+        const metadata = await sharp(imageBuffer, { failOn: 'error' }).metadata();
+        const mimeType = mimeTypes[metadata.format];
+        if (mimeType && metadata.width && metadata.height) {
+          images.push(`data:${mimeType};base64,${imageBuffer.toString('base64')}`);
+        }
+      } catch (_error) {
+        // Skip missing or invalid image files
       }
     }
 
@@ -645,15 +811,18 @@ class AIVideoGenerator {
     return Math.max(30, Math.ceil((totalWords / 150) * 60));
   }
 
-  async addAudioToVideo(videoPath, audioPath, outputPath) {
+  async addAudioToVideo(videoPath, audioPath, outputPath, options = {}) {
     const hasRealAudio = await this.isUsableAudioFile(audioPath);
 
     if (!hasRealAudio) {
-      this.logger.warn('No narration audio available — producing silent video. Configure OpenAI, ElevenLabs, or Azure Speech for narration.');
-      if (videoPath !== outputPath) {
-        await fs.copyFile(videoPath, outputPath);
+      if (options.allowSilent === true) {
+        this.logger.warn('Creating an intentionally silent video from an operator-confirmed override.');
+        if (videoPath !== outputPath) await fs.copyFile(videoPath, outputPath);
+        return outputPath;
       }
-      return outputPath;
+      const error = new Error('Narration audio is required. Regenerate narration or explicitly confirm an intentional silent video.');
+      error.code = 'NARRATION_REQUIRED';
+      throw error;
     }
 
     // FFmpeg cannot write to its own input, so mux to a temp file when paths collide
@@ -661,7 +830,8 @@ class AIVideoGenerator {
       ? outputPath.replace(/\.mp4$/i, '_muxed.mp4')
       : outputPath;
 
-    await runFFmpeg(['-y', '-i', videoPath, '-i', audioPath, '-c:v', 'copy', '-c:a', 'aac', '-shortest', muxPath]);
+    const videoInput = options.loopVideo ? ['-stream_loop', '-1', '-i', videoPath] : ['-i', videoPath];
+    await runFFmpeg(['-y', ...videoInput, '-i', audioPath, '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'copy', '-c:a', 'aac', '-shortest', muxPath]);
 
     if (muxPath !== outputPath) {
       await fs.rename(muxPath, outputPath);
@@ -724,10 +894,11 @@ class AIVideoGenerator {
       const thumbnailPath = path.join(__dirname, '..', 'uploads', 'thumbnails', `thumbnail_${Date.now()}.png`);
 
       await this.generateImage(prompt, thumbnailPath);
+      const metadata = await sharp(thumbnailPath).metadata();
 
       return {
         path: thumbnailPath,
-        dimensions: { width: 1536, height: 1024 },
+        dimensions: { width: metadata.width, height: metadata.height },
         fileSize: await this.getFileSize(thumbnailPath)
       };
     } catch (error) {

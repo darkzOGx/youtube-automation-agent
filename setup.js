@@ -179,7 +179,6 @@ SCREENSHOT_PATH=./debug/screenshots
     
     try {
       // Check if package.json exists and dependencies are installed
-      const packagePath = path.join(__dirname, 'package.json');
       const nodeModulesPath = path.join(__dirname, 'node_modules');
       
       try {
@@ -257,7 +256,7 @@ node index.js`;
 
     // Check database
     try {
-      const stats = await this.database.getStats();
+      await this.database.getStats();
       validation.database = true;
     } catch (error) {
       validation.database = false;

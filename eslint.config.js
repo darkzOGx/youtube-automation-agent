@@ -23,22 +23,40 @@ module.exports = [
       ecmaVersion: 2022,
       sourceType: 'commonjs',
       globals: {
+        AbortController: 'readonly',
         __dirname: 'readonly',
         Buffer: 'readonly',
+        clearTimeout: 'readonly',
         clearInterval: 'readonly',
+        confirm: 'readonly',
         console: 'readonly',
+        fetch: 'readonly',
+        FormData: 'readonly',
+        localStorage: 'readonly',
+        location: 'readonly',
         module: 'readonly',
         process: 'readonly',
+        prompt: 'readonly',
         require: 'readonly',
         setInterval: 'readonly',
         setTimeout: 'readonly',
         URL: 'readonly',
         window: 'readonly',
-        document: 'readonly'
+        document: 'readonly',
+        matchMedia: 'readonly',
+        performance: 'readonly',
+        requestAnimationFrame: 'readonly',
+        cancelAnimationFrame: 'readonly',
+        IntersectionObserver: 'readonly',
+        PointerEvent: 'readonly'
       }
     },
     rules: {
-      'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }]
+      'no-unused-vars': ['warn', {
+        argsIgnorePattern: '^_',
+        varsIgnorePattern: '^_',
+        caughtErrors: 'none'
+      }]
     }
   }
 ];
