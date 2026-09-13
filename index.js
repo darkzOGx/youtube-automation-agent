@@ -1798,7 +1798,8 @@ class YouTubeAutomationAgent {
     }
     
     const PORT = process.env.PORT || 3456;
-    this.app.listen(PORT, () => {
+    const HOST = resolveBindHost();
+    this.app.listen(PORT, HOST, () => {
       console.log(chalk.green(`\n✅ YouTube Automation Agent running on port ${PORT}`));
       console.log(chalk.gray('─'.repeat(50)));
       console.log(chalk.white('📊 Dashboard: ') + chalk.cyan(`http://localhost:${PORT}`));
@@ -1806,6 +1807,13 @@ class YouTubeAutomationAgent {
       console.log(chalk.white('📅 Schedule: ') + chalk.cyan(`http://localhost:${PORT}/schedule`));
       console.log(chalk.white('📈 Analytics: ') + chalk.cyan(`http://localhost:${PORT}/analytics`));
       console.log(chalk.gray('─'.repeat(50)));
+      if (!isLoopbackHost(HOST)) {
+        console.log('');
+        console.log(chalk.red.bold(`⚠️  Dashboard is bound to ${HOST}, not loopback.`));
+        console.log(chalk.yellow('   It has no authentication and can publish, edit, and delete'));
+        console.log(chalk.yellow('   videos on the connected channel. Put it behind an authenticating'));
+        console.log(chalk.yellow('   proxy, or unset HOST to bind 127.0.0.1 only.'));
+      }
       if (this.setupRequired) {
         console.log(chalk.yellow('\n⚙️  Setup is required. The dashboard is available; run npm run walkthrough to enable generation.'));
       } else {
@@ -1824,4 +1832,21 @@ if (require.main === module) {
   });
 }
 
-module.exports = { YouTubeAutomationAgent };
+/**
+ * Resolve the network interface the dashboard binds to.
+ *
+ * Defaults to loopback: the dashboard has no authentication and exposes
+ * publishing and settings routes backed by a full-manage YouTube token,
+ * so binding every interface would expose channel control to the local
+ * network. Operators who intentionally front it (Docker, reverse proxy)
+ * can opt in with HOST.
+ */
+function resolveBindHost(env = process.env) {
+  return env.HOST || '127.0.0.1';
+}
+
+function isLoopbackHost(host) {
+  return host === '127.0.0.1' || host === 'localhost' || host === '::1';
+}
+
+module.exports = { YouTubeAutomationAgent, resolveBindHost, isLoopbackHost };
