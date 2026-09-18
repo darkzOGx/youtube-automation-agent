@@ -38,6 +38,7 @@ class SystemTest {
       { name: 'Research and Provenance Desk', test: () => this.testProvenanceDesk() },
       { name: 'DarkzSEO Discoverability Preflight', test: () => this.testDiscoverabilityPreflight() },
       { name: 'Resumable Generation Checkpoints', test: () => this.testResumableGenerationCheckpoints() },
+      { name: 'Manual Generation Strategy Context', test: () => this.testManualGenerationStrategyContext() },
       { name: 'API Validation and Security', test: () => this.testAPIValidationAndSecurity() },
       { name: 'Publishing Safety', test: () => this.testPublishingSafety() },
       { name: 'Multi-Provider Credential Validation', test: () => this.testCredentialValidation() },
@@ -1830,6 +1831,43 @@ class SystemTest {
     }
 
     this.logger.info('DarkzSEO discoverability preflight test completed successfully');
+  }
+
+  async testManualGenerationStrategyContext() {
+    const assert = require('assert').strict;
+    const { YouTubeAutomationAgent } = require('./index');
+    const researchSources = [{ url: 'https://example.com/research' }];
+    for (const strategyContext of [null, undefined, {
+      angle: 'Planned angle', objective: 'Planned goal', researchSources
+    }]) {
+      const agent = Object.create(YouTubeAutomationAgent.prototype);
+      const scriptStage = new Error('Reached script stage');
+      let receivedStrategy;
+      agent.logger = { info: () => {} };
+      agent.db = { getChannelProfile: async () => ({
+        target_audience: 'Channel audience', goal: 'Channel goal'
+      }) };
+      agent.agents = {
+        strategy: { generateContentStrategy: async () => ({
+          topic: 'Manual video', angle: 'Generated angle'
+        }) },
+        scriptWriter: { generateScript: async strategy => {
+          receivedStrategy = strategy;
+          throw scriptStage;
+        } }
+      };
+
+      // Stop before media generation, after the real strategy stage has completed.
+      await assert.rejects(
+        agent.generateContent(null, 'explainer', 'short', { strategyContext }),
+        error => error === scriptStage
+      );
+      assert.equal(receivedStrategy.angle, strategyContext?.angle || 'Generated angle');
+      assert.equal(receivedStrategy.channelGoal, strategyContext?.objective || 'Channel goal');
+      assert.equal(receivedStrategy.targetAudience, 'Channel audience');
+      assert.deepEqual(receivedStrategy.researchSources, strategyContext?.researchSources || []);
+      assert.equal(receivedStrategy.contentType, 'Explainer');
+    }
   }
 
   async testResumableGenerationCheckpoints() {
