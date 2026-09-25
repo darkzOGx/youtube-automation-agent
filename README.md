@@ -2,8 +2,6 @@
 
 **The open-source AI agent that runs a YouTube channel end to end.**
 
-Join our telegram community: https://t.co/L4SzbqosOM
-
 Research topics → write scripts → generate narration and visuals → assemble videos → optimize metadata → review → schedule → publish → learn from analytics and from what your audience says.
 
 [![CI](https://github.com/darkzOGx/youtube-automation-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/darkzOGx/youtube-automation-agent/actions/workflows/ci.yml)
