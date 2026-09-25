@@ -24,6 +24,7 @@ class SystemTest {
       { name: 'Automation Events Table', test: () => this.testAutomationEventsTable() },
       { name: 'Local Activation Metrics', test: () => this.testActivationMetrics() },
       { name: 'Anonymous Telemetry Opt-in', test: () => this.testAnonymousTelemetryOptIn() },
+      { name: 'Dashboard Bind Host', test: () => this.testDashboardBindHost() },
       { name: 'Operator Workflow API', test: () => this.testOperatorWorkflowAPI() },
       { name: 'Autonomous Channel Operator', test: () => this.testAutonomousChannelOperator() },
       { name: 'Closed-loop Channel Learning', test: () => this.testChannelLearningLoop() },
@@ -264,6 +265,27 @@ class SystemTest {
       await db.close();
     }
     this.logger.info('Anonymous telemetry opt-in test completed successfully');
+  }
+
+  async testDashboardBindHost() {
+    const { resolveBindHost, isLoopbackHost } = require('./index');
+    const saved = process.env.HOST;
+    try {
+      delete process.env.HOST;
+      const defaultHost = resolveBindHost({});
+      if (defaultHost !== '127.0.0.1') {
+        throw new Error(`Dashboard must default to loopback, got ${defaultHost}`);
+      }
+      if (!isLoopbackHost(defaultHost)) throw new Error('Default bind host must be recognised as loopback');
+
+      const explicit = resolveBindHost({ HOST: '0.0.0.0' });
+      if (explicit !== '0.0.0.0') throw new Error('Explicit HOST override must be honoured');
+      if (isLoopbackHost(explicit)) throw new Error('0.0.0.0 must not be treated as loopback');
+    } finally {
+      if (saved === undefined) delete process.env.HOST;
+      else process.env.HOST = saved;
+    }
+    this.logger.info('Dashboard bind host test completed successfully');
   }
 
   async testOperatorWorkflowAPI() {
