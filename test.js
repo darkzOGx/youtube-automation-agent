@@ -47,6 +47,7 @@ class SystemTest {
       { name: 'FFmpeg Resolution', test: () => this.testFFmpegResolution() },
       { name: 'Gemini Media Provider Selection', test: () => this.testGeminiMediaProvider() },
       { name: 'Slideshow Renderer', test: () => this.testSlideshowRenderer() },
+      { name: 'Slideshow Duration Matches Narration', test: () => this.testSlideshowDurationMatchesNarration() },
       { name: 'Evergreen Template Topics', test: () => this.testEvergreenTopics() },
       { name: 'Walkthrough Module', test: () => this.testWalkthroughModule() },
       { name: 'Logger System', test: () => this.testLogger() },
@@ -2725,6 +2726,76 @@ class SystemTest {
     }
 
     this.logger.info('Slideshow renderer test completed successfully');
+  }
+
+  async testSlideshowDurationMatchesNarration() {
+    const { AIVideoGenerator } = require('./utils/ai-video-generator');
+    const { checkFFmpeg, runFFmpeg, getMediaDuration } = require('./utils/ffmpeg');
+    const fs = require('fs').promises;
+    const os = require('os');
+
+    if (!(await checkFFmpeg())) {
+      this.logger.warn('FFmpeg unavailable -- skipping slideshow duration regression test');
+      return;
+    }
+
+    const { chromium } = require('playwright');
+    try {
+      const probe = await chromium.launch();
+      await probe.close();
+    } catch (error) {
+      if (!/Executable doesn.t exist|playwright install/i.test(error.message)) throw error;
+      this.logger.warn('Chromium is not installed -- skipping slideshow duration regression test');
+      return;
+    }
+
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'yaa-duration-'));
+
+    try {
+      // An almost-empty script: calculateScriptDuration() floors at 30s regardless
+      // of content. Before this fix, that word-count estimate -- not the real
+      // narration length -- decided how long the slideshow video track was, and
+      // addAudioToVideo muxes with ffmpeg -shortest, so real narration longer than
+      // the (wrong) estimate got truncated mid-sentence.
+      const script = {
+        hook: { text: 'Hi.' },
+        introduction: { greeting: '', topicIntro: '' },
+        mainContent: { sections: [] },
+        conclusion: { finalThought: '' }
+      };
+
+      const generator = new AIVideoGenerator({});
+      const wordCountEstimate = generator.calculateScriptDuration(script);
+      if (wordCountEstimate !== 30) {
+        throw new Error(`Test setup error: expected the 30s floor, got ${wordCountEstimate}s`);
+      }
+
+      // Real narration audio, deliberately much longer than that floor.
+      const audioPath = path.join(dir, 'narration.mp3');
+      const narrationSeconds = 40;
+      await runFFmpeg(['-y', '-f', 'lavfi', '-i', `sine=frequency=440:duration=${narrationSeconds}`, audioPath]);
+
+      const sharp = require('sharp');
+      const stillPath = path.join(dir, 'slide_0.png');
+      await sharp({ create: { width: 320, height: 180, channels: 3, background: { r: 20, g: 40, b: 80 } } })
+        .png()
+        .toFile(stillPath);
+
+      const outputPath = path.join(dir, 'final.mp4');
+      await generator.generateSlideshowVideo(script, [stillPath], audioPath, outputPath);
+
+      const finalDuration = await getMediaDuration(outputPath);
+      if (finalDuration < narrationSeconds - 2) {
+        throw new Error(
+          `Slideshow was sized to the word-count estimate (${wordCountEstimate}s) instead of the real ` +
+          `${narrationSeconds}s narration -- final video only lasts ${finalDuration.toFixed(1)}s`
+        );
+      }
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+    }
+
+    this.logger.info('Slideshow duration regression test completed successfully');
   }
 
   async testEvergreenTopics() {
