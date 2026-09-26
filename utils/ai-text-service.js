@@ -132,30 +132,37 @@ class AITextService {
       temperature,
     };
 
-    try {
-      // Newer OpenAI models (gpt-5.x and later) reject the legacy max_tokens
-      // parameter with a 400 error and require max_completion_tokens instead.
-      const response = await this.client.chat.completions.create({
-        ...params,
-        max_completion_tokens: maxTokens,
-      });
-      return this._extractContent(response);
-    } catch (error) {
-      // Older models and some providers reject max_completion_tokens with a 400;
-      // retry the same request using the legacy max_tokens spelling.
-      if (
-        error &&
-        error.status === 400 &&
-        /max(_completion)?_tokens/i.test(error.message || '')
-      ) {
-        const response = await this.client.chat.completions.create({
-          ...params,
-          max_tokens: maxTokens,
-        });
+    const attempts = [
+      { ...params, max_completion_tokens: maxTokens },
+      { ...params, max_tokens: maxTokens },
+    ];
+
+    let lastError = null;
+    for (const attempt of attempts) {
+      try {
+        const response = await this.client.chat.completions.create(attempt);
         return this._extractContent(response);
+      } catch (error) {
+        lastError = error;
+        // Older models and some providers reject max_completion_tokens with a 400;
+        // the next attempt in the list retries with the legacy max_tokens spelling.
+        if (error && error.status === 400 && /max(_completion)?_tokens/i.test(error.message || '')) {
+          continue;
+        }
+        // Some models (e.g. the gpt-5.x reasoning family) only support the
+        // default temperature (1) and reject any explicit value with a 400.
+        // Retry the SAME attempt once more without temperature at all (found 2026-09-26,
+        // was silently breaking script/strategy/SEO/engagement generation --
+        // every caller fell back to hardcoded templates instead of erroring loudly).
+        if (error && error.status === 400 && /temperature/i.test(error.message || '')) {
+          const { temperature: _drop, ...withoutTemperature } = attempt;
+          const response = await this.client.chat.completions.create(withoutTemperature);
+          return this._extractContent(response);
+        }
+        throw error;
       }
-      throw error;
     }
+    throw lastError;
   }
 
   _extractContent(response) {
