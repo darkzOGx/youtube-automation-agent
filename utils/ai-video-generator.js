@@ -5,7 +5,7 @@ const path = require('path');
 const axios = require('axios');
 const sharp = require('sharp');
 const { Logger } = require('./logger');
-const { runFFmpeg, checkFFmpeg, ffmpegInstallHint } = require('./ffmpeg');
+const { runFFmpeg, checkFFmpeg, ffmpegInstallHint, getMediaDuration } = require('./ffmpeg');
 const { MediaGenerationService } = require('./media-generation-service');
 
 class AIVideoGenerator {
@@ -508,7 +508,16 @@ class AIVideoGenerator {
       }
 
       const videoPath = outputPath.replace('.mp4', '_visual.mp4');
-      const duration = this.calculateScriptDuration(script);
+      // Size the slideshow to the REAL narration length, not a word-count guess:
+      // calculateScriptDuration() undercounts (skips array-typed section content),
+      // which made addAudioToVideo's ffmpeg -shortest truncate the narration (bug found 2026-09-26).
+      let duration;
+      try {
+        duration = (await getMediaDuration(audioPath)) + 0.5;
+      } catch (error) {
+        this.logger.warn(`Could not read narration duration, falling back to word-count estimate: ${error.message}`);
+        duration = this.calculateScriptDuration(script);
+      }
       await this.renderSlidesToVideo(stills, duration, videoPath);
 
       // Add audio
