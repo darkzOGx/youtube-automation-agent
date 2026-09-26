@@ -2427,6 +2427,35 @@ class SystemTest {
       if (legacyResult !== 'legacy-ok') throw new Error('Legacy fallback did not return content');
       if (attempt !== 2) throw new Error('Expected exactly one retry with max_tokens');
 
+      // Reasoning-family models (gpt-5.x) reject ANY non-default temperature with a
+      // 400 ("Unsupported value: 'temperature' does not support 0.7 ... Only the
+      // default (1) value is supported.") -- the service must retry the identical
+      // request with temperature omitted, not silently fall back to templates
+      // the way every caller (script writer, content strategist, SEO optimizer,
+      // audience engagement) did before this fix.
+      let temperatureAttempt = 0;
+      service.client.chat.completions.create = async (attemptParams) => {
+        temperatureAttempt++;
+        if (temperatureAttempt === 1) {
+          if (attemptParams.temperature === undefined) {
+            throw new Error('Test setup error: first attempt should still send temperature');
+          }
+          const err = new Error("Unsupported value: 'temperature' does not support 0.7 with this model. Only the default (1) value is supported.");
+          err.status = 400;
+          throw err;
+        }
+        if ('temperature' in attemptParams) {
+          throw new Error('Retry must omit temperature entirely, not just change its value');
+        }
+        if (attemptParams.max_completion_tokens === undefined) {
+          throw new Error('Retry must keep the other request parameters (max_completion_tokens)');
+        }
+        return { choices: [{ message: { content: 'temperature-ok' } }] };
+      };
+      const temperatureResult = await service.generateText('temperature prompt', { temperature: 0.7 });
+      if (temperatureResult !== 'temperature-ok') throw new Error('Temperature fallback did not return content');
+      if (temperatureAttempt !== 2) throw new Error('Expected exactly one retry without temperature');
+
       // An empty model body must surface as a descriptive error, not the cryptic
       // "Unexpected end of JSON input" the agents used to log.
       service.client.chat.completions.create = async () => ({ choices: [{ message: { content: '' } }] });
