@@ -37,6 +37,7 @@ class SystemTest {
       { name: 'Shorts Repurposing Studio', test: () => this.testShortsRepurposingStudio() },
       { name: 'Research and Provenance Desk', test: () => this.testProvenanceDesk() },
       { name: 'DarkzSEO Discoverability Preflight', test: () => this.testDiscoverabilityPreflight() },
+      { name: 'Open Issue Regressions', test: () => this.testOpenIssueRegressions() },
       { name: 'Resumable Generation Checkpoints', test: () => this.testResumableGenerationCheckpoints() },
       { name: 'API Validation and Security', test: () => this.testAPIValidationAndSecurity() },
       { name: 'Publishing Safety', test: () => this.testPublishingSafety() },
@@ -1191,8 +1192,15 @@ class SystemTest {
           fullScript: 'A complete factual-review-safe script for testing selective scene repair without replacing the entire production.',
           hook: { text: 'Fix one weak moment without starting over.' },
           introduction: { greeting: 'Hello.', topicIntro: 'Scene repair matters.', valueProposition: 'Save time and credits.' },
-          mainContent: { sections: [{ title: 'Selective repair', content: 'Keep the scenes that work and replace only the scene that does not.' }] },
-          conclusion: { recap: ['Preserve good work.'], finalThought: 'Review the repaired timeline.' }
+          mainContent: { sections: [
+            { title: 'Selective repair', content: 'Keep the scenes that work and replace only the scene that does not.' },
+            { title: 'Examples', content: ['Example 1: [Specific case study]', 'A real example without template markers.'] }
+          ] },
+          conclusion: { recap: ['Preserve good work.'], finalThought: 'Review the repaired timeline.' },
+          callToAction: {
+            type: 'call_to_action', duration: '15 seconds', subscribe: 'Subscribe.', like: 'Like.',
+            comment: 'Comment.', nextVideo: 'Watch the next video.'
+          }
         },
         seo: { title: 'Repair one scene', description: 'A detailed description of selective scene repair for video production workflows.', tags: ['video', 'repair', 'workflow'] },
         strategy: { topic: 'Selective scene repair' },
@@ -1214,10 +1222,19 @@ class SystemTest {
         sources: [], claims: [], containsSyntheticMedia: false, status: 'not_required',
         summary: { sourceCount: 0, verifiedSources: 0, claimCount: 0, resolvedClaims: 0, highRiskClaims: 0, unresolvedClaims: 0 }
       });
+      await db.saveChannelProfile({ channelName: 'Test channel', visualStyle: 'animated' });
 
       const manifest = buildInitialSceneManifest(production, { actualProvider: 'slideshow', model: 'local-ffmpeg' });
       if (manifest.length < 3 || manifest.some(scene => scene.assetPath !== imagePath)) {
         throw new Error('Initial scene manifest did not preserve the script structure and visual assets');
+      }
+      const examplesScene = manifest.find(scene => scene.label === 'Examples');
+      const ctaScene = manifest.find(scene => scene.label === 'Call to action');
+      if (/\[[^\]]*\]/.test(examplesScene?.scriptText || '') || examplesScene?.scriptText !== 'A real example without template markers.') {
+        throw new Error('Template placeholders leaked into scene narration');
+      }
+      if (ctaScene?.scriptText !== 'Subscribe. Like. Comment. Watch the next video.') {
+        throw new Error('Call-to-action metadata leaked into spoken narration');
       }
       await db.replaceProductionScenes(production.id, manifest);
       for (const scene of await db.listProductionScenes(production.id)) {
@@ -1235,10 +1252,12 @@ class SystemTest {
         id: 'seedance', model: 'seedance-test',
         normalizeRequest: request => ({ ...request, duration: Math.min(4, Number(request.duration || 4)) })
       };
+      let useSlideshow = false;
+      let regeneratedVisualStyle = null;
       const fakeGenerator = {
         mediaGeneration: {
           settings: async () => ({ provider: 'seedance', order: ['seedance'], clipDuration: 4, resolution: '720p', aspectRatio: '16:9' }),
-          registry: { select: () => fakeProvider, get: () => fakeProvider },
+          registry: { select: () => useSlideshow ? { id: 'slideshow' } : fakeProvider, get: () => fakeProvider },
           generateClip: async ({ outputPath }) => {
             await fs.mkdir(path.dirname(outputPath), { recursive: true });
             await fs.writeFile(outputPath, Buffer.from('generated scene video'));
@@ -1246,7 +1265,7 @@ class SystemTest {
           },
           isValidVideo: async () => true
         },
-        generateVisualAssets: async () => [imagePath],
+        generateVisualAssets: async (_prompt, style) => { regeneratedVisualStyle = style; return [imagePath]; },
         async generateTTSAudio(_text, outputPath) {
           await fs.writeFile(outputPath, Buffer.from('scene narration'));
           this.lastNarrationResult = {
@@ -1290,6 +1309,11 @@ class SystemTest {
         regenerated.scene.narrationTaskId !== 'narration-task-1'
       ) {
         throw new Error('Confirmed selective regeneration did not persist visual and narration evidence');
+      }
+      useSlideshow = true;
+      await service.regenerate(production.id, roundTrip[1].id);
+      if (regeneratedVisualStyle !== 'animated') {
+        throw new Error('Scene regeneration ignored the configured channel visual style');
       }
 
       const second = roundTrip[1];
@@ -1405,7 +1429,9 @@ class SystemTest {
         },
         isUsableAudioFile: async filePath => Boolean(filePath && await fs.stat(filePath).then(stat => stat.size > 0).catch(() => false))
       };
-      const service = new SceneRepairService(db, generator, { dataRoot: directory, logger: this.logger });
+      const service = new SceneRepairService(db, generator, {
+        dataRoot: directory, logger: this.logger, getMediaDuration: async () => 5.25
+      });
 
       let confirmationBlocked = false;
       try {
@@ -1429,7 +1455,7 @@ class SystemTest {
       if (
         recovered.narrationStatus !== 'current' || recovered.narrationProvider !== 'openai' ||
         recovered.narrationModel !== 'gpt-4o-mini-tts' || recovered.narrationTaskId !== 'tts-task-1' ||
-        recovered.status !== 'needs_rebuild'
+        recovered.status !== 'needs_rebuild' || recovered.duration !== 5.75
       ) {
         throw new Error('Narration-only recovery did not preserve provider evidence and rebuild state');
       }
@@ -1713,6 +1739,7 @@ class SystemTest {
     const fs = require('fs').promises;
     const os = require('os');
     const { DiscoverabilityService } = require('./utils/discoverability-service');
+    const { DarkzSEOAdapter } = require('./utils/discoverability-adapters/darkzseo');
     const { OperatorService } = require('./utils/operator-service');
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'yaa-discoverability-'));
     const db = new Database();
@@ -1740,6 +1767,40 @@ class SystemTest {
     };
 
     try {
+      const bundledReport = await new DarkzSEOAdapter({ scriptPath: null }).audit({
+        id: 'bundled-audit', platform: 'youtube', brand: 'AgentTube', title: 'Best workflow review',
+        description: 'A useful comparison.', transcript: 'Detailed content '.repeat(100),
+        sections: [{ title: 'What should you choose?', content: 'answer '.repeat(61) }]
+      });
+      if (
+        bundledReport.engine.version !== '1.4.0-bundled' ||
+        !bundledReport.findings.some(finding => finding.ruleId === 'aio.comparison_intent') ||
+        !bundledReport.findings.some(finding => finding.ruleId === 'aio.direct_answer')
+      ) {
+        throw new Error('The bundled discoverability audit did not provide the public content contract');
+      }
+      const configuredPath = process.env.DARKZSEO_PATH;
+      delete process.env.DARKZSEO_PATH;
+      try {
+        if (new DarkzSEOAdapter().scriptPath !== null) {
+          throw new Error('DarkzSEO selected an external Python checkout without explicit configuration');
+        }
+      } finally {
+        if (configuredPath === undefined) delete process.env.DARKZSEO_PATH;
+        else process.env.DARKZSEO_PATH = configuredPath;
+      }
+      const brokenExternal = new DarkzSEOAdapter({ scriptPath: 'broken-darkzseo.py' });
+      brokenExternal.auditExternal = async () => {
+        const error = new Error('No module named darkzseo');
+        error.code = 'DARKZSEO_FAILED';
+        throw error;
+      };
+      const fallbackReport = await brokenExternal.audit({
+        id: 'external-fallback', platform: 'youtube', title: 'Fallback audit'
+      });
+      if (fallbackReport.engine.version !== '1.4.0-bundled' || fallbackReport.status === 'unavailable') {
+        throw new Error('A broken external DarkzSEO runtime did not fall back to the bundled audit');
+      }
       await db.saveProductionData({
         id: productionId, status: 'needs_review', assets: {}, timeline: {},
         scheduledPublishTime: null, priority: 50, estimatedDuration: '1:00'
@@ -1830,6 +1891,72 @@ class SystemTest {
     }
 
     this.logger.info('DarkzSEO discoverability preflight test completed successfully');
+  }
+
+  async testOpenIssueRegressions() {
+    const { ModernAuth } = require('./modern-auth');
+    const { ProductionManagementAgent } = require('./agents/production-management-agent');
+    const { YouTubeAutomationAgent } = require('./index');
+
+    const auth = new ModernAuth();
+    const fixedRedirect = auth.resolveRedirect({
+      youtube: { redirect_uris: ['http://127.0.0.1'] }
+    });
+    if (fixedRedirect.hostname !== '127.0.0.1' || fixedRedirect.port < 8000 || fixedRedirect.pathname !== '/') {
+      throw new Error('OAuth did not use a desktop-app loopback redirect with a local dynamic port');
+    }
+
+    const visualStyles = [];
+    const productionAgent = Object.create(ProductionManagementAgent.prototype);
+    productionAgent.db = { getChannelProfile: async () => ({ visual_style: 'animated' }) };
+    productionAgent.logger = this.logger;
+    productionAgent.aiVideoGenerator = {
+      generateVisualAssets: async (prompt, style) => {
+        visualStyles.push({ prompt, style });
+        return [`asset-${visualStyles.length}.png`];
+      }
+    };
+    const productionData = {
+      script: { title: 'Configured visuals', mainContent: { sections: [{ title: 'Clear demonstration' }] } },
+      assets: {}, timeline: {}, estimatedDuration: '1:00'
+    };
+    await productionAgent.generateVideoContent(productionData);
+    if (!visualStyles.length || visualStyles.some(item => item.style !== 'animated' || /ethereal|mystical|dreamscape/i.test(item.prompt))) {
+      throw new Error('Initial scene generation mixed hardcoded ethereal cues with the configured visual style');
+    }
+
+    const pipeline = new YouTubeAutomationAgent();
+    pipeline.db = {
+      getChannelProfile: async () => ({}),
+      saveProductionData: async data => data.id,
+      saveProductionSnapshot: async () => {},
+      getSetting: async () => 'true',
+      saveContentReview: async () => {},
+      updateProductionStatus: async () => {}
+    };
+    pipeline.provenance = { initialize: async () => ({ sources: [], claims: [], status: 'not_required' }) };
+    pipeline.operator = {
+      runQualityChecks: async () => ({ passed: true, score: 100, checks: [], blockingFailures: [] }),
+      notify: async () => {}
+    };
+    pipeline.preparePackagingExperiment = async () => null;
+    pipeline.agents = {
+      strategy: { generateContentStrategy: async () => ({ topic: 'Null context', angle: 'Original angle' }) },
+      scriptWriter: { generateScript: async strategy => ({ title: strategy.topic, fullScript: 'Complete script.' }) },
+      thumbnailDesigner: { generateThumbnail: async () => ({ path: 'thumbnail.png' }) },
+      seoOptimizer: { optimize: async script => ({ title: script.title, description: 'Description', tags: ['test'] }) },
+      production: { processContent: async input => ({
+        id: 'null-context-production', status: 'ready', ...input, assets: {}, timeline: {},
+        scheduledPublishTime: new Date(Date.now() + 86400000).toISOString(), priority: 50
+      }) },
+      publishing: { scheduleContent: async () => null }
+    };
+    const generated = await pipeline.generateContent(null, null, 'short', { strategyContext: null });
+    if (generated.contentId !== 'null-context-production') {
+      throw new Error('A null manual strategy context still prevented generation');
+    }
+
+    this.logger.info('Open issue regression test completed successfully');
   }
 
   async testResumableGenerationCheckpoints() {
@@ -2173,6 +2300,40 @@ class SystemTest {
       throw new Error('A recorded YouTube upload was not reconciled idempotently');
     }
 
+    let deletedScheduleId = null;
+    const scheduleActions = new PublishingSchedulingAgent({
+      updateScheduleEntry: async () => {},
+      deleteScheduleEntry: async id => { deletedScheduleId = id; }
+    }, {});
+    scheduleActions.publishQueue = [{
+      id: 'schedule-actions', productionId: 'prod-actions', title: 'Actions', status: 'scheduled',
+      publishTime: new Date(Date.now() + 3600000).toISOString(), metadata: { audio: intentionalAudio }
+    }];
+    const future = new Date(Date.now() + 7200000).toISOString();
+    const rescheduled = await scheduleActions.rescheduleContent('prod-actions', future);
+    if (rescheduled.publishTime !== future || rescheduled.status !== 'scheduled') {
+      throw new Error('Scheduled content could not be rescheduled');
+    }
+    await scheduleActions.deleteScheduledContent('prod-actions');
+    if (deletedScheduleId !== 'schedule-actions' || scheduleActions.publishQueue.length) {
+      throw new Error('Deleting a schedule did not preserve content while removing the queue entry');
+    }
+
+    let uploadMetadata = null;
+    const immediate = new PublishingSchedulingAgent({ updateScheduleEntry: async () => {} }, {});
+    immediate.youtube = {
+      videos: { insert: async request => { uploadMetadata = request.requestBody; return { data: { id: 'youtube-now' } }; } },
+      thumbnails: { set: async () => {} }, captions: { insert: async () => {} }
+    };
+    immediate.getVideoStream = async () => ({ fixture: true });
+    await immediate.uploadToYouTube({
+      id: 'schedule-now', publishTime: new Date().toISOString(),
+      metadata: { seo: { title: 'Publish now', description: 'Immediate upload.', tags: ['test'] }, video: { path: 'fixture.mp4' }, privacyStatus: 'public' }
+    }, { publishNow: true });
+    if (uploadMetadata?.status?.privacyStatus !== 'public' || uploadMetadata?.status?.publishAt !== undefined) {
+      throw new Error('Publish now still sent a stale scheduled publishAt value');
+    }
+
     this.logger.info('Publishing safety test completed successfully');
   }
 
@@ -2362,7 +2523,9 @@ class SystemTest {
   }
 
   async testFFmpegResolution() {
-    const { getFFmpegPath, checkFFmpeg, ffmpegInstallHint } = require('./utils/ffmpeg');
+    const fs = require('fs').promises;
+    const os = require('os');
+    const { getFFmpegPath, getMediaDuration, checkFFmpeg, runFFmpeg, ffmpegInstallHint } = require('./utils/ffmpeg');
 
     const ffmpegPath = getFFmpegPath();
     if (typeof ffmpegPath !== 'string' || ffmpegPath.length === 0) {
@@ -2376,6 +2539,18 @@ class SystemTest {
 
     if (!/FFmpeg/i.test(ffmpegInstallHint())) {
       throw new Error('ffmpegInstallHint did not return install guidance');
+    }
+
+    if (available) {
+      const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'yaa-duration-'));
+      try {
+        const audioPath = path.join(directory, 'duration.m4a');
+        await runFFmpeg(['-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1', '-c:a', 'aac', audioPath]);
+        const duration = await getMediaDuration(audioPath);
+        if (duration < 0.9 || duration > 1.2) throw new Error(`Media duration probe returned ${duration}`);
+      } finally {
+        await fs.rm(directory, { recursive: true, force: true });
+      }
     }
 
     this.logger.info(`FFmpeg resolution test completed (binary: ${ffmpegPath}, available: ${available})`);

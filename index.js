@@ -988,6 +988,39 @@ class YouTubeAutomationAgent {
       }
     });
 
+    this.app.patch('/api/content/:productionId/schedule', protect, async (req, res) => {
+      try {
+        if (!this.agents.publishing) return res.status(503).json({ error: 'Publishing requires completed setup' });
+        const result = await this.agents.publishing.rescheduleContent(req.params.productionId, req.body?.publishTime);
+        await this.db.updateProductionStatus(req.params.productionId, 'scheduled');
+        return res.json({ success: true, result });
+      } catch (error) {
+        return res.status(error.status || 400).json({ success: false, error: error.message, code: error.code });
+      }
+    });
+
+    this.app.post('/api/content/:productionId/publish-now', protect, async (req, res) => {
+      try {
+        if (!this.agents.publishing) return res.status(503).json({ error: 'Publishing requires completed setup' });
+        const result = await this.agents.publishing.emergencyPublish(req.params.productionId);
+        await this.db.updateProductionStatus(req.params.productionId, result.status);
+        return res.json({ success: true, result });
+      } catch (error) {
+        return res.status(error.status || 400).json({ success: false, error: error.message, code: error.code });
+      }
+    });
+
+    this.app.delete('/api/content/:productionId/schedule', protect, async (req, res) => {
+      try {
+        if (!this.agents.publishing) return res.status(503).json({ error: 'Publishing requires completed setup' });
+        const result = await this.agents.publishing.deleteScheduledContent(req.params.productionId);
+        await this.db.updateProductionStatus(req.params.productionId, 'approved');
+        return res.json({ success: true, result });
+      } catch (error) {
+        return res.status(error.status || 400).json({ success: false, error: error.message, code: error.code });
+      }
+    });
+
     this.app.patch('/api/discoverability/findings/:findingId', protect, async (req, res) => {
       try {
         const finding = await this.discoverability.reviewFinding(req.params.findingId, req.body || {});
@@ -1408,7 +1441,8 @@ class YouTubeAutomationAgent {
 
   async generateContent(topic = null, style = null, length = 'medium', options = {}) {
     this.logger.info('Starting content generation pipeline...');
-    const { jobId = null, strategyContext = {} } = options;
+    const { jobId = null, strategyContext: rawStrategyContext = {} } = options;
+    const strategyContext = rawStrategyContext || {};
     const profile = await this.db.getChannelProfile() || {};
     const lengthLabels = { short: '2-4 minutes', medium: '8-12 minutes', long: '15-20 minutes' };
 

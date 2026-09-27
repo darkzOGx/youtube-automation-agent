@@ -309,7 +309,8 @@ class AIVideoGenerator {
       abstract: "abstract art, geometric shapes, gradient colors, artistic composition"
     };
 
-    const enhancement = styleEnhancements[style] || styleEnhancements.ethereal;
+    const normalizedStyle = String(style || '').trim().toLowerCase();
+    const enhancement = styleEnhancements[normalizedStyle] || String(style || '').trim() || styleEnhancements.ethereal;
     return `${prompt}, ${enhancement}, high quality, 16:9 aspect ratio, digital art`;
   }
 

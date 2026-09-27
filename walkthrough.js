@@ -456,7 +456,7 @@ class SetupWalkthrough {
     this.cm.credentials.youtube = {
       client_id: answers.clientId.trim(),
       client_secret: (answers.clientSecret || '').trim(),
-      redirect_uris: ['http://localhost:8080/oauth2callback']
+      redirect_uris: ['http://127.0.0.1']
     };
     await this.cm.saveCredentials();
 

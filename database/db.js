@@ -1811,6 +1811,10 @@ class Database {
     );
   }
 
+  async deleteScheduleEntry(id) {
+    await this.executeQuery('DELETE FROM publish_schedule WHERE id = ?', [id]);
+  }
+
   async getLatestScheduleEntry(productionId) {
     const row = await this.getRow(
       'SELECT * FROM publish_schedule WHERE production_id = ? ORDER BY created_at DESC LIMIT 1',

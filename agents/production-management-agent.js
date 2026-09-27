@@ -669,20 +669,20 @@ class ProductionManagementAgent {
     const prompts = [];
     
     // Title prompt
-    prompts.push(`${script.title}, ethereal storytelling, mystical background`);
+    prompts.push(`${script.title}, clear visual storytelling`);
     
     // Content-based prompts
     if (script.mainContent && script.mainContent.sections) {
       script.mainContent.sections.forEach(section => {
         if (section.title) {
-          prompts.push(`${section.title}, ethereal dreamscape, creative visualization`);
+          prompts.push(`${section.title}, relevant explanatory visual`);
         }
       });
     }
     
     // Ensure we have at least 3 prompts
     while (prompts.length < 3) {
-      prompts.push('ethereal dreamscape, mystical storytelling, creative visualization');
+      prompts.push(`${script.title || 'Video topic'}, supporting explanatory visual`);
     }
     
     return prompts.slice(0, 5); // Limit to 5 for cost control

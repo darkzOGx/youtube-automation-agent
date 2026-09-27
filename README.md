@@ -2,8 +2,6 @@
 
 **The open-source AI agent that runs a YouTube channel end to end.**
 
-Join our telegram community: https://t.co/L4SzbqosOM
-
 Research topics → write scripts → generate narration and visuals → assemble videos → optimize metadata → review → schedule → publish → learn from analytics and from what your audience says.
 
 [![CI](https://github.com/darkzOGx/youtube-automation-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/darkzOGx/youtube-automation-agent/actions/workflows/ci.yml)
@@ -14,18 +12,32 @@ Research topics → write scripts → generate narration and visuals → assembl
 
 - **v2.10.0 is now on master:** DarkzSEO discoverability audits, controlled growth experiments, and outcome-aware channel operation are available together in the approval-first workflow.
 
+### September 21, 2026 reliability hotfixes
+
+The latest production fixes are included in [`124a1ed`](https://github.com/darkzOGx/youtube-automation-agent/commit/124a1ed18e474878d5829812dd632e579adbd860) and [`d52b40d`](https://github.com/darkzOGx/youtube-automation-agent/commit/d52b40d94a007caf5e7f256378c0265ddcf09d2b):
+
+- **DarkzSEO works without Python:** the bundled advisory audit is now the default. AgentTube no longer auto-selects sibling Python checkouts, and a missing or broken explicitly configured external runtime falls back to the bundled audit instead of reporting `No module named darkzseo`.
+- **Narration repairs keep correct timing:** regenerated narration updates the scene duration from the replacement audio, preventing stale timing and long silent gaps after a rebuild.
+- **Cleaner spoken narration:** internal CTA metadata and bracketed placeholders are excluded from speech, including placeholders that appear in the middle of a line.
+- **Configured visual styles are respected:** scene generation and repair prompts no longer force the `ethereal` style when the channel uses another visual direction.
+- **Complete scheduling controls:** Review Studio can reschedule a production, publish it now, or delete its schedule without deleting the generated content. Immediate uploads also use the correct YouTube publishing metadata.
+- **Reliable desktop YouTube authorization:** OAuth uses the exact dynamically selected loopback address and port, while legacy hardcoded callback settings are normalized automatically.
+- **Null-safe content generation:** a missing `strategyContext` no longer crashes content generation while reading its angle or keywords.
+
+These paths are covered by the 46-test system suite. Existing safety gates still block simulated video, missing narration, unresolved factual claims, and unconfirmed media rights from publishing.
+
 ## What's new in v2.10.0
 
 **AgentTube now has a discoverability adapter layer.** v2.10.0 connects the production pipeline to DarkzSEO without merging the projects or weakening human review, then adds the evidence needed to prove what packaging and strategy actually work:
 
 - **DarkzSEO Discoverability Preflight:** send a canonical content package—not the private dashboard—through versioned GEO, AIO, AEO, and web-search checks after metadata and provenance are assembled.
 - **Reviewable evidence:** persist stable rule IDs, severity, engine/schema identity, fingerprints, and operator decisions in SQLite. Keep a finding actionable or dismiss a false positive with a reason that carries into matching future audits.
-- **Safe local adapter boundary:** invoke DarkzSEO through JSON-only stdin/stdout without a shell or inherited API secrets. Missing Python, timeouts, and schema drift stay explicit and non-blocking.
+- **Safe local adapter boundary:** run the bundled content checks without Python; optional external DarkzSEO checkouts still use JSON-only stdin/stdout without a shell or inherited API secrets.
 - **Controlled Growth Experiments Studio:** rotate only approved title/thumbnail arms, measure real interval evidence, restore the control, and require a separate decision before adopting a winner.
 - **Outcome & ROI Studio:** align the operator with a measurable KPI, target window, budget, and available revenue/cost evidence without converting missing economics into false zeroes.
 - **Platform-ready foundation:** audits already retain their target platform, providing the durable contract for planned TikTok and Instagram/Reels publishing and analytics adapters.
 
-DarkzSEO is optional. Install DarkzSEO 1.4+ into Python or set `DARKZSEO_PATH`; when it is unavailable, AgentTube records the reason and keeps the existing approval workflow operational.
+The content preflight works out of the box. Set `DARKZSEO_PATH` only when developing against a separate DarkzSEO 1.4+ checkout. If that optional external runtime is missing or broken, AgentTube automatically uses the bundled audit.
 
 See the complete release history in [CHANGELOG.md](CHANGELOG.md).
 
@@ -97,17 +109,17 @@ Use the altered or synthetic media control only when the video contains realisti
 
 ### Review discoverability guidance
 
-Every saved production receives an optional **DarkzSEO Discoverability Preflight** in Review Studio after metadata and provenance are assembled. The adapter sends a canonical content package—not the private dashboard—to DarkzSEO's versioned JSON API and stores the engine version, schema version, severity summary, stable rule IDs, and individual findings in SQLite.
+Every saved production receives an optional **DarkzSEO Discoverability Preflight** in Review Studio after metadata and provenance are assembled. The bundled content auditor reviews a canonical content package—not the private dashboard—and stores the engine version, schema version, severity summary, stable rule IDs, and individual findings in SQLite.
 
-Findings are advisory in this release. Keep a useful recommendation as actionable, or dismiss a false positive with a reviewer reason that carries forward to matching findings on later audits. Missing Python, an unavailable DarkzSEO installation, timeouts, and schema mismatches remain explicit without blocking publication or silently changing scripts and metadata.
+Findings are advisory in this release. Keep a useful recommendation as actionable, or dismiss a false positive with a reviewer reason that carries forward to matching findings on later audits. The bundled audit requires no Python package and never silently changes scripts or metadata.
 
-For local development with a sibling checkout:
+To test a separate DarkzSEO 1.4+ checkout instead of the bundled auditor:
 
 ```bash
-python -m pip install -e ../darkzseo
+DARKZSEO_PATH=../darkzseo/darkzseo.py npm start
 ```
 
-Alternatively set `DARKZSEO_PATH` to `darkzseo.py`. The adapter uses a shell-free Python child process, sends content JSON over stdin, and reads JSON-only stdout. DarkzSEO 1.4 or newer is required.
+The optional external adapter uses a shell-free Python child process, sends content JSON over stdin, and reads JSON-only stdout. The public PyPI `darkzseo` 1.3.3 package has a different site-audit CLI and is not used by AgentTube.
 
 ### What you need
 
@@ -115,7 +127,7 @@ Alternatively set `DARKZSEO_PATH` to `darkzseo.py`. The adapter uses a shell-fre
 - A Google account and YouTube Data API credentials
 - At least one AI text provider key
 - FFmpeg, installed automatically through `ffmpeg-static`
-- Python 3.9+ and DarkzSEO 1.4+ for the optional discoverability preflight
+- Python 3.9+ only when explicitly testing an external DarkzSEO checkout
 
 Gemini offers free access for supported text and TTS usage. Gemini AI image generation currently requires paid-tier access; without an image provider, Lumen can assemble gradient-based visuals instead.
 
@@ -266,8 +278,8 @@ Long-form productions use hybrid assembly: Lumen generates bounded provider clip
 
 1. Create a project in [Google Cloud Console](https://console.cloud.google.com/)
 2. Enable **YouTube Data API v3**
-3. Create an OAuth 2.0 client (Desktop app)
-4. Save the JSON as `config/credentials.json`
+3. Create an OAuth 2.0 client (**Desktop app**, not Web application)
+4. Save the JSON as `config/credentials.json`; AgentTube uses its configured loopback redirect URI exactly
 
 #### OpenAI
 

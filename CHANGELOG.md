@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Bundled the DarkzSEO-compatible content audit so the preflight no longer depends on the unpublished 1.4 Python package; external 1.4+ checkouts remain opt-in through `DARKZSEO_PATH`
+- Fixed regenerated narration timing, CTA metadata and template-placeholder speech leaks, configured visual-style propagation, and null manual strategy contexts
+- Added explicit reschedule, publish-now, and delete-schedule controls while keeping generated content when a schedule is removed
+- Fixed YouTube OAuth to use the configured loopback redirect URI instead of generating a mismatched callback
+
 ## v2.10.0 — 2026-08-24
 
 - Added a versioned DarkzSEO discoverability preflight over a shell-free Python stdin/stdout adapter, with explicit unavailable and schema-mismatch states

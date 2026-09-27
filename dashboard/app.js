@@ -994,7 +994,7 @@ async function openContent(productionId) {
     const title = data.title || item.seo?.title || item.script?.title || item.strategy?.topic || 'Untitled content';
     const description = data.description || item.seo?.description || '';
     const tags = data.tags || item.seo?.tags || [];
-    const publishTime = data.publishTime || item.schedule?.publish_time || item.scheduled_publish_time;
+    const publishTime = item.schedule?.publish_time || data.publishTime || item.scheduled_publish_time;
     const canReview = !['published'].includes(item.schedule?.status);
     const experiment = data.packagingExperiment;
     const selectedTitleVariant = Number(data.selectedTitleVariant || 0);
@@ -1031,6 +1031,7 @@ async function openContent(productionId) {
             <label class="toggle"><input name="factChecked" type="checkbox" ${data.factChecked ? 'checked' : ''}><span></span> Facts and claims reviewed</label>
             <label class="toggle"><input name="rightsConfirmed" type="checkbox" ${data.rightsConfirmed ? 'checked' : ''}><span></span> Media rights confirmed</label>
           </div>
+          ${item.schedule && !['published', 'uploading', 'uploaded', 'reconciliation_required'].includes(item.schedule.status) ? `<div class="form-actions"><button type="button" class="button secondary" data-reschedule-content="${escapeHTML(item.id)}">Reschedule</button><button type="button" class="button primary" data-publish-now-content="${escapeHTML(item.id)}">Publish now</button><button type="button" class="button danger" data-delete-schedule="${escapeHTML(item.id)}">Delete schedule</button></div>` : ''}
           ${canReview ? `<div class="form-actions"><button type="button" class="button primary" data-approve-content="${escapeHTML(item.id)}">Approve & schedule</button><button type="button" class="button secondary" data-save-content="${escapeHTML(item.id)}">Save draft</button><button type="button" class="button danger" data-reject-content="${escapeHTML(item.id)}">Reject</button><button type="button" class="button ghost" data-retry-content="${escapeHTML(item.id)}">Regenerate</button></div>` : `<a class="button secondary" href="${escapeHTML(item.schedule?.youtube_url || '#')}" target="_blank" rel="noopener">Open on YouTube</a>`}
       </form>`;
     $('#content-review-form').dataset.productionId = item.id;
@@ -1548,6 +1549,37 @@ document.addEventListener('click', async event => {
       await mutate(`/api/content/${encodeURIComponent(approve.dataset.approveContent)}/approve`, 'POST', contentFormData(), 'Content approved and scheduled.');
       $('#content-dialog').close();
     } catch (_error) { /* toast already shown */ }
+  }
+
+  const reschedule = event.target.closest('[data-reschedule-content]');
+  if (reschedule) {
+    const publishTime = contentFormData().publishTime;
+    if (!publishTime) return showToast('Choose a future publish time first.', 'error');
+    try {
+      await mutate(`/api/content/${encodeURIComponent(reschedule.dataset.rescheduleContent)}/schedule`, 'PATCH', { publishTime }, 'Content rescheduled.');
+      await openContent(reschedule.dataset.rescheduleContent);
+    } catch (_error) { /* toast already shown */ }
+    return;
+  }
+
+  const publishNow = event.target.closest('[data-publish-now-content]');
+  if (publishNow) {
+    if (!confirm('Publish this video to YouTube now using the selected privacy setting?')) return;
+    try {
+      await mutate(`/api/content/${encodeURIComponent(publishNow.dataset.publishNowContent)}/publish-now`, 'POST', {}, 'Content published.');
+      $('#content-dialog').close();
+    } catch (_error) { /* toast already shown */ }
+    return;
+  }
+
+  const deleteSchedule = event.target.closest('[data-delete-schedule]');
+  if (deleteSchedule) {
+    if (!confirm('Delete this schedule entry? The generated content and assets will be kept.')) return;
+    try {
+      await mutate(`/api/content/${encodeURIComponent(deleteSchedule.dataset.deleteSchedule)}/schedule`, 'DELETE', undefined, 'Schedule deleted; generated content was kept.');
+      await openContent(deleteSchedule.dataset.deleteSchedule);
+    } catch (_error) { /* toast already shown */ }
+    return;
   }
 
   const reject = event.target.closest('[data-reject-content]');
