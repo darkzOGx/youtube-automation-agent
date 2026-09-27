@@ -18,7 +18,8 @@ class MediaGenerationService {
 
   async settings() {
     const stored = this.db?.getAllSettings ? await this.db.getAllSettings() : {};
-    const provider = process.env.VIDEO_PROVIDER || stored.video_provider || 'slideshow';
+    const preferred = process.env.VIDEO_PROVIDER || stored.video_provider || 'google_omni';
+    const provider = this.registry.get(preferred)?.isAvailable() ? preferred : (this.registry.get('google_omni')?.isAvailable() ? 'google_omni' : 'slideshow');
     const order = String(process.env.VIDEO_PROVIDER_ORDER || stored.video_provider_order || DEFAULT_PROVIDER_ORDER.join(','))
       .split(',').map(value => value.trim()).filter(Boolean);
     return {
@@ -78,6 +79,10 @@ class MediaGenerationService {
     const providerInfo = provider.describe();
     if (provider.id === 'slideshow' || settings.mode === 'slideshow' || settings.maxGeneratedSeconds === 0) {
       return { clips: [], requestedProvider: settings.provider, actualProvider: 'slideshow', model: 'local-ffmpeg', settings };
+    }
+
+    if (provider.id === 'google_omni' && settings.mode !== 'slideshow') {
+      this.logger.info(`Using Google Gemini Omni for real video clip generation (${provider.model})`);
     }
 
     const normalized = provider.normalizeRequest(routingRequest);
