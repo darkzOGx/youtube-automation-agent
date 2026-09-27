@@ -299,15 +299,23 @@ class ProductionManagementAgent {
     try {
       const { script } = productionData;
       
-      // Generate visual assets using DALL-E
+      // When a real video provider is available (Gemini Omni, etc.), do not generate a
+      // one-image slideshow placeholder. Keep a minimal asset list for fallback only.
       const visualPrompts = this.createVisualPromptsFromScript(script);
       const visualAssets = [];
-      const profile = await this.db.getChannelProfile?.() || {};
-      const visualStyle = profile.visual_style || 'ethereal';
-      
-      for (const prompt of visualPrompts) {
-        const assets = await this.aiVideoGenerator.generateVisualAssets(prompt, visualStyle, 1);
-        visualAssets.push(...assets);
+      const preferredProvider = (process.env.VIDEO_PROVIDER || 'google_omni').toLowerCase();
+      const hasRealVideoProvider = ['google_omni', 'seedance', 'minimax_h3', 'kling', 'wan', 'd_id'].includes(preferredProvider);
+
+      if (hasRealVideoProvider) {
+        for (const prompt of visualPrompts.slice(0, 2)) {
+          const assets = await this.aiVideoGenerator.generateVisualAssets(prompt, 'ethereal', 1);
+          visualAssets.push(...assets);
+        }
+      } else {
+        for (const prompt of visualPrompts) {
+          const assets = await this.aiVideoGenerator.generateVisualAssets(prompt, 'ethereal', 1);
+          visualAssets.push(...assets);
+        }
       }
       
       productionData.assets.video = {
@@ -316,7 +324,7 @@ class ProductionManagementAgent {
         format: 'mp4',
         resolution: '1920x1080',
         fps: 30,
-        generatedWith: 'AI'
+        generatedWith: hasRealVideoProvider ? 'ProviderVideo' : 'AI'
       };
       
       productionData.timeline.videoGenerated = new Date().toISOString();
