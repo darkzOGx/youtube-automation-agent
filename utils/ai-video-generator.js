@@ -776,6 +776,18 @@ class AIVideoGenerator {
     return '<p>Content coming soon...</p>';
   }
 
+  countWords(value) {
+    // Strings count by whitespace split; section `content` is sometimes an
+    // array of strings (template-mode sections), so recurse into arrays.
+    if (typeof value === 'string') {
+      return value.split(' ').length;
+    }
+    if (Array.isArray(value)) {
+      return value.reduce((sum, entry) => sum + this.countWords(entry), 0);
+    }
+    return 0;
+  }
+
   calculateScriptDuration(script) {
     // Estimate duration based on word count (average 150 words per minute)
     let totalWords = 0;
@@ -788,9 +800,7 @@ class AIVideoGenerator {
     
     if (script.mainContent && script.mainContent.sections) {
       script.mainContent.sections.forEach(section => {
-        if (typeof section.content === 'string') {
-          totalWords += section.content.split(' ').length;
-        }
+        totalWords += this.countWords(section.content);
         if (section.items) {
           section.items.forEach(item => {
             totalWords += (item.title + ' ' + item.description).split(' ').length;

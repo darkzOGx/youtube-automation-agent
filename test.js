@@ -1956,6 +1956,42 @@ class SystemTest {
       throw new Error('A null manual strategy context still prevented generation');
     }
 
+    const { AIVideoGenerator } = require('./utils/ai-video-generator');
+    const slideshowGen = new AIVideoGenerator({}, { db: null });
+
+    // #57: sections whose `content` is an array (the default shape from
+    // generateExplanation/generateExamples/generateProblemSection) must count
+    // toward the narration duration estimate. Otherwise the rendered video
+    // track is shorter than the real narration and `ffmpeg -shortest` cuts
+    // the audio off mid-sentence with no warning.
+    const arraySection = {
+      title: 'Deep Dive',
+      content: new Array(10).fill('one two three four five six seven eight nine ten') // 100 words
+    };
+    const arrayScript = {
+      hook: { text: 'hook' },
+      mainContent: { sections: [arraySection] },
+      conclusion: { finalThought: 'end' }
+    };
+    const arrayDuration = slideshowGen.calculateScriptDuration(arrayScript);
+    const arrayExpected = Math.max(30, Math.ceil((102 / 150) * 60)); // 102 words -> 41s
+    if (arrayDuration < arrayExpected) {
+      throw new Error(
+        `calculateScriptDuration ignored array section content: got ${arrayDuration}s, expected at least ${arrayExpected}s (issue #57)`
+      );
+    }
+
+    // String-shaped content must keep working exactly as before.
+    const stringDuration = slideshowGen.calculateScriptDuration({
+      hook: { text: 'hook' },
+      mainContent: { sections: [{ title: 'Part', content: 'one two three' }] },
+      conclusion: { finalThought: 'end' }
+    });
+    const stringExpected = Math.max(30, Math.ceil((5 / 150) * 60)); // 5 words -> 30s floor
+    if (stringDuration !== stringExpected) {
+      throw new Error(`calculateScriptDuration changed string-content behavior: got ${stringDuration}s, expected ${stringExpected}s`);
+    }
+
     this.logger.info('Open issue regression test completed successfully');
   }
 
