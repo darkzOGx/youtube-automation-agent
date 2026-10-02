@@ -1,0 +1,130 @@
+YouTube Automation Agent Environment Configuration
+# Copy this file to .env and fill in your actual values
+
+# AI Provider - Pick one (or use OpenRouter for access to all)
+# Uncomment the line you use — placeholder values must stay commented out
+# OPENAI_API_KEY=your-openai-api-key-here
+# OPE-api-key-here
+GEMINI_API_KEY=AIzaSyCl_PC-pQH9JQ7
+
+# MOONSHOT_API_KEY=your-kimi-api-key-here
+# MIMO_API_KEY=your-mimo-api-key-here
+# GLM_API_KEY=your-glm-api-key-here
+
+# ElevenLabs TTS (optional, higher quality than OpenAI TTS)
+# ELEVENLABS_API_KEY=your-elevenlabs-api-key-here
+# ELEVENLABS_VOICE_ID=your-voice-id-here
+
+# AI video generation (optional; local slideshow is the no-cost default)
+# VIDEO_PROVIDER=slideshow
+# VIDEO_PROVIDER_ORDER=seedance,minimax_h3,google_omni,kling,wan,slideshow
+# VIDEO_GENERATION_MODE=hybrid
+# VIDEO_CLIP_DURATION=8
+# VIDEO_MAX_GENERATED_SECONDS=60
+# VIDEO_RESOLUTION=720p
+# VIDEO_ASPECT_RATIO=16:9
+
+# Seedance 2.5 through Replicate
+# REPLICATE_API_TOKEN=your-replicate-api-token-here
+# REPLICATE_API_KEY=your-replicate-api-token-here
+# SEEDANCE_MODEL=bytedance/seedance-2.5
+
+# MiniMax H3
+# MINIMAX_API_KEY=your-minimax-api-key-here
+# MINIMAX_VIDEO_MODEL=MiniMax-H3
+
+# Google Gemini Omni Flash uses GEMINI_API_KEY above
+# GEMINI_VIDEO_MODEL=gemini-omni-flash-preview
+
+# Kling 3.0 Omni
+# KLING_ACCESS_KEY=your-kling-access-key-here
+# KLING_SECRET_KEY=your-kling-secret-key-here
+# KLING_VIDEO_MODEL=kling-v3-omni
+
+# Alibaba Wan 2.7
+# DASHSCOPE_API_KEY=your-dashscope-api-key-here
+# DASHSCOPE_VIDEO_ENDPOINT=https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis
+# DASHSCOPE_TASK_ENDPOINT=https://dashscope-intl.aliyuncs.com/api/v1/tasks
+
+# Gemini media generation (used when GEMINI_API_KEY is your provider)
+# GEMINI_IMAGE_MODEL=gemini-3.1-flash-image
+# GEMINI_TTS_MODEL=gemini-3.1-flash-tts-preview
+# GEMINI_TTS_VOICE=Kore
+
+# FFmpeg (optional override; resolution order: FFMPEG_PATH > bundled ffmpeg-static > system PATH)
+# FFMPEG_PATH=
+
+# DarkzSEO discoverability preflight (bundled and advisory; external checkout is explicit and falls back safely)
+# DARKZSEO_PYTHON=python
+# DARKZSEO_PATH=../darkzseo/darkzseo.py
+# DARKZSEO_TIMEOUT_MS=30000
+
+# Optional OAuth loopback override; Desktop app credentials are required.
+# YOUTUBE_REDIRECT_URI=http://127.0.0.1
+
+# Azure Speech TTS (optional alternative)
+# AZURE_SPEECH_KEY=your-azure-speech-key-here
+# AZURE_SPEECH_REGION=eastus
+
+# Application Settings
+NODE_ENV=production
+PORT=3456
+LOG_LEVEL=info
+
+# Channel Settings
+CHANNEL_NAME=Your Channel Name
+DEFAULT_AUTHOR=Your Name
+TARGET_AUDIENCE=Your target audience description
+
+# YouTube Settings
+YOUTUBE_REGION=US
+DEFAULT_PRIVACY_STATUS=private
+
+# Content Settings
+AUTO_SHORTEN_CONTENT=true
+AUTO_ADD_BACKLINKS=true
+PRESERVE_FORMATTING=true
+AUTO_RESIZE_IMAGES=true
+MAX_IMAGE_WIDTH=1280
+MAX_IMAGE_HEIGHT=720
+IMAGE_QUALITY=90
+
+# Rate Limiting
+GLOBAL_RATE_LIMIT_PER_HOUR=50
+DEFAULT_DELAY_BETWEEN_POSTS=60000
+
+# Security
+# Optional. If set, mutating API routes require this value in the x-api-key header.
+API_KEY=
+
+# Optional. Generation jobs run one at a time by default to control API spend.
+MAX_CONCURRENT_JOBS=1
+
+# Optional. Each retry-safe generation stage gets one bounded retry by default.
+GENERATION_STAGE_MAX_ATTEMPTS=2
+GENERATION_RETRY_BASE_MS=1000
+
+# Optional Slack/Discord-compatible webhook for failures and review alerts.
+# NOTIFICATION_WEBHOOK_URL=https://hooks.example.com/...
+
+# Optional anonymous activation milestones (OFF by default).
+# No telemetry is sent unless both values are explicitly configured.
+# Payload: milestone name, timestamp, Lumen version, OS family, Node major,
+# and a random installation ID. Never includes channel, topic, title, keys, or files.
+# ANONYMOUS_TELEMETRY_ENABLED=false
+# ANONYMOUS_TELEMETRY_ENDPOINT=https://your-collector.example/events
+
+# Maximum agent-posted comment replies per day (Engagement studio; default 50)
+# ENGAGEMENT_DAILY_REPLY_CAP=50
+
+# Analytics & Monitoring
+ENABLE_ANALYTICS=true
+ANALYTICS_DB_PATH=./data/analytics.db
+
+# File Upload Settings
+MAX_FILE_SIZE=52428800
+UPLOAD_PATH=./uploads
+
+# Error Handling
+RETRY_ATTEMPTS=3
+RETRY_DELAY=5000
