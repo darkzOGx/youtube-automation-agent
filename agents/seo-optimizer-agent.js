@@ -1,5 +1,6 @@
 const { Logger } = require('../utils/logger');
 const { LLMClient } = require('../utils/llm-client');
+const { AITextService } = require('../utils/ai-text-service');
 
 class SEOOptimizerAgent {
   constructor(db, credentials) {
@@ -7,8 +8,11 @@ class SEOOptimizerAgent {
     this.credentials = credentials;
     this.logger = new Logger('SEOOptimizer');
     this.keywordDatabase = new Map();
-    
+
+    // Primary text generation: LLMClient router. AITextService is a fallback used only
+    // when LLMClient has no providers configured.
     this.llm = new LLMClient(credentials);
+    this.aiTextService = new AITextService(credentials?.credentials || credentials || {});
   }
 
   async initialize() {
@@ -32,14 +36,24 @@ class SEOOptimizerAgent {
     try {
       this.logger.info(`Optimizing SEO for: ${script.title}`);
       
-      // Generate optimized title
-      const title = await this.optimizeTitle(script.title, strategy);
-      
-      // Generate description
-      const description = await this.generateDescription(script, strategy);
-      
-      // Extract and optimize tags
-      const tags = await this.generateTags(script, strategy, analyticsData);
+      let title, description, tags;
+      const aiSEO = this.llm.isAvailable() ? null : await this.generateSEOWithAI(script, strategy);
+
+      if (aiSEO) {
+        // AITextService fallback path; still run the title through the channel's title cleanup.
+        title = await this.optimizeTitle(aiSEO.title, strategy);
+        description = aiSEO.description;
+        tags = aiSEO.tags;
+      } else {
+        // Generate optimized title
+        title = await this.optimizeTitle(script.title, strategy);
+        
+        // Generate description (LLMClient-powered, with template fallback)
+        description = await this.generateDescription(script, strategy);
+        
+        // Extract and optimize tags
+        tags = await this.generateTags(script, strategy, analyticsData);
+      }
       
       // Generate hashtags
       const hashtags = await this.generateHashtags(strategy);
@@ -88,6 +102,90 @@ class SEOOptimizerAgent {
     }
   }
 
+  async generateSEOWithAI(script, strategy) {
+    if (!this.aiTextService.isAvailable()) {
+      this.logger.info('Using template SEO optimization because no AI text provider is configured');
+      return null;
+    }
+
+    const prompt = `You are optimizing YouTube metadata.
+Return only valid JSON with this exact shape:
+{
+  "title": "SEO title under 100 characters",
+  "description": "YouTube description in Bahasa Indonesia with a useful summary of the story",
+  "tags": ["tag"]
+}
+
+Write the title, description, and tags in Bahasa Indonesia for an Indonesian children's storytelling channel (audience: parents of children aged 2-8).
+Do not include timestamps or chapters in the description; you do not have the video's timings.
+Do not add years or words like "Resmi", "Ultimate", "Terbaik" to the title.
+
+Video title: ${script.title}
+Topic: ${strategy.topic}
+Angle: ${strategy.angle}
+Content type: ${strategy.contentType}
+Target audience: ${strategy.targetAudience}
+Keywords: ${(strategy.keywords || []).join(', ')}
+Keep tags under YouTube's 500 character total guidance. Avoid fabricated statistics and unsupported claims.`;
+
+    try {
+      const response = await this.aiTextService.generateText(prompt, {
+        maxTokens: 1400,
+        temperature: 0.6
+      });
+      const parsed = this.parseAIJsonResponse(response);
+      const tags = this.normalizeAITags(parsed.tags, strategy);
+
+      if (!parsed.title || !parsed.description || tags.length === 0) {
+        throw new Error('AI SEO response missing required fields');
+      }
+
+      this.logger.info(`Using AI SEO optimization via ${this.aiTextService.providerName}`);
+      return {
+        title: String(parsed.title).trim().slice(0, 100),
+        description: String(parsed.description).trim().slice(0, 5000),
+        tags
+      };
+    } catch (error) {
+      this.logger.warn(`AI SEO optimization failed; using template fallback: ${error.message}`);
+      return null;
+    }
+  }
+
+  parseAIJsonResponse(response) {
+    const text = String(response || '').trim();
+    const withoutFences = text
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/```$/i, '')
+      .trim();
+
+    try {
+      return JSON.parse(withoutFences);
+    } catch (error) {
+      const match = withoutFences.match(/\{[\s\S]*\}/);
+      if (!match) {
+        throw error;
+      }
+      return JSON.parse(match[0]);
+    }
+  }
+
+  normalizeAITags(tags, strategy) {
+    const rawTags = Array.isArray(tags) ? tags : [];
+    const fallbackTags = rawTags.length > 0 ? rawTags : strategy.keywords || [];
+    const uniqueTags = [];
+    let totalLength = 0;
+
+    for (const tag of fallbackTags) {
+      const cleaned = String(tag).trim();
+      if (!cleaned || uniqueTags.includes(cleaned)) continue;
+      if (totalLength + cleaned.length + 1 > 500) break;
+      uniqueTags.push(cleaned);
+      totalLength += cleaned.length + 1;
+    }
+
+    return uniqueTags;
+  }
   async optimizeTitle(originalTitle, strategy) {
     // YouTube title limit: 100 characters, optimal: 60-70
     // For Indonesian children's story channel — do NOT inject English power words or year.

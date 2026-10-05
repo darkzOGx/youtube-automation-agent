@@ -1,8 +1,10 @@
 const { google } = require('googleapis');
 const fs = require('fs').promises;
-const standardFs = require('fs');
+const fsSync = require('fs');
+const os = require('os');
 const path = require('path');
 const { Logger } = require('../utils/logger');
+const { assertValidYouTubeMetadata } = require('../utils/youtube-metadata-validator');
 
 class PublishingSchedulingAgent {
   constructor(db, credentials) {
@@ -14,7 +16,8 @@ class PublishingSchedulingAgent {
   }
 
   async executeWithFallback(operation) {
-    let maxTries = this.credentials.credentials.youtube ? this.credentials.credentials.youtube.length : 1;
+    const youtubeCredentials = this.credentials?.credentials?.youtube;
+    const maxTries = Array.isArray(youtubeCredentials) ? Math.max(youtubeCredentials.length, 1) : 1;
     let tries = 0;
     let lastError = null;
 
@@ -23,10 +26,11 @@ class PublishingSchedulingAgent {
         return await operation();
       } catch (error) {
         lastError = error;
-        if (error.code === 403 && (error.message.toLowerCase().includes('quota') || error.message.toLowerCase().includes('exceeded'))) {
-          this.logger.warn(`Quota exceeded on YouTube API (Account ${this.credentials.activeYoutubeIndex}).`);
-          
-          if (tries < maxTries - 1 && this.credentials.switchToNextYouTubeAuth()) {
+        const message = String(error?.message || '').toLowerCase();
+        if (Number(error?.code) === 403 && (message.includes('quota') || message.includes('exceeded'))) {
+          this.logger.warn(`Quota exceeded on YouTube API (Account ${this.credentials?.activeYoutubeIndex}).`);
+
+          if (tries < maxTries - 1 && typeof this.credentials?.switchToNextYouTubeAuth === 'function' && this.credentials.switchToNextYouTubeAuth()) {
             this.logger.info(`Attempting fallback to next account...`);
             this.youtube = this.credentials.getYouTubeClient();
             tries++;
@@ -69,8 +73,27 @@ class PublishingSchedulingAgent {
 
   async scheduleContent(productionData) {
     try {
+      const finalVideo = productionData.assets?.finalVideo;
+      if (!finalVideo || finalVideo.simulated || path.extname(finalVideo.path || '').toLowerCase() !== '.mp4') {
+        this.logger.warn(`Not scheduling ${productionData.id}: no real video file was produced (placeholder/simulated output). Fix your AI provider keys and FFmpeg, then regenerate.`);
+        return null;
+      }
+      if (!await this.isNarrationReady(productionData.assets?.audio)) {
+        this.logger.warn(`Not scheduling ${productionData.id}: narration is missing. Regenerate narration or explicitly confirm an intentional silent video.`);
+        return null;
+      }
+
       this.logger.info(`Scheduling content: ${productionData.id}`);
-      
+      const existing = await this.db.getLatestScheduleEntry?.(productionData.id);
+      if (existing) {
+        if (['scheduled', 'paused'].includes(existing.status) && !this.publishQueue.some(entry => entry.id === existing.id)) {
+          this.publishQueue.push(existing);
+          this.publishQueue.sort((a, b) => new Date(a.publishTime) - new Date(b.publishTime));
+        }
+        this.logger.info(`Reusing existing ${existing.status} schedule entry for: ${productionData.id}`);
+        return existing;
+      }
+
       const scheduleEntry = {
         productionId: productionData.id,
         title: productionData.script.title,
@@ -81,7 +104,13 @@ class PublishingSchedulingAgent {
           seo: productionData.seo,
           thumbnail: productionData.assets.thumbnail,
           video: productionData.assets.finalVideo,
+          audio: productionData.assets.audio,
           captions: productionData.assets.captions,
+          privacyStatus: productionData.privacyStatus || process.env.DEFAULT_PRIVACY_STATUS || 'private',
+          containsSyntheticMedia: productionData.containsSyntheticMedia === true,
+          contentType: productionData.contentType || 'long_form',
+          sourceProductionId: productionData.sourceProductionId || productionData.id,
+          shortClipId: productionData.shortClipId || null,
           models: {
             imageModel: productionData.script?.imageModel || 'imagen-4.0-generate-001',
             imageProvider: productionData.script?.imageProvider || 'gemini',
@@ -91,33 +120,95 @@ class PublishingSchedulingAgent {
         createdAt: new Date().toISOString()
       };
       
-      this.publishQueue.push(scheduleEntry);
+      const saved = await this.db.saveScheduleEntry(scheduleEntry) || scheduleEntry;
+      this.publishQueue.push(saved);
       this.publishQueue.sort((a, b) => new Date(a.publishTime) - new Date(b.publishTime));
       
-      await this.db.saveScheduleEntry(scheduleEntry);
-      
-      this.logger.info(`Content scheduled for: ${scheduleEntry.publishTime}`);
-      return scheduleEntry;
+      this.logger.info(`Content scheduled for: ${saved.publishTime}`);
+      return saved;
     } catch (error) {
       this.logger.error('Failed to schedule content:', error);
       throw error;
     }
   }
 
-  async publishContent(contentId) {
+  async publishContent(contentId, options = {}) {
     try {
+      let productionBundle = null;
+      if (this.db.getLatestReadinessRun) {
+        const readiness = await this.db.getLatestReadinessRun();
+        if (readiness?.status === 'failed') {
+          const failures = readiness.checks
+            .filter(check => check.blocking && check.status === 'failed')
+            .map(check => check.id);
+          const error = new Error(`Publishing is blocked by the production readiness gate. Fix ${failures.join(', ')} and run the check again.`);
+          error.status = 409;
+          error.code = 'READINESS_BLOCKED';
+          throw error;
+        }
+      }
+      if (this.db.getProductionBundle) {
+        productionBundle = await this.db.getProductionBundle(contentId);
+        if (productionBundle && !['verified', 'not_required'].includes(productionBundle.provenance?.status || 'not_required')) {
+          const error = new Error('Publishing is blocked until every factual claim is supported or explicitly waived');
+          error.status = 409;
+          error.code = 'PROVENANCE_BLOCKED';
+          throw error;
+        }
+      }
       this.logger.info(`Publishing content: ${contentId}`);
       
-      const scheduleEntry = this.publishQueue.find(entry => 
+      let scheduleEntry = this.publishQueue.find(entry =>
         entry.productionId === contentId || entry.id === contentId
       );
+      if (!scheduleEntry && this.db.getLatestScheduleEntry) {
+        scheduleEntry = await this.db.getLatestScheduleEntry(contentId);
+      }
       
       if (!scheduleEntry) {
         throw new Error(`Content not found in queue: ${contentId}`);
       }
+      if (scheduleEntry.status === 'published') return scheduleEntry;
+      if (!await this.isNarrationReady(scheduleEntry.metadata?.audio || productionBundle?.assets?.audio)) {
+        const error = new Error('Publishing is blocked because narration is missing or the intentional-silence override is incomplete');
+        error.status = 409;
+        error.code = 'NARRATION_REQUIRED';
+        throw error;
+      }
+      if (scheduleEntry.youtubeId) {
+        return this.reconcileUploadedVideo(scheduleEntry);
+      }
+      if (['uploading', 'reconciliation_required'].includes(scheduleEntry.status)) {
+        const error = new Error('A previous upload may have reached YouTube without returning a video ID. Reconcile the channel before attempting another upload.');
+        error.status = 409;
+        error.code = 'UPLOAD_OUTCOME_UNKNOWN';
+        throw error;
+      }
+
+      scheduleEntry.status = 'uploading';
+      scheduleEntry.error = null;
+      await this.db.updateScheduleEntry(scheduleEntry);
+      await this.syncShortStatus(scheduleEntry, 'uploading');
       
-      // Upload video to YouTube
-      const uploadResult = await this.uploadToYouTube(scheduleEntry);
+      let uploadResult;
+      try {
+        uploadResult = await this.uploadToYouTube(scheduleEntry, options);
+      } catch (error) {
+        if (scheduleEntry.uploadAttempted && this.isUploadOutcomeUnknown(error)) {
+          scheduleEntry.status = 'reconciliation_required';
+          scheduleEntry.error = 'Upload outcome is unknown; verify the YouTube channel before retrying';
+          await this.db.updateScheduleEntry(scheduleEntry);
+          await this.syncShortStatus(scheduleEntry, 'reconciliation_required', scheduleEntry.error);
+          error.code = 'UPLOAD_OUTCOME_UNKNOWN';
+          error.status = 409;
+        } else {
+          scheduleEntry.status = 'failed';
+          scheduleEntry.error = error.message;
+          await this.db.updateScheduleEntry(scheduleEntry);
+          await this.syncShortStatus(scheduleEntry, 'failed', error.message);
+        }
+        throw error;
+      }
       
       // Update database
       scheduleEntry.status = 'published';
@@ -126,9 +217,10 @@ class PublishingSchedulingAgent {
       scheduleEntry.youtubeUrl = `https://www.youtube.com/watch?v=${uploadResult.id}`;
       
       await this.db.updateScheduleEntry(scheduleEntry);
+      await this.syncShortStatus(scheduleEntry, 'published');
       
       // Remove from queue
-      this.publishQueue = this.publishQueue.filter(entry => entry.id !== scheduleEntry.id);
+      this.publishQueue = this.publishQueue.filter(entry => entry.productionId !== scheduleEntry.productionId);
       
       this.logger.success(`Content published: ${scheduleEntry.youtubeUrl}`);
       return scheduleEntry;
@@ -138,8 +230,13 @@ class PublishingSchedulingAgent {
     }
   }
 
-  async uploadToYouTube(scheduleEntry) {
+  async uploadToYouTube(scheduleEntry, options = {}) {
     const { metadata } = scheduleEntry;
+    const validation = assertValidYouTubeMetadata(metadata.seo);
+    if (validation.warnings.length) {
+      this.logger.warn(`YouTube metadata warnings: ${validation.warnings.join(' ')}`);
+    }
+    const safeMetadata = validation.value;
     
     if (metadata.video.simulated || (metadata.video.path && metadata.video.path.endsWith('.json'))) {
       this.logger.info(`[Simulation] Simulating YouTube upload for simulated video: ${metadata.video.path}`);
@@ -157,31 +254,39 @@ class PublishingSchedulingAgent {
       };
     }
     
-    // Check if it's a short video
-    const isShort = metadata.strategy && metadata.strategy.videoType === 'short';
-    let finalTitle = metadata.seo.title;
-    let finalDescription = metadata.seo.description;
-    
+    // Check if it's a short video (fork: strategy.videoType; upstream: contentType)
+    const isShort = metadata.strategy?.videoType === 'short' || metadata.contentType === 'short';
+    let finalTitle = safeMetadata.title;
+    let finalDescription = safeMetadata.description || '';
+
     if (isShort) {
-      if (!finalTitle.toLowerCase().includes('#shorts')) finalTitle += ' #shorts';
-      if (!finalDescription.toLowerCase().includes('#shorts')) finalDescription += '\n\n#shorts #youtubeshorts';
+      const titleSuffix = ' #shorts';
+      const descriptionSuffix = '\n\n#shorts #youtubeshorts';
+      // Respect YouTube's 100-char title / 5000-char description limits enforced by the validator.
+      if (!finalTitle.toLowerCase().includes('#shorts') && finalTitle.length + titleSuffix.length <= 100) finalTitle += titleSuffix;
+      if (!finalDescription.toLowerCase().includes('#shorts') && finalDescription.length + descriptionSuffix.length <= 5000) finalDescription += descriptionSuffix;
     }
 
     // Prepare video metadata
+    const requestedPrivacy = metadata.privacyStatus || process.env.DEFAULT_PRIVACY_STATUS || 'private';
+    const scheduledFor = new Date(scheduleEntry.publishTime);
+    const futureSchedule = !options.publishNow && Number.isFinite(scheduledFor.getTime()) && scheduledFor.getTime() > Date.now() + 60000;
     const videoMetadata = {
       snippet: {
         title: finalTitle,
         description: finalDescription,
-        tags: metadata.seo.tags,
-        categoryId: metadata.seo.metadata.category.toString(),
-        defaultLanguage: metadata.seo.metadata.language,
-        defaultAudioLanguage: metadata.seo.metadata.language
+        tags: safeMetadata.tags,
+        categoryId: safeMetadata.categoryId,
+        defaultLanguage: safeMetadata.defaultLanguage,
+        defaultAudioLanguage: safeMetadata.defaultAudioLanguage
       },
       status: {
-        privacyStatus: process.env.DEFAULT_PRIVACY_STATUS || 'public',
-        selfDeclaredMadeForKids: false
+        privacyStatus: futureSchedule ? 'private' : requestedPrivacy,
+        selfDeclaredMadeForKids: false,
+        containsSyntheticMedia: metadata.containsSyntheticMedia === true
       }
     };
+    if (futureSchedule) videoMetadata.status.publishAt = scheduleEntry.publishTime;
 
     // If a specific channel is selected (for accounts with multiple channels), add it
     const selectedChannelId = this.credentials?.credentials?.channel?.selectedChannelId;
@@ -190,28 +295,28 @@ class PublishingSchedulingAgent {
       this.logger.info(`Uploading to selected channel: ${selectedChannelId}`);
     }
 
-    
-    // Only schedule if privacy status is private and publish time is in the future
-    if (videoMetadata.status.privacyStatus === 'private' && scheduleEntry.publishTime) {
-      const publishTime = new Date(scheduleEntry.publishTime);
-      if (publishTime > new Date()) {
-        videoMetadata.status.publishAt = scheduleEntry.publishTime;
-      }
-    }
-    
-    // Upload video file
-    const videoUpload = await this.executeWithFallback(async () => 
-      this.youtube.videos.insert({
+    // Upload video file, falling back to the next YouTube account on quota errors.
+    // The stream is resolved inside the operation so a retry gets a fresh (unconsumed) stream,
+    // and before marking the network upload as attempted.
+    const videoUpload = await this.executeWithFallback(async () => {
+      const videoStream = await this.getVideoStream(metadata.video.path);
+      scheduleEntry.uploadAttempted = true;
+      return this.youtube.videos.insert({
         part: 'snippet,status',
         requestBody: videoMetadata,
         media: {
-          body: await this.getVideoStream(metadata.video.path)
+          body: videoStream
         }
-      })
-    );
+      });
+    });
     
     const videoId = videoUpload.data.id;
     this.logger.info(`Video uploaded with ID: ${videoId}`);
+    scheduleEntry.status = 'uploaded';
+    scheduleEntry.youtubeId = videoId;
+    scheduleEntry.youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+    scheduleEntry.error = null;
+    await this.db.updateScheduleEntry(scheduleEntry);
     
     // Upload thumbnail
     if (metadata.thumbnail && metadata.thumbnail.path) {
@@ -265,34 +370,90 @@ class PublishingSchedulingAgent {
     const basePath = path.resolve(path.join(__dirname, '..'));
     // Normalize path, removing any '..'
     const fullPath = path.normalize(path.resolve(filePath || ''));
-    // Verify the fullPath is contained within our basePath
-    if (!fullPath.startsWith(basePath)) {
+    // Verify the fullPath is contained within our basePath (or the OS temp dir, used by
+    // upstream test fixtures and transient renders). Compare against base + separator so a
+    // sibling directory sharing the prefix (e.g. "<project>-evil") is not accepted.
+    const allowedRoots = [basePath, path.resolve(os.tmpdir())];
+    const isInside = root => fullPath === root || fullPath.startsWith(root.endsWith(path.sep) ? root : root + path.sep);
+    if (!allowedRoots.some(isInside)) {
       this.logger.error(`Path traversal attempt blocked: ${filePath}`);
       throw new Error('Invalid file path: outside project directory');
     }
     return fullPath;
   }
 
-  async getVideoStream(videoPath) {
-    const safePath = this.validatePath(videoPath);
-
-    if (standardFs.existsSync(safePath) && safePath.endsWith('.mp4')) { // nosemgrep: path-traversal - validated by validatePath()
-      this.logger.info(`Creating real file read stream for video upload: ${safePath}`);
-      return standardFs.createReadStream(safePath); // nosemgrep: path-traversal - validated by validatePath()
+  async isNarrationReady(audio = {}) {
+    if (audio.intentionalSilence === true) {
+      return String(audio.silenceReason || '').trim().length >= 10 && Boolean(audio.silenceConfirmedAt);
     }
-    
-    // Fallback simulation
-    return JSON.stringify({
-      message: 'Video stream would be provided here',
-      path: safePath,
-      timestamp: new Date().toISOString()
+    if (!audio.path || audio.simulated || String(audio.path).endsWith('.info')) return false;
+    try {
+      const stats = await fs.stat(audio.path);
+      return stats.isFile() && stats.size > 0;
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  isUploadOutcomeUnknown(error) {
+    const status = Number(error.status || error.response?.status || 0);
+    return !status || status >= 500;
+  }
+
+  async reconcileUploadedVideo(scheduleEntry) {
+    const response = await this.youtube.videos.list({ part: 'id,status', id: scheduleEntry.youtubeId });
+    if (!response.data.items?.some(video => video.id === scheduleEntry.youtubeId)) {
+      scheduleEntry.status = 'reconciliation_required';
+      scheduleEntry.error = 'The recorded YouTube video ID could not be verified';
+      await this.db.updateScheduleEntry(scheduleEntry);
+      await this.syncShortStatus(scheduleEntry, 'reconciliation_required', scheduleEntry.error);
+      const error = new Error('The recorded upload could not be verified on YouTube. Resolve it before attempting another upload.');
+      error.status = 409;
+      error.code = 'UPLOAD_OUTCOME_UNKNOWN';
+      throw error;
+    }
+    scheduleEntry.status = 'published';
+    scheduleEntry.publishedAt = scheduleEntry.publishedAt || new Date().toISOString();
+    scheduleEntry.youtubeUrl = scheduleEntry.youtubeUrl || `https://www.youtube.com/watch?v=${scheduleEntry.youtubeId}`;
+    scheduleEntry.error = null;
+    await this.db.updateScheduleEntry(scheduleEntry);
+    await this.syncShortStatus(scheduleEntry, 'published');
+    this.publishQueue = this.publishQueue.filter(entry => entry.productionId !== scheduleEntry.productionId);
+    this.logger.success(`Reconciled existing YouTube upload: ${scheduleEntry.youtubeUrl}`);
+    return scheduleEntry;
+  }
+
+  async syncShortStatus(scheduleEntry, status, error = null) {
+    const clipId = scheduleEntry.metadata?.shortClipId;
+    if (!clipId || !this.db.updateShortClip) return null;
+    return this.db.updateShortClip(clipId, {
+      status,
+      scheduleId: scheduleEntry.id,
+      youtubeId: scheduleEntry.youtubeId || null,
+      youtubeUrl: scheduleEntry.youtubeUrl || null,
+      error
     });
+  }
+
+  async getVideoStream(videoPath) {
+    try {
+      const safePath = this.validatePath(videoPath);
+      const stats = await fs.stat(safePath); // nosemgrep: path-traversal - validated by validatePath()
+      if (!stats.isFile() || path.extname(safePath).toLowerCase() !== '.mp4') {
+        throw new Error('placeholder asset');
+      }
+
+      this.logger.info(`Creating real file read stream for video upload: ${safePath}`);
+      return fsSync.createReadStream(safePath); // nosemgrep: path-traversal - validated by validatePath()
+    } catch (error) {
+      throw new Error('video file not found — refusing to upload placeholder');
+    }
   }
 
   async uploadThumbnail(videoId, thumbnailPath) {
     try {
       const safePath = this.validatePath(thumbnailPath);
-      const thumbnailStream = standardFs.createReadStream(safePath); // nosemgrep: path-traversal - validated by validatePath()
+      const thumbnailStream = fsSync.createReadStream(safePath); // nosemgrep: path-traversal - validated by validatePath()
       
       await this.youtube.thumbnails.set({
         videoId: videoId,
@@ -305,6 +466,57 @@ class PublishingSchedulingAgent {
     } catch (error) {
       this.logger.error(`Failed to upload thumbnail: ${error.message}`);
     }
+  }
+
+  async applyVideoPackaging(videoId, packaging = {}, previousPackaging = null) {
+    const title = String(packaging.title || '').trim();
+    if (!videoId || !title || title.length > 100 || !packaging.thumbnailPath) {
+      const error = new Error('A valid video ID, title, and thumbnail are required for a packaging change');
+      error.status = 400;
+      error.code = 'PACKAGING_INVALID';
+      throw error;
+    }
+    const thumbnail = await fs.readFile(this.validatePath(packaging.thumbnailPath)); // nosemgrep: path-traversal - validated by validatePath()
+    const current = await this.youtube.videos.list({ part: 'snippet', id: videoId });
+    const snippet = current.data.items?.[0]?.snippet;
+    if (!snippet) {
+      const error = new Error(`YouTube video not found: ${videoId}`);
+      error.status = 404;
+      error.code = 'PACKAGING_VIDEO_NOT_FOUND';
+      throw error;
+    }
+
+    const updateTitle = async nextTitle => this.youtube.videos.update({
+      part: 'snippet',
+      requestBody: {
+        id: videoId,
+        snippet: {
+          title: nextTitle,
+          description: snippet.description || '',
+          tags: snippet.tags || [],
+          categoryId: snippet.categoryId || '22',
+          defaultLanguage: snippet.defaultLanguage,
+          defaultAudioLanguage: snippet.defaultAudioLanguage
+        }
+      }
+    });
+
+    await updateTitle(title);
+    try {
+      await this.youtube.thumbnails.set({
+        videoId,
+        media: { body: thumbnail }
+      });
+    } catch (error) {
+      try {
+        await updateTitle(String(previousPackaging?.title || snippet.title || '').trim());
+      } catch (rollbackError) {
+        error.message = `${error.message}; title rollback also failed: ${rollbackError.message}`;
+      }
+      throw error;
+    }
+    this.logger.info(`Applied approved growth-experiment packaging to video: ${videoId}`);
+    return { videoId, title, thumbnailPath: packaging.thumbnailPath };
   }
 
   async uploadCaptions(videoId, captionsPath) {
@@ -334,24 +546,39 @@ class PublishingSchedulingAgent {
   }
 
   async processPublishQueue() {
-    this.logger.info('Processing publish queue...');
-    
     const now = new Date();
-    const readyToPublish = this.publishQueue.filter(entry => {
-      const publishTime = new Date(entry.publishTime);
-      return publishTime <= now && entry.status === 'scheduled';
-    });
-    
+    const scheduled = this.publishQueue
+      .filter(entry => entry.status === 'scheduled')
+      .sort((a, b) => new Date(a.publishTime) - new Date(b.publishTime));
+    const readyToPublish = scheduled.filter(entry => new Date(entry.publishTime) <= now);
+
+    if (readyToPublish.length === 0) {
+      if (scheduled.length > 0) {
+        this.logger.info(`Publish queue: ${scheduled.length} item(s) waiting, next publish at ${scheduled[0].publishTime}`);
+      } else {
+        this.logger.info('Publish queue is empty — nothing scheduled yet.');
+      }
+      return 0;
+    }
+
+    this.logger.info(`Processing publish queue: ${readyToPublish.length} item(s) ready to publish...`);
+
     for (const entry of readyToPublish) {
       try {
         await this.publishContent(entry.productionId);
         this.logger.info(`Auto-published: ${entry.title}`);
       } catch (error) {
+        if (error.code === 'READINESS_BLOCKED') {
+          this.logger.warn(error.message);
+          continue;
+        }
         this.logger.error(`Failed to auto-publish ${entry.title}:`, error);
         // Mark as failed but don't stop processing other items
-        entry.status = 'failed';
-        entry.error = error.message;
-        await this.db.updateScheduleEntry(entry);
+        if (error.code !== 'UPLOAD_OUTCOME_UNKNOWN') {
+          entry.status = 'failed';
+          entry.error = error.message;
+          await this.db.updateScheduleEntry(entry);
+        }
       }
     }
     
@@ -393,9 +620,6 @@ class PublishingSchedulingAgent {
   async getChannelAnalytics() {
     try {
       // Get channel analytics for the last 30 days
-      const endDate = new Date();
-      const startDate = new Date(endDate.getTime() - (30 * 24 * 60 * 60 * 1000));
-      
       const response = await this.youtube.channels.list({
         part: 'statistics',
         mine: true
@@ -537,24 +761,18 @@ class PublishingSchedulingAgent {
   async emergencyPublish(contentId, delayMinutes = 0) {
     // For urgent publishing needs
     this.logger.info(`Emergency publish requested: ${contentId}`);
-    
-    const entry = this.publishQueue.find(e => 
-      e.productionId === contentId || e.id === contentId
-    );
-    
-    if (!entry) {
-      throw new Error(`Content not found: ${contentId}`);
-    }
-    
+
     if (delayMinutes > 0) {
+      const entry = this.publishQueue.find(e => e.productionId === contentId || e.id === contentId) ||
+        await this.db.getLatestScheduleEntry?.(contentId);
+      if (!entry) throw new Error(`Content not found: ${contentId}`);
       const newPublishTime = new Date(Date.now() + (delayMinutes * 60 * 1000));
       entry.publishTime = newPublishTime.toISOString();
       await this.db.updateScheduleEntry(entry);
       this.logger.info(`Emergency scheduled for: ${entry.publishTime}`);
       return entry;
-    } else {
-      return await this.publishContent(contentId);
     }
+    return this.publishContent(contentId, { publishNow: true });
   }
 
   async pauseScheduledContent(contentId) {
@@ -590,6 +808,53 @@ class PublishingSchedulingAgent {
     await this.db.updateScheduleEntry(entry);
     
     this.logger.info(`Content resumed: ${entry.title}`);
+    return entry;
+  }
+
+  async rescheduleContent(contentId, newPublishTime) {
+    const publishTime = new Date(newPublishTime);
+    if (!Number.isFinite(publishTime.getTime()) || publishTime.getTime() <= Date.now()) {
+      const error = new Error('Choose a future publish time');
+      error.status = 400;
+      throw error;
+    }
+    const entry = this.publishQueue.find(item => item.productionId === contentId || item.id === contentId) ||
+      await this.db.getLatestScheduleEntry?.(contentId);
+    if (!entry) {
+      const error = new Error(`Scheduled content not found: ${contentId}`);
+      error.status = 404;
+      throw error;
+    }
+    if (['uploading', 'uploaded', 'published', 'reconciliation_required'].includes(entry.status)) {
+      const error = new Error(`Content cannot be rescheduled while it is ${entry.status}`);
+      error.status = 409;
+      throw error;
+    }
+    entry.publishTime = publishTime.toISOString();
+    entry.status = 'scheduled';
+    entry.error = null;
+    await this.db.updateScheduleEntry(entry);
+    if (!this.publishQueue.some(item => item.id === entry.id)) this.publishQueue.push(entry);
+    this.publishQueue.sort((a, b) => new Date(a.publishTime) - new Date(b.publishTime));
+    return entry;
+  }
+
+  async deleteScheduledContent(contentId) {
+    const entry = this.publishQueue.find(item => item.productionId === contentId || item.id === contentId) ||
+      await this.db.getLatestScheduleEntry?.(contentId);
+    if (!entry) {
+      const error = new Error(`Scheduled content not found: ${contentId}`);
+      error.status = 404;
+      throw error;
+    }
+    if (['uploading', 'uploaded', 'published', 'reconciliation_required'].includes(entry.status)) {
+      const error = new Error(`The schedule cannot be deleted while content is ${entry.status}`);
+      error.status = 409;
+      throw error;
+    }
+    await this.db.deleteScheduleEntry(entry.id);
+    this.publishQueue = this.publishQueue.filter(item => item.id !== entry.id);
+    await this.syncShortStatus(entry, 'rendered');
     return entry;
   }
 }

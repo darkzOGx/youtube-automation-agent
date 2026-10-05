@@ -2,6 +2,7 @@ const path = require('path');
 const fs = require('fs').promises;
 const { Logger } = require('../utils/logger');
 const { AIVideoGenerator } = require('../utils/ai-video-generator');
+const { SceneRepairService } = require('../utils/scene-repair-service');
 
 class ProductionManagementAgent {
   constructor(db, credentials) {
@@ -10,7 +11,8 @@ class ProductionManagementAgent {
     this.logger = new Logger('ProductionManagement');
     this.pipeline = [];
     this.assets = new Map();
-    this.aiVideoGenerator = new AIVideoGenerator(credentials);
+    this.aiVideoGenerator = new AIVideoGenerator(credentials, { db });
+    this.sceneRepair = new SceneRepairService(db, this.aiVideoGenerator, { logger: this.logger });
   }
 
   async initialize() {
@@ -48,7 +50,7 @@ class ProductionManagementAgent {
     try {
       this.logger.info('Processing content for production...');
       
-      const { strategy, script, thumbnail, seo, videoFormat } = contentData;
+      const { strategy, script, thumbnail, seo, videoFormat, jobId = null } = contentData;
       
       // Create production entry
       const productionId = this.generateProductionId();
@@ -62,7 +64,7 @@ class ProductionManagementAgent {
         status: 'processing',
         assets: {
           script: await this.processScript(script),
-          thumbnail: await this.processThumbnail(thumbnail),
+          thumbnail: await this.processThumbnail(thumbnail, script),
           audio: null, // Will be generated later
           video: null, // Will be generated later
           captions: null // Will be generated later
@@ -81,6 +83,7 @@ class ProductionManagementAgent {
         estimatedDuration: script.duration,
         createdAt: new Date().toISOString()
       };
+      productionData.jobId = jobId;
       
       // Add to pipeline
       this.pipeline.push(productionData);
@@ -108,26 +111,33 @@ class ProductionManagementAgent {
       
       // Final assembly
       await this.assembleVideo(productionData, videoFormat);
-      
-      // Generate YouTube Shorts from main video
-      if (productionData.assets.finalVideo && productionData.assets.finalVideo.path) {
-        const shortVideoPath = productionData.assets.finalVideo.path.replace('.mp4', '_shorts.mp4');
-        const generatedShort = await this.aiVideoGenerator.generateShortVideo(
-          productionData.assets.finalVideo.path, 
-          shortVideoPath
-        );
-        if (generatedShort) {
-          productionData.assets.shortsVideo = { path: generatedShort };
+
+      // Persist a scene-addressable production manifest for selective review and repair.
+      await this.sceneRepair.initializeProduction(productionData, this.aiVideoGenerator.lastVideoResult || {});
+
+      // Mark as ready — or simulated, when no real video could be produced
+      const simulated = Boolean(productionData.assets.finalVideo?.simulated);
+      if (simulated) {
+        productionData.status = 'simulated';
+        this.logger.warn(`Content ${productionId} produced PLACEHOLDER assets only — it will NOT be uploaded. Check your AI provider keys and FFmpeg installation.`);
+      } else {
+        // Generate YouTube Shorts from the real main video
+        const finalVideoPath = productionData.assets.finalVideo?.path;
+        if (finalVideoPath && path.extname(finalVideoPath).toLowerCase() === '.mp4') {
+          const shortVideoPath = finalVideoPath.replace(/\.mp4$/i, '_shorts.mp4');
+          const generatedShort = await this.aiVideoGenerator.generateShortVideo(finalVideoPath, shortVideoPath);
+          if (generatedShort) {
+            productionData.assets.shortsVideo = { path: generatedShort };
+          }
         }
+
+        productionData.status = 'ready';
+        productionData.timeline.readyForUpload = new Date().toISOString();
       }
-      
-      // Mark as ready
-      productionData.status = 'ready';
-      productionData.timeline.readyForUpload = new Date().toISOString();
-      
+
       await this.db.updateProductionData(productionData);
-      
-      this.logger.info(`Content processing complete: ${productionId}`);
+
+      this.logger.info(`Content processing complete: ${productionId} (status: ${productionData.status})`);
       return productionData;
     } catch (error) {
       this.logger.error('Failed to process content:', error);
@@ -227,21 +237,30 @@ class ProductionManagementAgent {
     return ttsText;
   }
 
-  async processThumbnail(thumbnail) {
+  async processThumbnail(thumbnail, script) {
     if (!thumbnail) return null; // Skip if no thumbnail is provided
-    
+
     try {
-      if (!thumbnail.path) {
-        throw new Error('Thumbnail path is missing');
+      if (thumbnail.path) {
+        // We already have a beautifully designed thumbnail with text overlay from ThumbnailDesignerAgent!
+        return {
+          path: thumbnail.path,
+          originalPath: thumbnail.path,
+          dimensions: thumbnail.dimensions || { width: 1280, height: 720 },
+          fileSize: thumbnail.fileSize || 0,
+          generatedWith: 'ThumbnailDesigner'
+        };
       }
 
-      // We already have a beautifully designed thumbnail with text overlay from ThumbnailDesignerAgent!
+      // No designed thumbnail file: generate an AI thumbnail from the script instead
+      const thumbnailScript = thumbnail.script || script || { title: thumbnail.title || 'Untitled Video' };
+      const aiThumbnail = await this.aiVideoGenerator.generateThumbnail(thumbnailScript, 'ethereal');
       return {
-        path: thumbnail.path,
-        originalPath: thumbnail.path,
-        dimensions: thumbnail.dimensions || { width: 1280, height: 720 },
-        fileSize: thumbnail.fileSize || 0,
-        generatedWith: 'ThumbnailDesigner'
+        path: aiThumbnail.path,
+        originalPath: thumbnail.path || null,
+        dimensions: aiThumbnail.dimensions,
+        fileSize: aiThumbnail.fileSize,
+        generatedWith: aiThumbnail.simulated ? 'simulation' : 'AI'
       };
     } catch (error) {
       this.logger.error('AI thumbnail generation failed:', error);
@@ -309,19 +328,21 @@ class ProductionManagementAgent {
     this.logger.info('Generating AI video content...');
     
     try {
-      const { strategy, script } = productionData;
+      const { script } = productionData;
       
-      // Extract script segments for per-slide generation
+      // Extract script segments for per-slide generation (1-to-1 with the narration segments)
       const segments = this.extractScriptSegments(script);
       productionData.assets.segments = segments;
-      
+
       const visualAssets = [];
+      const profile = await this.db.getChannelProfile?.() || {};
+      const visualStyle = profile.visual_style || 'ethereal';
       const imageProvider = script.imageProvider || process.env.IMAGE_PROVIDER || 'gemini';
       const imageModel = script.imageModel || (imageProvider === 'router' ? process.env.IMAGE_MODEL : null) || 'imagen-4.0-fast-generate-001';
       const isShort = productionData.strategy?.videoType === 'short';
-      
+
       for (const segment of segments) {
-        const assets = await this.aiVideoGenerator.generateVisualAssets(segment.prompt, 'ethereal', 1, imageProvider, imageModel, isShort);
+        const assets = await this.aiVideoGenerator.generateVisualAssets(segment.prompt, visualStyle, 1, imageProvider, imageModel, isShort);
         segment.imagePath = assets[0];
         visualAssets.push(...assets);
       }
@@ -360,7 +381,7 @@ class ProductionManagementAgent {
     
     // Content sections
     if (script.mainContent && script.mainContent.sections) {
-      script.mainContent.sections.forEach((section, index) => {
+      script.mainContent.sections.forEach((section) => {
         // Section title
         elements.push({
           type: 'section_title',
@@ -439,55 +460,64 @@ class ProductionManagementAgent {
     try {
       const { script } = productionData;
       const audioPath = path.join(__dirname, '..', 'data', 'audio', `${productionData.id}_narration.mp3`);
-      
-      // Read the TTS script (we keep this for logging, but we will generate per-segment)
+
+      // Read the TTS script (used for whole-script narration when no segments exist)
       const ttsText = await fs.readFile(productionData.assets.script.ttsPath, 'utf8');
-      
-      // Generate audio using AI TTS per segment
+
+      // Generate audio using AI TTS per segment, so each slide matches its narration exactly
       const segments = productionData.assets.segments || this.extractScriptSegments(script);
       productionData.assets.segments = segments;
-      
-      for (let i = 0; i < segments.length; i++) {
-        const seg = segments[i];
-        const segAudioPath = path.join(__dirname, '..', 'data', 'audio', `${productionData.id}_seg_${i}.mp3`);
-        await this.aiVideoGenerator.generateTTSAudio(seg.text, segAudioPath);
-        seg.audioPath = segAudioPath;
+
+      let generatedPath;
+      if (segments.length > 0) {
+        for (let i = 0; i < segments.length; i++) {
+          const seg = segments.at(i);
+          const segAudioPath = path.join(__dirname, '..', 'data', 'audio', `${productionData.id}_seg_${i}.mp3`);
+          const segResult = await this.aiVideoGenerator.generateTTSAudio(seg.text, segAudioPath);
+          seg.audioPath = await this.aiVideoGenerator.isUsableAudioFile(segResult) ? segResult : null;
+        }
+
+        // Join the segments into one continuous narration track for the full-narration consumers
+        // (assembly gate, provider/hybrid video, scene repair manifest).
+        try {
+          generatedPath = await this.aiVideoGenerator.concatAudioFiles(segments.map(seg => seg.audioPath), audioPath);
+        } catch (concatError) {
+          this.logger.warn(`Could not join narration segments (${concatError.message}); using the first segment as the narration track`);
+          const firstAudio = segments.find(seg => seg.audioPath)?.audioPath;
+          if (firstAudio) await fs.copyFile(firstAudio, audioPath);
+          generatedPath = audioPath;
+        }
+      } else {
+        generatedPath = await this.aiVideoGenerator.generateTTSAudio(ttsText, audioPath);
       }
-      
-      // We will still keep a main audio path if needed, but per-slide assembly will use seg.audioPath
-      // Just write the first segment to audioPath to prevent errors in probing if anything falls back
-      if (segments.length > 0 && segments[0].audioPath) {
-        await fs.copyFile(segments[0].audioPath, audioPath);
-      }
-      
+
+      // Retain the provider evidence returned by the generator.
+      const evidence = this.aiVideoGenerator.lastNarrationResult || {};
+      const usable = await this.aiVideoGenerator.isUsableAudioFile(generatedPath);
+
       productionData.assets.audio = {
-        path: audioPath,
+        path: generatedPath,
         duration: productionData.estimatedDuration,
         format: 'mp3',
         generatedWith: 'AI',
-        quality: 'high'
+        quality: usable ? 'high' : null,
+        status: usable ? 'ready' : 'unavailable',
+        simulated: !usable,
+        provider: evidence.provider || null,
+        model: evidence.model || null,
+        externalTaskId: evidence.externalTaskId || null,
+        generatedAt: evidence.generatedAt || new Date().toISOString(),
+        cost: evidence.cost || {},
+        error: usable ? null : 'No live narration provider returned usable audio',
+        intentionalSilence: false
       };
-      
-      productionData.timeline.audioGenerated = new Date().toISOString();
-      
-      return audioPath;
+
+      if (usable) productionData.timeline.audioGenerated = new Date().toISOString();
+      return generatedPath;
     } catch (error) {
       this.logger.error('AI audio generation failed:', error);
-      // Fallback to simulation
-      return await this.simulateAudioGeneration(productionData);
+      return await this.simulateAudioGeneration(productionData, error);
     }
-  }
-
-  async simulateTTSGeneration(scriptPath, outputPath, config) {
-    // This is a simulation - in production, you'd integrate with actual TTS services
-    this.logger.info(`Simulating TTS generation: ${config.voice}`);
-    
-    // Create a placeholder audio file reference
-    await fs.writeFile(outputPath + '.info', JSON.stringify({
-      message: 'TTS audio would be generated here',
-      config,
-      timestamp: new Date().toISOString()
-    }, null, 2));
   }
 
   async generateCaptions(productionData) {
@@ -604,17 +634,32 @@ class ProductionManagementAgent {
     
     try {
       const finalVideoPath = path.join(__dirname, '..', 'data', 'videos', `${productionData.id}_final.mp4`);
-      
+      const narrationReady = await this.aiVideoGenerator.isUsableAudioFile(productionData.assets.audio?.path);
+      if (!narrationReady && productionData.assets.audio?.intentionalSilence !== true) {
+        this.logger.warn('Final assembly is blocked until narration succeeds or the operator explicitly confirms an intentional silent video.');
+        return await this.simulateVideoAssembly(productionData, 'Narration is missing');
+      }
+
       // Use AI Video Generator to create the final video
-      await this.aiVideoGenerator.generateVideo(
+      const producedPath = await this.aiVideoGenerator.generateVideo(
         productionData.script,
-        productionData.assets.video.visualAssets || [],
+        productionData.assets.video?.visualAssets || [],
         productionData.assets.audio.path,
         finalVideoPath,
-        videoFormat,
-        productionData.assets.segments
+        {
+          jobId: productionData.jobId,
+          productionId: productionData.id,
+          estimatedDuration: productionData.estimatedDuration,
+          videoFormat,
+          segments: productionData.assets.segments
+        }
       );
-      
+
+      // The generator falls back to a placeholder .info file when it cannot render
+      if (!producedPath || path.extname(producedPath).toLowerCase() !== '.mp4') {
+        return await this.simulateVideoAssembly(productionData);
+      }
+
       // Get file stats
       const stats = await fs.stat(finalVideoPath);
       
@@ -624,8 +669,13 @@ class ProductionManagementAgent {
         duration: productionData.estimatedDuration,
         generatedWith: 'AI',
         resolution: '1920x1080',
-        format: 'mp4'
+        format: 'mp4',
+        provider: this.aiVideoGenerator.lastVideoResult || { actualProvider: 'slideshow', model: 'local-ffmpeg' }
       };
+      productionData.containsSyntheticMedia = Boolean(
+        this.aiVideoGenerator.lastVideoResult?.actualProvider &&
+        !['slideshow', 'simulation'].includes(this.aiVideoGenerator.lastVideoResult.actualProvider)
+      );
       
       this.logger.info('AI video assembly complete');
       return finalVideoPath;
@@ -634,17 +684,6 @@ class ProductionManagementAgent {
       // Fallback to simulation
       return await this.simulateVideoAssembly(productionData);
     }
-  }
-
-  async simulateVideoRendering(instructions) {
-    this.logger.info('Simulating video rendering...');
-    
-    // Create a placeholder that indicates video would be rendered
-    await fs.writeFile(instructions.outputPath + '.placeholder', JSON.stringify({
-      message: 'Final video would be rendered here',
-      instructions,
-      timestamp: new Date().toISOString()
-    }, null, 2));
   }
 
   async getPipelineStatus() {
@@ -799,7 +838,7 @@ class ProductionManagementAgent {
   }
 
   // Fallback simulation methods
-  async simulateAudioGeneration(productionData) {
+  async simulateAudioGeneration(productionData, failure = null) {
     const audioPath = path.join(__dirname, '..', 'data', 'audio', `${productionData.id}_narration.mp3`);
     
     await fs.writeFile(audioPath + '.info', JSON.stringify({
@@ -811,17 +850,26 @@ class ProductionManagementAgent {
       path: audioPath + '.info',
       duration: productionData.estimatedDuration,
       format: 'mp3',
-      simulated: true
+      status: 'unavailable',
+      simulated: true,
+      provider: this.aiVideoGenerator.lastNarrationResult?.provider || 'simulation',
+      model: this.aiVideoGenerator.lastNarrationResult?.model || null,
+      externalTaskId: this.aiVideoGenerator.lastNarrationResult?.externalTaskId || null,
+      generatedAt: this.aiVideoGenerator.lastNarrationResult?.generatedAt || new Date().toISOString(),
+      cost: this.aiVideoGenerator.lastNarrationResult?.cost || { billed: false },
+      error: failure?.message || this.aiVideoGenerator.lastNarrationResult?.error || 'No live narration provider is configured',
+      intentionalSilence: false
     };
     
     return audioPath + '.info';
   }
 
-  async simulateVideoAssembly(productionData) {
+  async simulateVideoAssembly(productionData, reason = null) {
     const finalVideoPath = path.join(__dirname, '..', 'data', 'videos', `${productionData.id}_final.mp4`);
     
     const assemblyInstructions = {
       message: 'AI video would be assembled here',
+      blockedReason: reason,
       assets: productionData.assets,
       timestamp: new Date().toISOString()
     };
@@ -835,7 +883,8 @@ class ProductionManagementAgent {
       path: finalVideoPath + '.assembly.json',
       fileSize: 0,
       duration: productionData.estimatedDuration,
-      simulated: true
+      simulated: true,
+      blockedReason: reason
     };
     
     return finalVideoPath + '.assembly.json';

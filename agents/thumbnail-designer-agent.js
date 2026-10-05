@@ -225,8 +225,18 @@ class ThumbnailDesignerAgent {
     return prompt;
   }
 
-  async createThumbnail(concept, script, width, height) {
-    const outputPath = path.join(__dirname, '..', 'uploads', 'thumbnails', `thumbnail_${Date.now()}.png`);
+  // Accepts the fork's call style createThumbnail(concept, script, width, height) and upstream's
+  // createThumbnail(concept, suffix) used by A/B packaging variants.
+  async createThumbnail(concept, script = null, width = 1280, height = 720, suffix = '') {
+    if (typeof script === 'string') {
+      suffix = script;
+      script = null;
+    }
+    if (!script) {
+      script = { title: concept.title || concept.primaryText || 'Dongeng Anak' };
+    }
+    const marker = suffix ? `_${suffix}` : '';
+    const outputPath = path.join(__dirname, '..', 'uploads', 'thumbnails', `thumbnail${marker}_${Date.now()}.png`);
     try {
       const promptText = `Cute children's book cartoon scene: ${script.title}, vibrant colors, epic fantasy lighting, extremely eye-catching, no text, no words, no letters, clear focus, ${width}:${height} aspect ratio`;
       
@@ -278,7 +288,7 @@ class ThumbnailDesignerAgent {
             throw new Error(`OpenRouter refused request: ${message.refusal}`);
         }
         const content = message.content;
-        const urlMatch = content.match(/https?:\/\/[^\s\)]+/);
+        const urlMatch = content.match(/https?:\/\/[^\s)]+/);
         if (urlMatch) {
             const imgRes = await axios.get(urlMatch[0], { responseType: 'arraybuffer' });
             await fs.writeFile(outputPath, imgRes.data);
@@ -352,7 +362,13 @@ class ThumbnailDesignerAgent {
     return colors.get(color) || '#000000';
   }
 
-  async addTextOverlay(imagePath, concept, isShort) {
+  // Accepts the fork's call style addTextOverlay(imagePath, concept, isShort) and upstream's
+  // addTextOverlay(imagePath, concept, suffix) used by A/B packaging variants. The output path is
+  // derived from imagePath, which already carries the variant suffix.
+  async addTextOverlay(imagePath, concept, isShort = false) {
+    if (typeof isShort === 'string') {
+      isShort = false;
+    }
     try {
       this.logger.info(`Adding text overlay to thumbnail using Canvas: ${concept.primaryText}`);
       
@@ -410,8 +426,16 @@ class ThumbnailDesignerAgent {
     }
   }
 
-  async optimizeForYouTube(imagePath, width, height) {
-    const outputPath = path.join(__dirname, '..', 'uploads', 'thumbnails', `thumbnail_optimized_${Date.now()}.jpg`);
+  // Accepts the fork's call style optimizeForYouTube(imagePath, width, height) and upstream's
+  // optimizeForYouTube(imagePath, suffix) used by A/B packaging variants.
+  async optimizeForYouTube(imagePath, width = 1280, height = 720, suffix = '') {
+    if (typeof width === 'string') {
+      suffix = width;
+      width = 1280;
+      height = 720;
+    }
+    const marker = suffix ? `_${suffix}` : '';
+    const outputPath = path.join(__dirname, '..', 'uploads', 'thumbnails', `thumbnail_optimized${marker}_${Date.now()}.jpg`);
 
     // YouTube optimization: JPEG format, proper compression
     await sharp(imagePath)
@@ -445,28 +469,36 @@ class ThumbnailDesignerAgent {
   }
 
   async generateABVariants(concept) {
-    // Generate multiple thumbnail variants for A/B testing
+    const concepts = [
+      {
+        label: 'Color contrast',
+        concept: {
+          ...concept,
+          colors: {
+            primary: concept.colors.secondary,
+            secondary: concept.colors.primary,
+            accent: concept.colors.accent
+          }
+        }
+      },
+      {
+        label: 'Alternate promise',
+        concept: { ...concept, primaryText: this.generateAlternativeText(concept.primaryText) }
+      },
+      {
+        label: 'Centered composition',
+        concept: { ...concept, composition: 'centered' }
+      }
+    ];
     const variants = [];
-
-    // Variant 1: Different color scheme
-    const variant1 = { ...concept };
-    variant1.colors = {
-      primary: concept.colors.secondary,
-      secondary: concept.colors.primary,
-      accent: concept.colors.accent
-    };
-    variants.push(await this.createThumbnail(variant1));
-
-    // Variant 2: Different text 
-    const variant2 = { ...concept };
-    variant2.primaryText = this.generateAlternativeText(concept.primaryText);
-    variants.push(await this.createThumbnail(variant2));
-
-    // Variant 3: Different composition
-    const variant3 = { ...concept };
-    variant3.composition = 'centered';
-    variants.push(await this.createThumbnail(variant3));
-
+    for (let index = 0; index < concepts.length; index++) {
+      const { label, concept: variantConcept } = concepts[index];
+      const suffix = `experiment_${index + 1}`;
+      const base = await this.createThumbnail(variantConcept, suffix);
+      const overlay = await this.addTextOverlay(base, variantConcept, suffix);
+      const optimized = await this.optimizeForYouTube(overlay, suffix);
+      variants.push({ label, path: optimized, concept: variantConcept });
+    }
     return variants;
   }
 

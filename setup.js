@@ -1,7 +1,10 @@
+require('dotenv').config();
+
 const { CredentialManager } = require('./utils/credential-manager');
 const { Database } = require('./database/db');
 const { Logger } = require('./utils/logger');
 const chalk = require('chalk');
+const inquirer = require('inquirer');
 const fs = require('fs').promises;
 const path = require('path');
 
@@ -17,6 +20,21 @@ class YouTubeAutomationSetup {
     console.log(chalk.gray('═'.repeat(60)));
     console.log(chalk.cyan('Welcome to the YouTube Automation Agent setup wizard!'));
     console.log(chalk.gray('This will configure your system for fully automated YouTube content creation.\n'));
+
+    const { mode } = await inquirer.prompt([{
+      type: 'list',
+      name: 'mode',
+      message: 'How would you like to set up?',
+      choices: [
+        { name: '🧭 Guided walkthrough — explains everything, tests keys as you go (recommended for first-timers)', value: 'walkthrough' },
+        { name: '⚡ Classic quick setup — for users who already have all their keys', value: 'classic' }
+      ]
+    }]);
+
+    if (mode === 'walkthrough') {
+      const { SetupWalkthrough } = require('./walkthrough');
+      return await new SetupWalkthrough().run();
+    }
 
     try {
       // Step 1: Create directories
@@ -104,7 +122,7 @@ LOG_LEVEL=info
 
 # YouTube Settings
 YOUTUBE_REGION=US
-DEFAULT_PRIVACY_STATUS=public
+DEFAULT_PRIVACY_STATUS=private
 
 # Content Settings
 AUTO_SHORTEN_CONTENT=true
@@ -121,9 +139,6 @@ DEFAULT_DELAY_BETWEEN_POSTS=60000
 
 # TTS Settings
 TTS_VOICE=neural_voice_1
-
-# Security
-JWT_SECRET=${this.generateJWTSecret()}
 
 # Analytics & Monitoring
 ENABLE_ANALYTICS=true
@@ -158,17 +173,12 @@ SCREENSHOT_PATH=./debug/screenshots
     console.log(chalk.green('✅ Environment file created'));
   }
 
-  generateJWTSecret() {
-    const crypto = require('crypto');
-    return crypto.randomBytes(64).toString('hex');
-  }
 
   async installDependencies() {
     console.log(chalk.cyan('\n📦 Checking dependencies...'));
     
     try {
       // Check if package.json exists and dependencies are installed
-      const packagePath = path.join(__dirname, 'package.json');
       const nodeModulesPath = path.join(__dirname, 'node_modules');
       
       try {
@@ -226,12 +236,13 @@ node index.js`;
 
   async validateSetup() {
     console.log(chalk.cyan('\n🔍 Validating setup...'));
-    
+
     const validation = {
       directories: true,
       database: false,
       credentials: false,
-      environment: false
+      environment: false,
+      ffmpeg: false
     };
 
     // Check directories
@@ -245,7 +256,7 @@ node index.js`;
 
     // Check database
     try {
-      const stats = await this.database.getStats();
+      await this.database.getStats();
       validation.database = true;
     } catch (error) {
       validation.database = false;
@@ -262,6 +273,10 @@ node index.js`;
       validation.environment = false;
     }
 
+    // Check FFmpeg (needed for video assembly)
+    const { checkFFmpeg, ffmpegInstallHint } = require('./utils/ffmpeg');
+    validation.ffmpeg = await checkFFmpeg();
+
     // Display validation results
     Object.entries(validation).forEach(([component, valid]) => {
       const icon = valid ? '✅' : '❌';
@@ -269,13 +284,24 @@ node index.js`;
       console.log(color(`  ${icon} ${component}`));
     });
 
-    const allValid = Object.values(validation).every(Boolean);
-    
-    if (!allValid) {
+    // Only broken infrastructure is fatal — missing credentials/FFmpeg can be fixed later
+    if (!validation.directories || !validation.database || !validation.environment) {
       throw new Error('Setup validation failed. Please check the errors above.');
     }
 
-    console.log(chalk.green('✅ All validations passed'));
+    if (!validation.credentials) {
+      console.log(chalk.yellow('\n⚠️  Credentials are incomplete. Finish them any time with: npm run credentials:setup'));
+    }
+
+    if (!validation.ffmpeg) {
+      console.log(chalk.yellow(`\n⚠️  ${ffmpegInstallHint()}`));
+    }
+
+    if (validation.credentials && validation.ffmpeg) {
+      console.log(chalk.green('✅ All validations passed'));
+    } else {
+      console.log(chalk.yellow('✅ Core setup complete (with warnings above)'));
+    }
   }
 
   async createSampleContent() {

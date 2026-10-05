@@ -1,0 +1,285 @@
+{
+  "schemaVersion": 1,
+  "snapshotDate": "2026-08-18",
+  "capturedAt": "2026-08-18T19:51:41.427Z",
+  "repository": {
+    "fullName": "darkzOGx/youtube-automation-agent",
+    "stars": 2240,
+    "forks": 587,
+    "forkToStarPercent": 26.2,
+    "subscribers": 22,
+    "topics": 20,
+    "license": "MIT",
+    "defaultBranch": "master",
+    "pushedAt": "2026-08-18T17:03:25Z"
+  },
+  "traffic": {
+    "views": {
+      "count": 11824,
+      "uniques": 5482,
+      "days": [
+        {
+          "timestamp": "2026-08-04T00:00:00Z",
+          "count": 323,
+          "uniques": 216
+        },
+        {
+          "timestamp": "2026-08-05T00:00:00Z",
+          "count": 335,
+          "uniques": 201
+        },
+        {
+          "timestamp": "2026-08-06T00:00:00Z",
+          "count": 399,
+          "uniques": 205
+        },
+        {
+          "timestamp": "2026-08-07T00:00:00Z",
+          "count": 367,
+          "uniques": 198
+        },
+        {
+          "timestamp": "2026-08-08T00:00:00Z",
+          "count": 352,
+          "uniques": 179
+        },
+        {
+          "timestamp": "2026-08-09T00:00:00Z",
+          "count": 329,
+          "uniques": 171
+        },
+        {
+          "timestamp": "2026-08-10T00:00:00Z",
+          "count": 363,
+          "uniques": 200
+        },
+        {
+          "timestamp": "2026-08-11T00:00:00Z",
+          "count": 457,
+          "uniques": 225
+        },
+        {
+          "timestamp": "2026-08-12T00:00:00Z",
+          "count": 361,
+          "uniques": 195
+        },
+        {
+          "timestamp": "2026-08-13T00:00:00Z",
+          "count": 1003,
+          "uniques": 524
+        },
+        {
+          "timestamp": "2026-08-14T00:00:00Z",
+          "count": 3117,
+          "uniques": 1657
+        },
+        {
+          "timestamp": "2026-08-15T00:00:00Z",
+          "count": 1538,
+          "uniques": 860
+        },
+        {
+          "timestamp": "2026-08-16T00:00:00Z",
+          "count": 1250,
+          "uniques": 661
+        },
+        {
+          "timestamp": "2026-08-17T00:00:00Z",
+          "count": 1630,
+          "uniques": 846
+        }
+      ]
+    },
+    "clones": {
+      "count": 1437,
+      "uniques": 1058,
+      "days": [
+        {
+          "timestamp": "2026-08-04T00:00:00Z",
+          "count": 57,
+          "uniques": 33
+        },
+        {
+          "timestamp": "2026-08-05T00:00:00Z",
+          "count": 42,
+          "uniques": 32
+        },
+        {
+          "timestamp": "2026-08-06T00:00:00Z",
+          "count": 61,
+          "uniques": 38
+        },
+        {
+          "timestamp": "2026-08-07T00:00:00Z",
+          "count": 41,
+          "uniques": 34
+        },
+        {
+          "timestamp": "2026-08-08T00:00:00Z",
+          "count": 56,
+          "uniques": 23
+        },
+        {
+          "timestamp": "2026-08-09T00:00:00Z",
+          "count": 25,
+          "uniques": 20
+        },
+        {
+          "timestamp": "2026-08-10T00:00:00Z",
+          "count": 40,
+          "uniques": 29
+        },
+        {
+          "timestamp": "2026-08-11T00:00:00Z",
+          "count": 47,
+          "uniques": 40
+        },
+        {
+          "timestamp": "2026-08-12T00:00:00Z",
+          "count": 29,
+          "uniques": 27
+        },
+        {
+          "timestamp": "2026-08-13T00:00:00Z",
+          "count": 101,
+          "uniques": 87
+        },
+        {
+          "timestamp": "2026-08-14T00:00:00Z",
+          "count": 370,
+          "uniques": 294
+        },
+        {
+          "timestamp": "2026-08-15T00:00:00Z",
+          "count": 210,
+          "uniques": 180
+        },
+        {
+          "timestamp": "2026-08-16T00:00:00Z",
+          "count": 168,
+          "uniques": 137
+        },
+        {
+          "timestamp": "2026-08-17T00:00:00Z",
+          "count": 190,
+          "uniques": 155
+        }
+      ]
+    },
+    "referrers": [
+      {
+        "referrer": "Google",
+        "count": 4227,
+        "uniques": 2361
+      },
+      {
+        "referrer": "github.com",
+        "count": 1786,
+        "uniques": 914
+      },
+      {
+        "referrer": "search.brave.com",
+        "count": 187,
+        "uniques": 89
+      },
+      {
+        "referrer": "l.instagram.com",
+        "count": 154,
+        "uniques": 106
+      },
+      {
+        "referrer": "instagram.com",
+        "count": 128,
+        "uniques": 92
+      },
+      {
+        "referrer": "Bing",
+        "count": 98,
+        "uniques": 63
+      },
+      {
+        "referrer": "t.co",
+        "count": 98,
+        "uniques": 52
+      },
+      {
+        "referrer": "chatgpt.com",
+        "count": 57,
+        "uniques": 32
+      },
+      {
+        "referrer": "DuckDuckGo",
+        "count": 54,
+        "uniques": 30
+      },
+      {
+        "referrer": "darkzogx-youtube-automation-agent.mintlify.app",
+        "count": 41,
+        "uniques": 32
+      }
+    ],
+    "referrersUnavailable": null,
+    "uniqueCloneVisitorIndicatorPercent": 19.3
+  },
+  "stars": {
+    "totalTimestamped": 2240,
+    "daily": [
+      {
+        "date": "2026-08-05",
+        "stars": 6
+      },
+      {
+        "date": "2026-08-06",
+        "stars": 5
+      },
+      {
+        "date": "2026-08-07",
+        "stars": 9
+      },
+      {
+        "date": "2026-08-08",
+        "stars": 6
+      },
+      {
+        "date": "2026-08-09",
+        "stars": 3
+      },
+      {
+        "date": "2026-08-10",
+        "stars": 7
+      },
+      {
+        "date": "2026-08-11",
+        "stars": 5
+      },
+      {
+        "date": "2026-08-12",
+        "stars": 10
+      },
+      {
+        "date": "2026-08-13",
+        "stars": 45
+      },
+      {
+        "date": "2026-08-14",
+        "stars": 169
+      },
+      {
+        "date": "2026-08-15",
+        "stars": 50
+      },
+      {
+        "date": "2026-08-16",
+        "stars": 43
+      },
+      {
+        "date": "2026-08-17",
+        "stars": 57
+      },
+      {
+        "date": "2026-08-18",
+        "stars": 91
+      }
+    ]
+  }
+}

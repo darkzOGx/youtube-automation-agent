@@ -1,5 +1,6 @@
 const { Logger } = require('../utils/logger');
 const { LLMClient } = require('../utils/llm-client');
+const { AITextService } = require('../utils/ai-text-service');
 
 class ScriptWriterAgent {
   constructor(db, credentials) {
@@ -8,7 +9,10 @@ class ScriptWriterAgent {
     this.logger = new Logger('ScriptWriter');
     this.templates = this.loadTemplates();
 
+    // Primary text generation: LLMClient router (LLM_BASE_URL / LLM_FALLBACK_* / GEMINI_API_KEY).
     this.llm = new LLMClient(credentials);
+    // Secondary: upstream multi-provider AITextService, used only when LLMClient has no providers.
+    this.aiTextService = new AITextService(credentials?.credentials || credentials || {});
   }
 
   async initialize() {
@@ -216,12 +220,22 @@ Provide the final output in valid JSON format EXACTLY matching this structure:
           generatedViaLLM = true;
           this.logger.info('LLM script generation and parsing successful');
         } catch (err) {
-          this.logger.error('LLM script generation failed, falling back to static templates:', err);
+          this.logger.error('LLM script generation failed, falling back:', err);
+        }
+      } else {
+        // LLMClient has no providers configured: try the upstream AITextService providers.
+        const aiScript = await this.generateScriptWithAI(strategy, template);
+        if (aiScript) {
+          aiScript.fullScript = this.formatFullScript(aiScript);
+          await this.db.saveScript(aiScript);
+          this.logger.info(`Script generated with AI provider: ${aiScript.title}`);
+          return aiScript;
         }
       }
 
       if (!generatedViaLLM) {
         // Fallback to static templates
+        this.logger.info('Using template script generation');
         title = await this.generateTitle(strategy);
         hook = await this.generateHook(strategy);
         introduction = await this.generateIntroduction(strategy);
@@ -242,11 +256,13 @@ Provide the final output in valid JSON format EXACTLY matching this structure:
         tone: template.tone,
         pacing: template.pacing,
         keywords: strategy.keywords,
+        claims: [],
         metadata: {
           strategy: strategy,
           generatedAt: new Date().toISOString(),
           version: '1.0',
-          aiGenerated: generatedViaLLM
+          aiGenerated: generatedViaLLM,
+          generationSource: generatedViaLLM ? 'llm' : 'template'
         }
       };
 
@@ -264,6 +280,170 @@ Provide the final output in valid JSON format EXACTLY matching this structure:
     }
   }
 
+  async generateScriptWithAI(strategy, template) {
+    if (!this.aiTextService.isAvailable()) {
+      this.logger.info('Using template script generation because no AI text provider is configured');
+      return null;
+    }
+
+    const prompt = `You are writing a YouTube script plan.
+Return only valid JSON with this exact shape:
+{
+  "title": "compelling title under 100 characters",
+  "hook": "opening hook in one sentence",
+  "sections": [
+    { "title": "section title", "content": ["spoken script bullet"], "duration": 60 }
+  ],
+  "cta": "clear call to action",
+  "claims": [
+    { "text": "specific factual claim a reviewer must verify", "riskLevel": "standard|high", "sourceUrls": ["exact supplied source URL"] }
+  ]
+}
+
+Topic: ${strategy.topic}
+Style/content type: ${strategy.contentType}
+Angle: ${strategy.angle}
+Target audience: ${strategy.targetAudience}
+Desired length: ${strategy.requestedLength || process.env.DEFAULT_VIDEO_LENGTH || '8-12 minutes'}
+Tone: ${template.tone}
+Pacing: ${template.pacing}
+Brand voice: ${strategy.brandVoice || 'clear, credible, and engaging'}
+Channel goal: ${strategy.channelGoal || 'help the viewer understand and act'}
+Channel value proposition: ${strategy.channelValueProposition || 'give the viewer practical value'}
+Editorial rationale: ${strategy.planRationale || 'fit the selected topic and audience'}
+Channel constraints: ${strategy.channelConstraints || 'none beyond the factual-safety rules below'}
+Preferred call to action: ${strategy.callToAction || 'invite the viewer to subscribe'}
+Keywords: ${(strategy.keywords || []).join(', ')}
+Research sources: ${JSON.stringify(strategy.researchSources || [])}
+Avoid fabricated statistics, unsupported claims, and fake urgency. List every externally verifiable factual claim in claims. Use only exact URLs from Research sources; use an empty sourceUrls array when the supplied sources do not support a claim.`;
+
+    try {
+      const response = await this.aiTextService.generateText(prompt, {
+        maxTokens: 1800,
+        temperature: 0.7
+      });
+      const parsed = this.parseAIJsonResponse(response);
+      const sections = this.normalizeAISections(parsed.sections, strategy);
+
+      if (!parsed.title || !parsed.hook || sections.length === 0) {
+        throw new Error('AI script response missing required fields');
+      }
+
+      this.logger.info(`Using AI script generation via ${this.aiTextService.providerName}`);
+      return {
+        title: String(parsed.title).slice(0, 100),
+        hook: this.normalizeAIHook(parsed.hook),
+        introduction: await this.generateIntroduction(strategy),
+        mainContent: {
+          sections,
+          totalDuration: this.calculateSectionsDuration(sections)
+        },
+        conclusion: await this.generateConclusion(strategy),
+        callToAction: this.normalizeAICTA(parsed.cta, strategy),
+        duration: this.estimateDuration({ sections }),
+        tone: template.tone,
+        pacing: template.pacing,
+        keywords: strategy.keywords || [],
+        claims: this.normalizeAIClaims(parsed.claims, strategy.researchSources || []),
+        metadata: {
+          strategy,
+          generatedAt: new Date().toISOString(),
+          version: '1.0',
+          generationSource: 'ai'
+        }
+      };
+    } catch (error) {
+      this.logger.warn(`AI script generation failed; using template fallback: ${error.message}`);
+      return null;
+    }
+  }
+
+  parseAIJsonResponse(response) {
+    const text = String(response || '').trim();
+    const withoutFences = text
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/```$/i, '')
+      .trim();
+
+    try {
+      return JSON.parse(withoutFences);
+    } catch (error) {
+      const match = withoutFences.match(/\{[\s\S]*\}/);
+      if (!match) {
+        throw error;
+      }
+      return JSON.parse(match[0]);
+    }
+  }
+
+  normalizeAIHook(hook) {
+    const text = typeof hook === 'object' && hook !== null ? hook.text : hook;
+    return {
+      type: 'ai',
+      text: String(text).trim(),
+      duration: '0:00-0:05'
+    };
+  }
+
+  normalizeAISections(sections, strategy) {
+    if (!Array.isArray(sections)) {
+      return [];
+    }
+
+    return sections
+      .slice(0, 8)
+      .map((section, index) => {
+        const rawContent = Array.isArray(section.content)
+          ? section.content
+          : [section.content || section.summary || section.description];
+        const content = rawContent
+          .filter(Boolean)
+          .map(line => String(line).trim())
+          .filter(Boolean);
+
+        return {
+          type: 'ai_generated',
+          title: String(section.title || `${strategy.topic} Part ${index + 1}`).trim(),
+          content,
+          duration: parseInt(section.duration, 10) || 60
+        };
+      })
+      .filter(section => section.title && section.content.length > 0);
+  }
+
+  normalizeAIClaims(claims, sources) {
+    if (!Array.isArray(claims)) return [];
+    const allowedUrls = new Set((sources || []).map(source => source.url));
+    return claims.slice(0, 25).map(item => ({
+      text: String(item?.text || item?.claim || '').trim().slice(0, 1000),
+      riskLevel: item?.riskLevel === 'high' ? 'high' : 'standard',
+      sourceUrls: [...new Set((Array.isArray(item?.sourceUrls) ? item.sourceUrls : [])
+        .map(url => String(url))
+        .filter(url => allowedUrls.has(url)))]
+    })).filter(item => item.text);
+  }
+
+  normalizeAICTA(cta, strategy) {
+    if (cta && typeof cta === 'object') {
+      return {
+        type: 'call_to_action',
+        subscribe: String(cta.subscribe || cta.text || `Subscribe for more on ${strategy.topic}.`),
+        like: String(cta.like || 'Like this video if it helped.'),
+        comment: String(cta.comment || `Share your experience with ${strategy.topic} in the comments.`),
+        nextVideo: String(cta.nextVideo || 'Watch the next related video for more context.'),
+        duration: '15 seconds'
+      };
+    }
+
+    return {
+      type: 'call_to_action',
+      subscribe: String(cta || `Subscribe for more practical videos about ${strategy.topic}.`),
+      like: 'Like this video if it helped.',
+      comment: `Share your experience with ${strategy.topic} in the comments.`,
+      nextVideo: 'Watch the next related video for more context.',
+      duration: '15 seconds'
+    };
+  }
   async generateTitle(strategy) {
     const types = {
       explainer: `Apa itu ${strategy.topic}? (Penjelasan Lengkap)`,
@@ -355,7 +535,7 @@ Provide the final output in valid JSON format EXACTLY matching this structure:
     return propositionsMap.get(strategy.contentType) || `everything about ${strategy.topic}`;
   }
 
-  getCredibilityStatement(strategy) {
+  getCredibilityStatement(_strategy) {
     const statements = [
       "I've spent months researching this topic",
       "After working with hundreds of people on this",
@@ -502,11 +682,11 @@ Provide the final output in valid JSON format EXACTLY matching this structure:
     return titles.at(stepNumber - 1) || `Bagian Indah Kisah ${topic}`;
   }
 
-  generateStepDescription(topic, stepNumber) {
+  generateStepDescription(topic, _stepNumber) {
     return `Langkah petualangan indah ini mengajarkan kita tentang bagaimana memahami makna ${topic} yang sesungguhnya. Mari kita amati baik-baik bagaimana sahabat kecil kita menyebarkan kasih sayang kepada sekitarnya.`;
   }
 
-  generateProTip(topic) {
+  generateProTip(_topic) {
     const tips = [
       `Tips Kebaikan: Mulailah dari hal kecil, seperti tersenyum manis kepada ibumu hari ini.`,
       `Ingat ya sayang: Selalu berbagi adalah cara terbaik untuk melipatgandakan kebahagiaan.`,
@@ -518,7 +698,7 @@ Provide the final output in valid JSON format EXACTLY matching this structure:
     return tips.at(Math.floor(Math.random() * tips.length));
   }
 
-  async generateDemonstration(strategy) {
+  async generateDemonstration(_strategy) {
     return {
       type: 'demonstration',
       title: 'Mari Bermain Bersama',
@@ -619,7 +799,7 @@ Provide the final output in valid JSON format EXACTLY matching this structure:
     return impacts.at(Math.floor(Math.random() * impacts.length));
   }
 
-  async generatePros(strategy) {
+  async generatePros(_strategy) {
     return {
       type: 'pros',
       title: 'Manfaat Senyuman dan Kebaikan',
@@ -634,7 +814,7 @@ Provide the final output in valid JSON format EXACTLY matching this structure:
     };
   }
 
-  async generateCons(strategy) {
+  async generateCons(_strategy) {
     return {
       type: 'cons',
       title: 'Apa yang Terjadi Jika Kita Cemberut',

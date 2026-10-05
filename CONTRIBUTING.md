@@ -1,54 +1,31 @@
-# Contributing to YouTube Automation Agent
+# Contributing
 
-First off, thank you for considering contributing to the YouTube Automation Agent! It's people like you that make this community such a great place.
+Thanks for contributing! This project moves fast and PRs are reviewed regularly — a few ground rules keep that possible.
 
-## How to Contribute
+## Ground rules
 
-### 1. Reporting Bugs
-This project uses `ISSUES.md` to track bugs locally. If you find a bug, please check `ISSUES.md` to see if it has already been reported. If not, feel free to open a GitHub Issue or add it to the local tracker.
+1. **One concern per PR.** A focused 50-line PR merges in days; a 6,000-line PR mixing features can't be responsibly reviewed. If your change has independent parts, stack them as separate PRs.
+2. **Don't regenerate `package-lock.json`** unless your PR is specifically about dependencies. Lockfile churn hides real changes and is a supply-chain review burden.
+3. **Lint and tests must pass** — CI runs `npm run lint` and `npm test` on every PR. If you fix a bug, add a regression test in `test.js` (see the existing `SystemTest` methods for the pattern).
+4. **Rebase on `master`** before opening or updating a PR.
+5. **Describe how you tested it.** "Ran `npm start`, generated a video with Gemini-only credentials, verified a real .mp4 appeared in `data/videos/`" beats any amount of code description.
 
-When reporting a bug, please include:
-- Your operating system and Node.js version.
-- The exact command or API call that caused the error.
-- The full stack trace from the console.
-- Steps to reproduce the bug.
-
-### 2. Suggesting Enhancements
-Enhancement suggestions are tracked via GitHub issues or discussions. Provide a clear and detailed explanation of the feature you want and why it would be useful for the project.
-
-### 3. Pull Requests
-1. Fork the repository and create your branch from `main`.
-2. If you've added code that should be tested, add tests.
-3. If you've changed APIs, update the documentation.
-4. Ensure the test suite passes (`npm test`).
-5. Issue that pull request!
-
-## Development Setup
+## Getting started
 
 ```bash
-# Clone your fork
-git clone https://github.com/<your-username>/youtube-automation-agent.git
-
-# Install dependencies
-npm install
-
-# Start in development mode (with hot reloading)
-npm run dev
+git clone <your-fork>
+cd youtube-automation-agent
+npm install        # also fetches the bundled FFmpeg binary
+npm test           # 12 system tests, no credentials needed
+npm run lint
 ```
 
-### Architecture Overview
-The system relies on a multi-agent architecture in the `agents/` directory:
-- **Strategy Agent**: Decides what to make.
-- **Script Writer**: Generates the content.
-- **SEO Agent**: Optimizes metadata.
-- **Production Management**: Assembles video/audio.
-- **Publishing Agent**: Interfaces with YouTube APIs.
+You don't need API keys to work on most of the codebase — the test suite and the simulation fallbacks run without them. For end-to-end runs, `npm run setup` walks you through credentials (any one AI provider is enough).
 
-Please ensure any changes you make respect this separation of concerns.
+## Where help is most wanted
 
-## Code Style
-- Use ES6+ syntax.
-- Async/Await over Promises.
-- Keep agent functions modular.
+Check the [open issues](https://github.com/darkzOGx/youtube-automation-agent/issues) and the roadmap in the latest [release notes](https://github.com/darkzOGx/youtube-automation-agent/releases). Current priorities: Gemini image/TTS parity, slideshow rendering performance, and template-content quality.
 
-We appreciate your contributions and look forward to building the best automated YouTube management system together!
+## Reporting bugs
+
+Use the bug report template — it asks for the startup capability check (`🔎 Capability check:` block), which diagnoses most issues instantly.

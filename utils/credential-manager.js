@@ -6,6 +6,8 @@ const chalk = require('chalk');
 const { Logger } = require('./logger');
 const OpenAI = require('openai');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { PROVIDERS, GEMINI_MODELS, GEMINI_DEFAULT_MODEL } = require('./ai-text-service');
+
 class CredentialManager {
   constructor() {
     this.logger = new Logger('CredentialManager');
@@ -119,7 +121,8 @@ class CredentialManager {
       'https://www.googleapis.com/auth/youtube.upload',
       'https://www.googleapis.com/auth/youtube',
       'https://www.googleapis.com/auth/youtube.readonly',
-      'https://www.googleapis.com/auth/yt-analytics.readonly'
+      'https://www.googleapis.com/auth/yt-analytics.readonly',
+      'https://www.googleapis.com/auth/youtube.force-ssl'
     ];
 
     const authUrl = oauth2Client.generateAuthUrl({
@@ -194,6 +197,15 @@ class CredentialManager {
     return google.youtube({ version: 'v3', auth });
   }
 
+  hasYouTubeScope(scope) {
+    const youtubeTokens = this.tokens?.youtube;
+    const active = Array.isArray(youtubeTokens)
+      ? youtubeTokens[Number(this.activeYoutubeIndex) || 0]
+      : youtubeTokens;
+    const granted = String(active?.scope || '');
+    return granted.split(/\s+/).includes(scope);
+  }
+
   // OpenAI API Setup
   async setupOpenAICredentials() {
     console.log(chalk.cyan('\n🤖 OpenAI API Setup'));
@@ -210,13 +222,8 @@ class CredentialManager {
         type: 'list',
         name: 'model',
         message: 'Select your preferred model:',
-        choices: [
-          'gpt-4-turbo-preview',
-          'gpt-4',
-          'gpt-3.5-turbo',
-          'gpt-3.5-turbo-16k'
-        ],
-        default: 'gpt-4-turbo-preview'
+        choices: [...PROVIDERS.openai.models],
+        default: PROVIDERS.openai.defaultModel
       }
     ]);
 
@@ -232,23 +239,156 @@ class CredentialManager {
   // Google Gemini API Setup
   async setupGeminiCredentials() {
     console.log(chalk.cyan('\n💎 Google Gemini API Setup'));
-    console.log(chalk.gray('Get your API key from: https://makersuite.google.com/app/apikey'));
-    
+    console.log(chalk.gray('Get your API key from: https://aistudio.google.com/apikey'));
+
     const answers = await inquirer.prompt([
       {
         type: 'password',
         name: 'apiKey',
         message: 'Enter your Gemini API Key:',
         validate: input => input.length > 0 || 'API key is required'
+      },
+      {
+        type: 'list',
+        name: 'model',
+        message: 'Select your preferred Gemini model:',
+        choices: [...GEMINI_MODELS],
+        default: GEMINI_DEFAULT_MODEL
       }
     ]);
 
     this.credentials.gemini = {
-      apiKey: answers.apiKey
+      apiKey: answers.apiKey,
+      model: answers.model
     };
 
     await this.saveCredentials();
     console.log(chalk.green('✅ Gemini credentials configured successfully!'));
+  }
+
+  // OpenRouter Setup
+  async setupOpenRouterCredentials() {
+    console.log(chalk.cyan('\nOpenRouter Setup'));
+    console.log(chalk.gray('Get your API key from: https://openrouter.ai/keys'));
+    console.log(chalk.gray('One key gives access to 400+ models (OpenAI, Claude, Gemini, Kimi, GLM, etc.)'));
+
+    const answers = await inquirer.prompt([
+      {
+        type: 'password',
+        name: 'apiKey',
+        message: 'Enter your OpenRouter API Key:',
+        validate: input => input.startsWith('sk-or-') || 'Invalid OpenRouter key format (starts with sk-or-)'
+      },
+      {
+        type: 'list',
+        name: 'model',
+        message: 'Select default model:',
+        choices: [...PROVIDERS.openrouter.models],
+        default: PROVIDERS.openrouter.defaultModel
+      }
+    ]);
+
+    this.credentials.aiProvider = {
+      provider: 'openrouter',
+      apiKey: answers.apiKey,
+      model: answers.model
+    };
+
+    await this.saveCredentials();
+    console.log(chalk.green('OpenRouter configured successfully!'));
+  }
+
+  // Kimi (Moonshot AI) Setup
+  async setupKimiCredentials() {
+    console.log(chalk.cyan('\nKimi (Moonshot AI) Setup'));
+    console.log(chalk.gray('Get your API key from: https://platform.kimi.ai'));
+
+    const answers = await inquirer.prompt([
+      {
+        type: 'password',
+        name: 'apiKey',
+        message: 'Enter your Moonshot API Key:',
+        validate: input => input.length > 0 || 'API key is required'
+      },
+      {
+        type: 'list',
+        name: 'model',
+        message: 'Select model:',
+        choices: [...PROVIDERS.kimi.models],
+        default: PROVIDERS.kimi.defaultModel
+      }
+    ]);
+
+    this.credentials.aiProvider = {
+      provider: 'kimi',
+      apiKey: answers.apiKey,
+      model: answers.model
+    };
+
+    await this.saveCredentials();
+    console.log(chalk.green('Kimi credentials configured successfully!'));
+  }
+
+  // MiMo (Xiaomi) Setup
+  async setupMiMoCredentials() {
+    console.log(chalk.cyan('\nMiMo (Xiaomi) Setup'));
+    console.log(chalk.gray('Get your API key from: https://mimo.mi.com'));
+
+    const answers = await inquirer.prompt([
+      {
+        type: 'password',
+        name: 'apiKey',
+        message: 'Enter your MiMo API Key:',
+        validate: input => input.length > 0 || 'API key is required'
+      },
+      {
+        type: 'list',
+        name: 'model',
+        message: 'Select model:',
+        choices: [...PROVIDERS.mimo.models],
+        default: PROVIDERS.mimo.defaultModel
+      }
+    ]);
+
+    this.credentials.aiProvider = {
+      provider: 'mimo',
+      apiKey: answers.apiKey,
+      model: answers.model
+    };
+
+    await this.saveCredentials();
+    console.log(chalk.green('MiMo credentials configured successfully!'));
+  }
+
+  // GLM (Zhipu AI) Setup
+  async setupGLMCredentials() {
+    console.log(chalk.cyan('\nGLM (Zhipu AI) Setup'));
+    console.log(chalk.gray('Get your API key from: https://z.ai'));
+
+    const answers = await inquirer.prompt([
+      {
+        type: 'password',
+        name: 'apiKey',
+        message: 'Enter your GLM API Key:',
+        validate: input => input.length > 0 || 'API key is required'
+      },
+      {
+        type: 'list',
+        name: 'model',
+        message: 'Select model:',
+        choices: [...PROVIDERS.glm.models],
+        default: PROVIDERS.glm.defaultModel
+      }
+    ]);
+
+    this.credentials.aiProvider = {
+      provider: 'glm',
+      apiKey: answers.apiKey,
+      model: answers.model
+    };
+
+    await this.saveCredentials();
+    console.log(chalk.green('GLM credentials configured successfully!'));
   }
 
   // Azure Speech Services (TTS)
@@ -322,7 +462,7 @@ class CredentialManager {
         name: 'defaultPrivacy',
         message: 'Select default privacy setting:',
         choices: ['public', 'unlisted', 'private'],
-        default: 'public'
+        default: 'private'
       },
       {
         type: 'input',
@@ -339,10 +479,10 @@ class CredentialManager {
     this.credentials.channel = answers;
     
     // Set environment variables for the application
-    process.env.CHANNEL_NAME = answers.channelName;
-    process.env.DEFAULT_PRIVACY_STATUS = answers.defaultPrivacy;
-    process.env.WEBSITE_URL = answers.websiteUrl;
-    process.env.BUSINESS_EMAIL = answers.businessEmail;
+    this.setEnvIfPresent('CHANNEL_NAME', answers.channelName);
+    this.setEnvIfPresent('DEFAULT_PRIVACY_STATUS', answers.defaultPrivacy);
+    this.setEnvIfPresent('WEBSITE_URL', answers.websiteUrl);
+    this.setEnvIfPresent('BUSINESS_EMAIL', answers.businessEmail);
 
     await this.saveCredentials();
     console.log(chalk.green('✅ Channel configuration saved successfully!'));
@@ -401,15 +541,52 @@ class CredentialManager {
     this.credentials.content = answers;
     
     // Set environment variables
-    process.env.COMPETITOR_CHANNELS = answers.competitorChannels.join(',');
-    process.env.DEFAULT_AUTHOR = answers.channelName || 'Content Creator';
-    process.env.TARGET_AUDIENCE = answers.targetAudience;
+    this.setEnvIfPresent('COMPETITOR_CHANNELS', answers.competitorChannels.join(','));
+    this.setEnvIfPresent('DEFAULT_AUTHOR', this.credentials.channel?.channelName || 'Content Creator');
+    this.setEnvIfPresent('TARGET_AUDIENCE', answers.targetAudience);
 
     await this.saveCredentials();
     console.log(chalk.green('✅ Content configuration saved successfully!'));
   }
 
+  setEnvIfPresent(key, value) {
+    if (value === undefined || value === null || value === '') {
+      return;
+    }
+
+    process.env[key] = String(value);
+  }
   // Validation methods
+  hasAITextProvider() {
+    if (this.credentials.openai?.apiKey || this.credentials.gemini?.apiKey || this.credentials.aiProvider?.apiKey) {
+      return true;
+    }
+
+    // OpenAI-compatible router used by utils/llm-client.js
+    if ((this.credentials.llm?.baseUrl && this.credentials.llm?.model) ||
+        (process.env.LLM_BASE_URL && process.env.LLM_MODEL)) {
+      return true;
+    }
+
+    // Environment-variable based configuration (see utils/ai-text-service.js)
+    const envKeys = [...Object.values(PROVIDERS).map(p => p.envKey), 'GEMINI_API_KEY'];
+    return envKeys.some(key => process.env[key]);
+  }
+
+  getMissingCredentials() {
+    const missing = [];
+
+    if (!this.credentials.youtube) {
+      missing.push('youtube');
+    }
+
+    if (!this.hasAITextProvider()) {
+      missing.push('an AI provider (OpenAI, Gemini, OpenRouter, Kimi, MiMo, or GLM)');
+    }
+
+    return missing;
+  }
+
   async validateAll() {
     try {
       await this.loadCredentials();
@@ -418,16 +595,11 @@ class CredentialManager {
       // Files might not exist yet
     }
 
-    const hasYouTube = !!this.credentials.youtube;
-    const hasAI = !!(this.credentials.openai || this.credentials.gemini);
+    const missing = this.getMissingCredentials();
 
-    if (!hasYouTube) {
-      console.log(chalk.yellow('\n⚠️  Missing YouTube API credentials in config/credentials.json'));
-      return false;
-    }
-
-    if (!hasAI) {
-      console.log(chalk.yellow('\n⚠️  Missing AI API credentials (neither OpenAI nor Gemini found)'));
+    if (missing.length > 0) {
+      console.log(chalk.yellow(`\n⚠️  Missing credentials for: ${missing.join(', ')}`));
+      console.log(chalk.gray('Any one AI provider is enough — run: npm run credentials:setup'));
       return false;
     }
 
@@ -468,7 +640,7 @@ class CredentialManager {
     if (this.credentials.openai && this.credentials.openai.apiKey && !this.credentials.openai.apiKey.includes('YOUR_OPENAI_API_KEY')) {
       try {
         const openai = new OpenAI({ apiKey: this.credentials.openai.apiKey });
-        
+
         await openai.models.list();
         results.openai = true;
         console.log(chalk.green('✅ OpenAI API connection successful'));
@@ -530,19 +702,23 @@ class CredentialManager {
         name: 'service',
         message: 'Select your preferred AI service:',
         choices: [
-          { name: 'OpenAI (GPT-4/GPT-3.5)', value: 'openai' },
-          { name: 'Google Gemini', value: 'gemini' },
-          { name: 'Both (OpenAI primary)', value: 'both' }
+          { name: 'OpenAI (GPT-5.6)', value: 'openai' },
+          { name: 'Google Gemini (Gemini 3.7)', value: 'gemini' },
+          { name: 'OpenRouter (400+ models, one API key)', value: 'openrouter' },
+          { name: 'Kimi (Moonshot AI — K3)', value: 'kimi' },
+          { name: 'MiMo (Xiaomi — V2.5 Pro)', value: 'mimo' },
+          { name: 'GLM (Zhipu AI — GLM-5.3)', value: 'glm' },
         ]
       }
     ]);
 
-    if (service === 'openai' || service === 'both') {
-      await this.setupOpenAICredentials();
-    }
-    
-    if (service === 'gemini' || service === 'both') {
-      await this.setupGeminiCredentials();
+    switch (service) {
+      case 'openai': return await this.setupOpenAICredentials();
+      case 'gemini': return await this.setupGeminiCredentials();
+      case 'openrouter': return await this.setupOpenRouterCredentials();
+      case 'kimi': return await this.setupKimiCredentials();
+      case 'mimo': return await this.setupMiMoCredentials();
+      case 'glm': return await this.setupGLMCredentials();
     }
   }
 
@@ -617,6 +793,34 @@ class CredentialManager {
 
     await this.saveCredentials();
     console.log(chalk.green('✅ TTS service configured successfully!'));
+  }
+
+  async setupElevenLabsCredentials() {
+    console.log(chalk.cyan('\n🎙️  ElevenLabs Setup'));
+    console.log(chalk.gray('Get your API key from: https://elevenlabs.io'));
+
+    const answers = await inquirer.prompt([
+      {
+        type: 'password',
+        name: 'apiKey',
+        message: 'Enter your ElevenLabs API Key:',
+        validate: input => input.length > 0 || 'API key is required'
+      },
+      {
+        type: 'input',
+        name: 'voiceId',
+        message: 'Enter your preferred Voice ID:',
+        validate: input => input.length > 0 || 'Voice ID is required'
+      }
+    ]);
+
+    this.credentials.elevenLabs = {
+      apiKey: answers.apiKey,
+      voiceId: answers.voiceId
+    };
+
+    await this.saveCredentials();
+    console.log(chalk.green('✅ ElevenLabs credentials configured successfully!'));
   }
 }
 

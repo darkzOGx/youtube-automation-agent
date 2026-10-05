@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions & setup help
+    url: https://github.com/darkzOGx/youtube-automation-agent/discussions
+    about: For "how do I…" questions, setup help, and showing off what you built — use Discussions so Issues stays focused on bugs.

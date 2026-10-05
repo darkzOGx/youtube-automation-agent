@@ -1,0 +1,60 @@
+name: Bug report
+description: Something is broken or doesn't work as documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report! Two minutes of detail here usually saves days of back-and-forth.
+        **Before filing:** update to the latest release (`git pull && npm install`) — many "doesn't work" reports were fixed in v2.2.0.
+  - type: textarea
+    id: capability-check
+    attributes:
+      label: Startup capability check
+      description: Run `npm start` and paste the `🔎 Capability check:` block (the ✓/✗ lines). This tells us exactly which stages are configured.
+      render: text
+      placeholder: |
+        🔎 Capability check:
+          ✓ Script & strategy generation
+          ✗ Voice narration (TTS) — ...
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened vs. what you expected
+      description: Include the exact error text from the console or `logs/` — text, not screenshots, please.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. npm run setup (chose Gemini)
+        2. npm start
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      description: Output of `git log --oneline -1`
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+    validations:
+      required: true
+  - type: input
+    id: provider
+    attributes:
+      label: AI provider in use
+      placeholder: e.g. Gemini, OpenAI, OpenRouter

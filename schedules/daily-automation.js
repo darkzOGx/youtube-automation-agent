@@ -4,12 +4,17 @@ const path = require('path');
 const { Logger } = require('../utils/logger');
 
 class DailyAutomation {
-  constructor(agents, database) {
+  constructor(agents, database, options = {}) {
     this.agents = agents;
     this.db = database;
     this.logger = new Logger('DailyAutomation');
     this.scheduledTasks = new Map();
     this.isEnabled = true;
+    this.healthCheckInterval = null;
+    this.lastHealthCheck = null;
+    this.generateContent = options.generateContent || null;
+    this.engagement = options.engagement || null;
+    this.experiments = options.experiments || null;
   }
 
   async initialize() {
@@ -79,6 +84,24 @@ class DailyAutomation {
       }, { scheduled: false })
     );
 
+    // Audience comment sync every 4 hours; the service's own taper decides which videos are due
+    this.scheduledTasks.set('audience-engagement-sync',
+      cron.schedule('0 */4 * * *', async () => {
+        if (this.isEnabled) {
+          await this.collectAudienceEngagement();
+        }
+      }, { scheduled: false })
+    );
+
+    // Collect controlled experiment evidence and advance only pre-approved arms.
+    this.scheduledTasks.set('growth-experiment-refresh',
+      cron.schedule('30 */4 * * *', async () => {
+        if (this.isEnabled) {
+          await this.refreshGrowthExperiments();
+        }
+      }, { scheduled: false })
+    );
+
     // Start all scheduled tasks
     this.scheduledTasks.forEach((task, name) => {
       task.start();
@@ -97,6 +120,15 @@ class DailyAutomation {
       
       if (!shouldGenerate) {
         this.logger.info('Skipping content generation - sufficient content in pipeline');
+        return;
+      }
+
+      if (this.generateContent) {
+        const job = await this.generateContent({ source: 'scheduler' });
+        await this.db.setSetting('last_content_generation', new Date().toISOString());
+        timer.end();
+        this.logger.success(`Daily content generation queued: ${job.id}`);
+        await this.logAutomationEvent('daily_content_generation', 'queued', { jobId: job.id });
         return;
       }
 
@@ -125,9 +157,13 @@ class DailyAutomation {
       });
       this.logger.info(`Production completed: ${productionData.id}`);
 
-      // Schedule for publishing
-      await this.agents.publishing.scheduleContent(productionData);
-      this.logger.info('Content scheduled for publishing');
+      // Schedule for publishing (returns null when only placeholder assets were produced)
+      const scheduleEntry = await this.agents.publishing.scheduleContent(productionData);
+      if (scheduleEntry) {
+        this.logger.info('Content scheduled for publishing');
+      } else {
+        this.logger.warn('Content was NOT scheduled — production produced placeholder assets. See warnings above.');
+      }
 
       timer.end();
       this.logger.success('Daily content generation completed successfully');
@@ -162,8 +198,24 @@ class DailyAutomation {
     }
 
     // Check posting frequency settings
-    const frequency = await this.db.getSetting('posting_frequency') || 'daily';
     const lastGeneration = await this.db.getSetting('last_content_generation');
+    const channelStrategy = this.db.getChannelStrategy ? await this.db.getChannelStrategy() : null;
+
+    if (channelStrategy?.status === 'active') {
+      const weeklyOutput = await this.db.getRow(
+        `SELECT COUNT(*) AS count FROM generation_jobs
+         WHERE source = 'autonomous_operator' AND status = 'completed'
+         AND created_at >= datetime('now', '-7 days')`
+      );
+      if (Number(weeklyOutput?.count || 0) >= channelStrategy.cadence_per_week) return false;
+      if (!lastGeneration) return true;
+      const daysSinceLastGeneration = Math.floor(
+        (new Date() - new Date(lastGeneration)) / (1000 * 60 * 60 * 24)
+      );
+      return daysSinceLastGeneration >= 1;
+    }
+
+    const frequency = await this.db.getSetting('posting_frequency') || 'daily';
     
     if (lastGeneration) {
       const lastDate = new Date(lastGeneration);
@@ -204,6 +256,7 @@ class DailyAutomation {
       await this.logAutomationEvent('queue_processing', 'error', {
         error: error.message
       });
+      await this.sendFailureNotification('Publishing Queue', error);
     }
   }
 
@@ -211,26 +264,29 @@ class DailyAutomation {
     try {
       this.logger.info('Starting daily analytics collection...');
       
-      // Get recently published videos
-      const recentVideos = await this.getRecentlyPublishedVideos(7);
+      // Keep a 30-day catch-up window so new installs can backfill 24-hour and 7-day evidence.
+      const recentVideos = await this.getRecentlyPublishedVideos(30);
       
       let processedCount = 0;
       
       for (const video of recentVideos) {
         try {
-          const performanceData = await this.agents.analytics.analyzeVideoPerformance(video.youtube_id);
-          processedCount++;
-          
-          this.logger.info(`Analyzed video: ${video.title}`);
-          
-          // A/B Testing Metadata Swap Logic
+          const windows = await this.agents.analytics.getDueMeasurementWindows(video);
+          let performanceData = null;
+          for (const measurementWindow of windows) {
+            performanceData = await this.agents.analytics.analyzeVideoPerformance(video.youtube_id, { measurementWindow }) || performanceData;
+            processedCount++;
+            this.logger.info(`Captured ${measurementWindow} learning evidence for: ${video.title}`);
+
+            // Small delay to avoid API rate limits
+            await this.sleep(2000);
+          }
+
+          // A/B Testing Metadata Swap Logic (fork) — evaluated on the latest analysis captured this run
           if (performanceData && performanceData.thumbnailMetrics && performanceData.thumbnailMetrics.clickThroughRate < 4.0) {
             this.logger.info(`Video CTR is low (${performanceData.thumbnailMetrics.clickThroughRate}%). Checking for A/B Test alternatives...`);
             await this.swapABTestTitle(video);
           }
-          
-          // Small delay to avoid API rate limits
-          await this.sleep(2000);
         } catch (error) {
           this.logger.error(`Failed to analyze video ${video.youtube_id}:`, error);
         }
@@ -248,6 +304,39 @@ class DailyAutomation {
       await this.logAutomationEvent('analytics_collection', 'error', {
         error: error.message
       });
+      await this.sendFailureNotification('Analytics Collection', error);
+    }
+  }
+
+  async collectAudienceEngagement() {
+    if (!this.engagement) return;
+    try {
+      this.logger.info('Starting audience comment sync...');
+      const recentVideos = await this.getRecentlyPublishedVideos(30);
+      const results = await this.engagement.syncDueVideos(recentVideos.map(video => ({
+        youtubeId: video.youtube_id,
+        title: video.title,
+        publishedAt: video.published_at,
+        productionId: video.production_id || null
+      })));
+      this.logger.success(`Audience engagement sync completed: ${results.synced} synced, ${results.skipped} skipped, ${results.failed} failed`);
+      await this.logAutomationEvent('audience_engagement_sync', 'success', results);
+    } catch (error) {
+      this.logger.error('Audience engagement sync failed:', error);
+      await this.logAutomationEvent('audience_engagement_sync', 'error', { error: error.message });
+    }
+  }
+
+  async refreshGrowthExperiments() {
+    if (!this.experiments) return;
+    try {
+      const result = await this.experiments.refreshDue();
+      if (result.refreshed || result.failed) {
+        await this.logAutomationEvent('growth_experiment_refresh', result.failed ? 'warning' : 'success', result);
+      }
+    } catch (error) {
+      this.logger.error('Growth experiment refresh failed:', error);
+      await this.logAutomationEvent('growth_experiment_refresh', 'error', { error: error.message });
     }
   }
 
@@ -260,8 +349,12 @@ class DailyAutomation {
 
       // We need to fetch the original DB entry to access abTitles
       // Assuming 'video' has an id pointing to our database or the scheduled entry
+      if (typeof this.db.getScheduleEntryByYoutubeId !== 'function') {
+        this.logger.info('A/B title swap skipped: schedule lookup by YouTube ID is not available');
+        return;
+      }
       const dbEntry = await this.db.getScheduleEntryByYoutubeId(video.youtube_id);
-      
+
       if (!dbEntry || !dbEntry.metadata || !dbEntry.metadata.seo || !dbEntry.metadata.seo.abTitles) {
         this.logger.info(`No A/B title alternatives found for video ${video.youtube_id}`);
         return;
@@ -524,14 +617,19 @@ class DailyAutomation {
   async sendFailureNotification(taskName, error) {
     // This would integrate with notification services (email, Slack, etc.)
     this.logger.error(`AUTOMATION FAILURE - ${taskName}: ${error.message}`);
-    
-    // Could send webhook notification, email, etc.
-    // For now, just log it prominently
+    if (this.db.createNotification) {
+      await this.db.createNotification({
+        type: 'automation_failure',
+        level: 'error',
+        title: `${taskName} failed`,
+        message: error.message
+      });
+    }
   }
 
   startMonitoringLoop() {
     // Monitor system health every hour
-    setInterval(async () => {
+    this.healthCheckInterval = setInterval(async () => {
       try {
         await this.performHealthCheck();
       } catch (error) {
@@ -541,6 +639,8 @@ class DailyAutomation {
   }
 
   async performHealthCheck() {
+    this.lastHealthCheck = new Date();
+
     const health = {
       timestamp: new Date().toISOString(),
       database: false,
@@ -614,7 +714,10 @@ class DailyAutomation {
       task.stop();
       this.logger.info(`Stopped scheduled task: ${name}`);
     });
-    
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+      this.healthCheckInterval = null;
+    }
     this.isEnabled = false;
     this.logger.info('All automation tasks stopped');
   }

@@ -18,10 +18,11 @@ class ModernAuth {
     
     try {
       const credentials = JSON.parse(fs.readFileSync(this.credentialsPath));
+      // The app stores multiple YouTube accounts as an array; OAuth here uses the first one
+      credentials.youtube = [].concat(credentials.youtube)[0];
       
-      // Use a random high port to avoid conflicts
-      const port = 8000 + Math.floor(Math.random() * 1000);
-      const redirectUri = `http://localhost:${port}/callback`;
+      const redirect = this.resolveRedirect(credentials);
+      const redirectUri = redirect.uri;
       
       const oauth2Client = new google.auth.OAuth2(
         credentials.youtube.client_id,
@@ -33,11 +34,21 @@ class ModernAuth {
         'https://www.googleapis.com/auth/youtube.upload',
         'https://www.googleapis.com/auth/youtube',
         'https://www.googleapis.com/auth/youtube.readonly',
-        'https://www.googleapis.com/auth/yt-analytics.readonly'
+        'https://www.googleapis.com/auth/yt-analytics.readonly',
+        'https://www.googleapis.com/auth/youtube.force-ssl'
       ];
 
-      // Start a temporary local server
-      await this.startTempServer(port, oauth2Client);
+      const authResult = new Promise((resolve, reject) => {
+        this.resolveAuth = resolve;
+        this.rejectAuth = reject;
+        this.authTimeout = setTimeout(() => {
+          this.cleanup();
+          reject(new Error('Authentication timeout (5 minutes)'));
+        }, 300000);
+      });
+
+      // Start a temporary local server at the exact redirect URI used in the OAuth request.
+      await this.startTempServer(redirect, oauth2Client);
       
       // Generate auth URL
       const authUrl = oauth2Client.generateAuthUrl({
@@ -48,33 +59,63 @@ class ModernAuth {
 
       console.log(chalk.cyan('🔗 Please visit this URL to authorize:'));
       console.log(chalk.blue(authUrl));
-      console.log(chalk.yellow(`\n⚡ A temporary server is running on port ${port}`));
+
+      // Best effort: open the URL in the default browser
+      const { exec } = require('child_process');
+      const openCommands = {
+        win32: `start "" "${authUrl}"`,
+        darwin: `open "${authUrl}"`,
+        linux: `xdg-open "${authUrl}"`
+      };
+      if (openCommands[process.platform]) {
+        exec(openCommands[process.platform], () => {});
+      }
+      console.log(chalk.yellow(`\n⚡ A temporary server is running on port ${redirect.port}`));
       console.log(chalk.yellow('After authorization, you\'ll be redirected automatically.'));
       console.log(chalk.gray('Waiting for authorization...'));
       
       // The server will handle the rest
-      return new Promise((resolve, reject) => {
-        this.resolveAuth = resolve;
-        this.rejectAuth = reject;
-        
-        // Set timeout
-        setTimeout(() => {
-          this.cleanup();
-          reject(new Error('Authentication timeout (5 minutes)'));
-        }, 300000); // 5 minutes
-      });
+      return authResult;
       
     } catch (error) {
+      this.cleanup();
       console.error(chalk.red('Authentication failed:'), error.message);
       throw error;
     }
   }
 
-  async startTempServer(port, oauth2Client) {
+  resolveRedirect(credentials) {
+    const explicitRedirect = process.env.YOUTUBE_REDIRECT_URI;
+    const configured = [explicitRedirect, ...(credentials.youtube?.redirect_uris || [])].filter(Boolean);
+    const legacyGeneratedRedirect = /^http:\/\/localhost:8080\/(?:oauth2callback|callback)\/?$/i;
+    let redirect = null;
+    for (const value of configured) {
+      if (!explicitRedirect && legacyGeneratedRedirect.test(value)) continue;
+      try {
+        const candidate = new URL(value);
+        if (candidate.protocol === 'http:' && ['localhost', '127.0.0.1', '::1'].includes(candidate.hostname)) {
+          redirect = candidate;
+          break;
+        }
+      } catch (_error) {
+        // Ignore obsolete out-of-band and malformed redirect values.
+      }
+    }
+    redirect ||= new URL('http://127.0.0.1/');
+    if (!redirect.port) redirect.port = String(8000 + Math.floor(Math.random() * 1000));
+    return {
+      uri: redirect.toString(),
+      hostname: redirect.hostname,
+      port: Number(redirect.port),
+      pathname: redirect.pathname || '/'
+    };
+  }
+
+  async startTempServer(redirect, oauth2Client) {
     this.server = http.createServer(async (req, res) => {
-      const url = new URL(req.url, `http://localhost:${port}`);
+      const url = new URL(req.url, redirect.uri);
       
-      if (url.pathname === '/callback') {
+      if (url.pathname === redirect.pathname) {
         const code = url.searchParams.get('code');
         const error = url.searchParams.get('error');
         
@@ -136,11 +177,18 @@ class ModernAuth {
       }
     });
     
-    this.server.listen(port, 'localhost');
-    console.log(chalk.gray(`Temporary OAuth server started on port ${port}`));
+    await new Promise((resolve, reject) => {
+      this.server.once('error', reject);
+      this.server.listen(redirect.port, redirect.hostname, resolve);
+    });
+    console.log(chalk.gray(`Temporary OAuth server started on ${redirect.uri}`));
   }
   
   cleanup() {
+    if (this.authTimeout) {
+      clearTimeout(this.authTimeout);
+      this.authTimeout = null;
+    }
     if (this.server) {
       this.server.close();
       this.server = null;
@@ -151,13 +199,15 @@ class ModernAuth {
     try {
       const tokens = JSON.parse(fs.readFileSync(this.tokensPath));
       const credentials = JSON.parse(fs.readFileSync(this.credentialsPath));
+      // The app stores multiple YouTube accounts as an array; OAuth here uses the first one
+      credentials.youtube = [].concat(credentials.youtube)[0];
       
       const oauth2Client = new google.auth.OAuth2(
         credentials.youtube.client_id,
         credentials.youtube.client_secret
       );
       
-      oauth2Client.setCredentials(tokens.youtube);
+      oauth2Client.setCredentials([].concat(tokens.youtube)[0]);
       
       const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
       const response = await youtube.channels.list({
