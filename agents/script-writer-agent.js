@@ -1,5 +1,5 @@
 const { Logger } = require('../utils/logger');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { LLMClient } = require('../utils/llm-client');
 
 class ScriptWriterAgent {
   constructor(db, credentials) {
@@ -8,23 +8,7 @@ class ScriptWriterAgent {
     this.logger = new Logger('ScriptWriter');
     this.templates = this.loadTemplates();
 
-    // Support either raw credentials JSON or the CredentialManager instance
-    const rawCredentials = credentials.credentials || credentials;
-
-    // Initialize Gemini AI
-    const geminiKey = rawCredentials.gemini?.apiKey || process.env.GEMINI_API_KEY;
-    if (geminiKey) {
-      try {
-        this.genAI = new GoogleGenerativeAI(geminiKey);
-        this.gemini = this.genAI.getGenerativeModel({
-          model: 'gemini-2.5-flash',
-          systemInstruction: 'You are an expert Indonesian children\'s fairy tale writer. You create wholesome, safe, educational stories for kids aged 3-8 in Bahasa Indonesia. Always produce valid JSON output only. Never include violent, scary, or inappropriate content.'
-        });
-        this.logger.info('Google Gemini service initialized for ScriptWriter');
-      } catch (error) {
-        this.logger.error('Failed to initialize Google Gemini for ScriptWriter:', error);
-      }
-    }
+    this.llm = new LLMClient(credentials);
   }
 
   async initialize() {
@@ -98,43 +82,16 @@ Provide the output in valid JSON format:
   ],
   "moralLesson": "Pesan moral cerita"
 }`;
-    return this.executeGeminiWithRetry(prompt, true);
+    return this.executeLLM(prompt, true);
   }
 
-  async executeGeminiWithRetry(prompt, isJson = false, retries = 3) {
-    const modelsToTry = [
-      'gemini-2.5-flash',
-      'gemini-2.5-flash-lite',
-      'gemini-3.1-flash-lite'
-    ];
-    
-    let lastError = null;
-    
-    for (let i = 0; i < retries; i++) {
-      const modelName = modelsToTry[i % modelsToTry.length];
-      this.logger.info(`Attempting Gemini generation using model: ${modelName} (Attempt ${i + 1}/${retries})`);
-      
-      try {
-        const currentModel = this.genAI.getGenerativeModel({
-          model: modelName,
-          systemInstruction: 'You are an expert Indonesian children\'s fairy tale writer. You create wholesome, safe, educational stories for kids aged 3-8 in Bahasa Indonesia. Always produce valid JSON output only. Never include violent, scary, or inappropriate content.'
-        });
-        
-        const result = await currentModel.generateContent(prompt);
-        return isJson ? this.parseJsonFromText(result.response.text()) : result.response.text();
-      } catch (error) {
-        lastError = error;
-        if (error.message.includes('503') || error.message.includes('429')) {
-          this.logger.warn(`Gemini API busy (503/429) on ${modelName}. Retrying in 5 seconds...`);
-          await new Promise(resolve => setTimeout(resolve, 5000));
-        } else if (error.message.includes('404') || error.message.includes('not found')) {
-          this.logger.warn(`Model ${modelName} not found or unsupported. Trying next model...`);
-        } else {
-          throw error;
-        }
-      }
-    }
-    throw new Error(`Gemini API exhausted all retries. Last error: ${lastError.message}`);
+  async executeLLM(prompt, isJson = false) {
+    const text = await this.llm.generate({
+      system: 'You are an expert Indonesian children\'s fairy tale writer. You create wholesome, safe, educational stories for kids aged 3-8 in Bahasa Indonesia. Always produce valid JSON output only. Never include violent, scary, or inappropriate content.',
+      prompt,
+      json: isJson
+    });
+    return isJson ? this.parseJsonFromText(text) : text;
   }
 
   async writeDraft(outline, strategy) {
@@ -156,10 +113,10 @@ Provide the output in valid JSON format:
       "title": "Judul Bab 1",
       "content": "Satu paragraf cerita yang indah (3-4 kalimat dalam Bahasa Indonesia)."
     }
-  ],
+  ]
 }
 `;
-    return this.executeGeminiWithRetry(prompt, true);
+    return this.executeLLM(prompt, true);
   }
 
   async polishForKids(draft, outline) {
@@ -169,7 +126,7 @@ Draft: ${JSON.stringify(draft)}
 
 CRITICAL RULES:
 1. ALL TEXT MUST BE IN BAHASA INDONESIA. Do not use English.
-2. Provide EXACTLY 1-3 English keywords for sound effects in the "sfx_keywords" array.
+2. Give every section 1-3 English sound-effect keywords in "sfx_keywords" (for example "magic", "wind", "laugh", "birds", "footsteps"); they are used to look up sound files.
 
 Provide the final output in valid JSON format EXACTLY matching this structure:
 {
@@ -188,7 +145,7 @@ Provide the final output in valid JSON format EXACTLY matching this structure:
       "title": "Judul Bab",
       "content": "Satu paragraf cerita yang sudah disempurnakan.",
       "duration": 45,
-      "sfx_keywords": ["MANDATORY: 1-3 English keywords, e.g., 'magic', 'wind', 'laugh', 'birds', 'footsteps']
+      "sfx_keywords": ["magic", "wind"]
     }
   ],
   "conclusion": {
@@ -201,7 +158,7 @@ Provide the final output in valid JSON format EXACTLY matching this structure:
     "comment": "Pertanyaan interaktif untuk dijawab di komentar"
   }
 }`;
-    return this.executeGeminiWithRetry(prompt, true);
+    return this.executeLLM(prompt, true);
   }
 
   async generateScript(strategy) {
@@ -213,11 +170,11 @@ Provide the final output in valid JSON format EXACTLY matching this structure:
       const template = allowedTypes.includes(contentTypeKey) ? this.templates[contentTypeKey] : this.templates.explainer;
 
       let hook, introduction, mainContent, conclusion, cta, title;
-      let generatedViaGemini = false;
+      let generatedViaLLM = false;
 
-      if (this.gemini) {
+      if (this.llm.isAvailable()) {
         try {
-          this.logger.info('Invoking Google Gemini Multi-Agent Pipeline for script generation...');
+          this.logger.info(`Invoking LLM pipeline for script generation (${this.llm.describe()})...`);
 
           const outline = await this.generateOutline(strategy);
           const draft = await this.writeDraft(outline, strategy);
@@ -256,14 +213,14 @@ Provide the final output in valid JSON format EXACTLY matching this structure:
             duration: '15 seconds'
           };
 
-          generatedViaGemini = true;
-          this.logger.info('Gemini script generation and parsing successful');
+          generatedViaLLM = true;
+          this.logger.info('LLM script generation and parsing successful');
         } catch (err) {
-          this.logger.error('Gemini script generation failed, falling back to static templates:', err);
+          this.logger.error('LLM script generation failed, falling back to static templates:', err);
         }
       }
 
-      if (!generatedViaGemini) {
+      if (!generatedViaLLM) {
         // Fallback to static templates
         title = await this.generateTitle(strategy);
         hook = await this.generateHook(strategy);
@@ -289,7 +246,7 @@ Provide the final output in valid JSON format EXACTLY matching this structure:
           strategy: strategy,
           generatedAt: new Date().toISOString(),
           version: '1.0',
-          aiGenerated: generatedViaGemini
+          aiGenerated: generatedViaLLM
         }
       };
 

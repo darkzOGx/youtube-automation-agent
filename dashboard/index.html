@@ -764,6 +764,7 @@
 
                     <label for="image-model-provider" style="font-weight: 500; color: #a78bfa; font-size: 0.9em;">Image Generator:</label>
                     <select id="image-model-provider" class="form-control" style="width: auto; background: rgba(0,0,0,0.2); border: 1px solid rgba(139, 92, 246, 0.3); color: white; padding: 6px 12px; border-radius: 6px; font-size: 0.9em;" onchange="updateImageModelList()">
+                        <option value="router">Image Router (9router)</option>
                         <option value="gemini">Google Gemini</option>
                         <option value="openai">OpenAI</option>
                         <option value="openrouter">OpenRouter</option>
@@ -771,9 +772,7 @@
                     
                     <label for="image-model-name" style="font-weight: 500; color: #a78bfa; margin-left: 10px; font-size: 0.9em;">Model:</label>
                     <select id="image-model-name" class="form-control" style="width: auto; background: rgba(0,0,0,0.2); border: 1px solid rgba(139, 92, 246, 0.3); color: white; padding: 6px 12px; border-radius: 6px; font-size: 0.9em;">
-                        <option value="imagen-4.0-fast-generate-001">Google Imagen 4 Fast</option>
-                        <option value="google/gemini-2.5-flash-image">Gemini 2.5 Flash Image</option>
-                        <option value="imagen-4.0-generate-001">Imagen 4</option>
+                        <option value="ag/gemini-3.1-flash-image">Gemini 3.1 Flash Image</option>
                     </select>
 
                     <label for="video-format" style="font-weight: 500; color: #a78bfa; margin-left: 10px; font-size: 0.9em;">Video Format:</label>
@@ -1420,7 +1419,11 @@
             const modelSelect = document.getElementById('image-model-name');
             modelSelect.innerHTML = '';
             
-            if (provider === 'gemini') {
+            if (provider === 'router') {
+                modelSelect.innerHTML = `
+                    <option value="ag/gemini-3.1-flash-image">Gemini 3.1 Flash Image</option>
+                `;
+            } else if (provider === 'gemini') {
                 modelSelect.innerHTML = `
                     <option value="imagen-4.0-fast-generate-001">Google Imagen 4 Fast</option>
                     <option value="google/gemini-2.5-flash-image">Gemini 2.5 Flash Image</option>

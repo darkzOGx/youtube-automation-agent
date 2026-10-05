@@ -1,5 +1,5 @@
 const { Logger } = require('../utils/logger');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { LLMClient } = require('../utils/llm-client');
 
 class SEOOptimizerAgent {
   constructor(db, credentials) {
@@ -8,23 +8,7 @@ class SEOOptimizerAgent {
     this.logger = new Logger('SEOOptimizer');
     this.keywordDatabase = new Map();
     
-    // Support either raw credentials JSON or the CredentialManager instance
-    const rawCredentials = credentials.credentials || credentials;
-    
-    // Initialize Gemini AI
-    const geminiKey = rawCredentials?.gemini?.apiKey || process.env.GEMINI_API_KEY;
-    if (geminiKey) {
-      try {
-        this.genAI = new GoogleGenerativeAI(geminiKey);
-        this.gemini = this.genAI.getGenerativeModel({
-          model: 'gemini-2.5-flash',
-          systemInstruction: 'You are a YouTube SEO specialist for Indonesian children\'s storytelling channels.'
-        });
-        this.logger.info('Google Gemini service initialized for SEOOptimizer');
-      } catch (error) {
-        this.logger.error('Failed to initialize Google Gemini for SEOOptimizer:', error);
-      }
-    }
+    this.llm = new LLMClient(credentials);
   }
 
   async initialize() {
@@ -172,14 +156,19 @@ class SEOOptimizerAgent {
   }
 
   async generateDescription(script, strategy) {
-    if (!this.gemini) {
-      this.logger.warn('Gemini AI not initialized. Falling back to simple description.');
+    if (!this.llm.isAvailable()) {
+      this.logger.warn('No LLM configured. Falling back to simple description.');
       return this.generateFallbackDescription(script, strategy);
     }
     
     try {
       this.logger.info(`Generating LLM-powered SEO description for: ${script.title}`);
-      
+
+      const intro = script.introduction || {};
+      const storySummary = [intro.topicIntro, intro.valueProposition, script.hook?.text]
+        .filter(Boolean)
+        .join(' ') || 'Kisah edukatif pengantar tidur untuk anak.';
+
       const prompt = `
 Generate a YouTube description in Bahasa Indonesia.
 
@@ -208,9 +197,10 @@ Output format:
 1. SEO opening paragraph
 2. What children will learn
 3. Moral lesson
-4. Timestamp section
-5. Soft subscribe CTA
-6. Relevant hashtags
+4. Soft subscribe CTA
+5. Relevant hashtags
+
+Do not include timestamps; you do not have the video's timings.
 
 Story title:
 ${script.title}
@@ -219,14 +209,16 @@ Story topic:
 ${strategy.topic}
 
 Story summary:
-${script.introduction || 'Kisah edukatif pengantar tidur untuk anak.'}
+${storySummary}
 
 Story sections:
 ${JSON.stringify(script.mainContent?.sections?.map(s => s.title) || [])}
 `;
       
-      const result = await this.gemini.generateContent(prompt);
-      let text = result.response.text();
+      let text = await this.llm.generate({
+        system: 'You are a YouTube SEO specialist for Indonesian children\'s storytelling channels.',
+        prompt
+      });
       
       // Cleanup markdown code blocks if present
       text = text.replace(/^```[a-z]*\n/gm, '').replace(/```$/gm, '').trim();

@@ -316,8 +316,8 @@ class ProductionManagementAgent {
       productionData.assets.segments = segments;
       
       const visualAssets = [];
-      const imageProvider = script.imageProvider || 'gemini';
-      const imageModel = script.imageModel || 'imagen-4.0-fast-generate-001';
+      const imageProvider = script.imageProvider || process.env.IMAGE_PROVIDER || 'gemini';
+      const imageModel = script.imageModel || (imageProvider === 'router' ? process.env.IMAGE_MODEL : null) || 'imagen-4.0-fast-generate-001';
       const isShort = productionData.strategy?.videoType === 'short';
       
       for (const segment of segments) {
@@ -737,7 +737,7 @@ class ProductionManagementAgent {
                segments.push({
                  type: 'content',
                  text: chunkText,
-                 prompt: `${chunkText}, vibrant children storybook illustration`,
+                 prompt: `Story "${script.title}": ${chunkText}, vibrant children storybook illustration`,
                  sfx_keywords: section.sfx_keywords
                });
                currentChunk = [];
@@ -748,7 +748,7 @@ class ProductionManagementAgent {
              segments.push({
                type: 'content',
                text: chunkText,
-               prompt: `${chunkText}, vibrant children storybook illustration`,
+               prompt: `Story "${script.title}": ${chunkText}, vibrant children storybook illustration`,
                sfx_keywords: section.sfx_keywords
              });
            }
