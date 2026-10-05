@@ -1,6 +1,7 @@
 const OpenAI = require('openai');
 const Replicate = require('replicate');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { LLMClient } = require('./llm-client');
+const { generateRouterImage } = require('./image-router');
 const { exec } = require('child_process');
 const { promisify } = require('util');
 const fs = require('fs').promises;
@@ -34,21 +35,9 @@ class AIVideoGenerator {
       this.logger.warn('OpenAI API key not found or placeholder');
     }
     
-    if (geminiKey) {
-      try {
-        this.geminiKey = geminiKey;
-        this.genAI = new GoogleGenerativeAI(geminiKey);
-        this.gemini = this.genAI.getGenerativeModel({ 
-          model: 'gemini-2.5-flash',
-          systemInstruction: 'You are an AI assistant that generates creative content, scripts, and concepts for YouTube videos.'
-        });
-        this.logger.info('Google Gemini service initialized');
-      } catch (error) {
-        this.logger.error('Failed to initialize Google Gemini:', error);
-      }
-    } else {
-      this.logger.warn('Google Gemini API key not found');
-    }
+    // Gemini key is kept for Imagen image generation; text goes through the shared LLM client.
+    this.geminiKey = geminiKey;
+    this.llm = new LLMClient(credentials);
     
     if (replicateKey) {
       this.replicate = new Replicate({ auth: replicateKey });
@@ -184,7 +173,7 @@ class AIVideoGenerator {
     this.logger.info(`Generating ${count} visual assets with style: ${style} (isShort: ${isShort})`);
     
     try {
-      if (!this.openai && !this.gemini) {
+      if (!this.openai && !this.geminiKey && !this.llm.isAvailable()) {
         return await this.simulateVisualAssets(prompt, style, count);
       }
 
@@ -214,20 +203,31 @@ class AIVideoGenerator {
         this.logger.info(`Generated ${localPaths.length} visual assets via OpenAI`);
         return localPaths;
       } else {
-        // Use Gemini to generate a highly detailed prompt description for kids cartoon style
-        const systemPrompt = `You are a creative prompt engineer for kids' cartoon and fairy tale illustrations. Enhance the following scene prompt to be extremely vivid, cute, colorful, and optimized for an AI image generator. Keep the output as a single, short, comma-separated visual prompt (max 50 words) without any meta-talk or introductory text. Scene to describe: `;
-        const geminiResult = await this.gemini.generateContent(systemPrompt + prompt);
-        const enhancedText = geminiResult.response.text().trim().replace(/["']/g, '');
-        this.logger.info(`Gemini enhanced prompt: "${enhancedText}"`);
-        
-        const finalPrompt = `${enhancedPrompt}, cute children's book cartoon style, vector illustration, vibrant colors, highly detailed, ${isShort ? '9:16' : '16:9'} aspect ratio`;
+        // Turn the (usually Indonesian) narration into an English image prompt that depicts
+        // the main action being narrated, so the slide matches what the viewer hears.
+        let sceneDescription = prompt;
+        if (this.llm.isAvailable()) {
+          try {
+            const instruction = `You write prompts for an AI image generator that illustrates a children's storybook video. The text below is narration (often in Bahasa Indonesia) for one slide. Write one English image prompt, under 60 words, that depicts the main action the narration describes: who is doing what, where. Include each character's appearance so the scene can be drawn without the rest of the story. Reply with the prompt only.\n\nNarration:\n${prompt}`;
+            const enhancedText = (await this.llm.generate({ prompt: instruction })).replace(/["']/g, '');
+            if (enhancedText) sceneDescription = enhancedText;
+            this.logger.info(`LLM scene prompt: "${sceneDescription}"`);
+          } catch (enhanceError) {
+            this.logger.warn(`Scene prompt enhancement failed, using raw narration: ${enhanceError.message}`);
+          }
+        }
+
+        const finalPrompt = `${sceneDescription}, cute children's book cartoon style, vibrant colors, highly detailed, no text, ${isShort ? '9:16' : '16:9'} aspect ratio`;
         const localPaths = [];
         
         for (let i = 0; i < count; i++) {
           const imagePath = path.join(__dirname, '..', 'data', 'assets', `visual_${Date.now()}_${i}.png`);
           
           try {
-            if (imageProvider === 'openrouter' && this.openRouterKey && this.openRouterKey !== 'YOUR_OPENROUTER_API_KEY') {
+            if (imageProvider === 'router') {
+              this.logger.info(`Generating visual asset via image router (${imageModel})...`);
+              await generateRouterImage({ prompt: finalPrompt, model: imageModel, outputPath: imagePath, isPortrait: isShort });
+            } else if (imageProvider === 'openrouter' && this.openRouterKey && this.openRouterKey !== 'YOUR_OPENROUTER_API_KEY') {
               // Use OpenRouter
               this.logger.info(`Generating visual asset via OpenRouter (${imageModel})...`);
               const response = await axios.post(
@@ -893,7 +893,7 @@ class AIVideoGenerator {
     this.logger.info('Generating custom thumbnail...');
     
     try {
-      if (!this.openai && !this.gemini) {
+      if (!this.openai && !this.geminiKey && !this.llm.isAvailable()) {
         return await this.simulateThumbnailGeneration(script, style);
       }
 
@@ -919,10 +919,9 @@ class AIVideoGenerator {
           fileSize: await this.getFileSize(thumbnailPath)
         };
       } else {
-        // Use Gemini to generate a highly engaging thumbnail concept
+        // Use the LLM to generate a highly engaging thumbnail concept
         const systemPrompt = `You are a professional YouTube thumbnail designer specializing in high CTR children's stories/educational channels. Create an extremely vivid, clickable, and cute thumbnail description for a video titled "${script.title}". Describe only the visual scene, characters, and bold emotional elements. Keep it short (max 40 words) and list key elements separated by commas. Do not include any meta-talk or introductory text. Concept: `;
-        const geminiResult = await this.gemini.generateContent(systemPrompt + script.title);
-        const enhancedText = geminiResult.response.text().trim().replace(/["']/g, '');
+        const enhancedText = (await this.llm.generate({ prompt: systemPrompt + script.title })).replace(/["']/g, '');
         
         // Remove "YouTube thumbnail" and add "no text, no words" to prevent gibberish text generation
         const finalPrompt = encodeURIComponent(`Cute children's book cartoon scene: ${enhancedText}, vibrant colors, epic fantasy lighting, extremely eye-catching, no text, no words, no letters, clear focus, 16:9 aspect ratio`);

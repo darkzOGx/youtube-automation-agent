@@ -4,6 +4,7 @@ const fs = require('fs').promises;
 const axios = require('axios');
 const { createCanvas, loadImage, registerFont } = require('canvas');
 const { Logger } = require('../utils/logger');
+const { generateRouterImage } = require('../utils/image-router');
 
 class ThumbnailDesignerAgent {
   constructor(db, credentials) {
@@ -229,15 +230,18 @@ class ThumbnailDesignerAgent {
     try {
       const promptText = `Cute children's book cartoon scene: ${script.title}, vibrant colors, epic fantasy lighting, extremely eye-catching, no text, no words, no letters, clear focus, ${width}:${height} aspect ratio`;
       
-      const imageProvider = script.imageProvider || 'gemini';
-      const imageModel = script.imageModel || 'imagen-4.0-fast-generate-001';
-      
+      const imageProvider = script.imageProvider || process.env.IMAGE_PROVIDER || 'gemini';
+      const imageModel = script.imageModel || (imageProvider === 'router' ? process.env.IMAGE_MODEL : null) || 'imagen-4.0-fast-generate-001';
+
       const geminiKey = this.credentials?.credentials?.gemini?.apiKey;
       // Note: Assume keys are properly extracted from this.credentials if needed
       const openaiKey = this.credentials?.credentials?.openai?.apiKey;
       const openRouterKey = this.credentials?.credentials?.openrouter?.apiKey;
 
-      if (imageProvider === 'openai' && openaiKey && openaiKey !== 'YOUR_OPENAI_API_KEY') {
+      if (imageProvider === 'router') {
+        this.logger.info(`Generating base AI thumbnail via image router (${imageModel})...`);
+        await generateRouterImage({ prompt: promptText, model: imageModel, outputPath, isPortrait: height > width });
+      } else if (imageProvider === 'openai' && openaiKey && openaiKey !== 'YOUR_OPENAI_API_KEY') {
         this.logger.info(`Generating base AI thumbnail via OpenAI (${imageModel})...`);
         const { OpenAI } = require('openai');
         const openai = new OpenAI({ apiKey: openaiKey });

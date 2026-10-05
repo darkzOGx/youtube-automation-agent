@@ -4,7 +4,7 @@ const { google } = require('googleapis');
 const inquirer = require('inquirer');
 const chalk = require('chalk');
 const { Logger } = require('./logger');
-const { Configuration, OpenAIApi } = require('openai');
+const OpenAI = require('openai');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 class CredentialManager {
   constructor() {
@@ -467,12 +467,9 @@ class CredentialManager {
     // Test OpenAI API
     if (this.credentials.openai && this.credentials.openai.apiKey && !this.credentials.openai.apiKey.includes('YOUR_OPENAI_API_KEY')) {
       try {
-        const configuration = new Configuration({
-          apiKey: this.credentials.openai.apiKey,
-        });
-        const openai = new OpenAIApi(configuration);
+        const openai = new OpenAI({ apiKey: this.credentials.openai.apiKey });
         
-        await openai.listModels();
+        await openai.models.list();
         results.openai = true;
         console.log(chalk.green('✅ OpenAI API connection successful'));
       } catch (error) {
