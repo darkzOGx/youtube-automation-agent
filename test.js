@@ -36,6 +36,7 @@ class SystemTest {
       { name: 'Narration Reliability and Recovery', test: () => this.testNarrationReliability() },
       { name: 'Shorts Repurposing Studio', test: () => this.testShortsRepurposingStudio() },
       { name: 'Upload-Post Shorts Cross-Posting', test: () => this.testUploadPostCrossPosting() },
+      { name: 'Upload-Post Cross-Posting Safety', test: () => this.testUploadPostCrossPostingSafety() },
       { name: 'Research and Provenance Desk', test: () => this.testProvenanceDesk() },
       { name: 'DarkzSEO Discoverability Preflight', test: () => this.testDiscoverabilityPreflight() },
       { name: 'Open Issue Regressions', test: () => this.testOpenIssueRegressions() },
@@ -1677,6 +1678,121 @@ class SystemTest {
       await fs.rm(directory, { recursive: true, force: true });
     }
     this.logger.info('Upload-Post cross-posting test completed successfully');
+  }
+
+  async testUploadPostCrossPostingSafety() {
+    const fs = require('fs').promises;
+    const os = require('os');
+    const { ShortsRepurposingService } = require('./utils/shorts-repurposing-service');
+    const { UploadPostCrossPoster } = require('./utils/upload-post-cross-poster');
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'yaa-crosspost-safety-'));
+    const db = new Database();
+    db.dbPath = path.join(directory, 'crosspost-safety.db');
+    await db.initialize();
+
+    try {
+      const videoPath = path.join(directory, 'short.mp4');
+      await fs.writeFile(videoPath, Buffer.from('rendered short'));
+      const publishedShort = async (productionId) => {
+        const [clip] = await db.replaceShortClips(productionId, [{
+          productionId, position: 0, title: 'Synthetic Short', description: 'Short description',
+          tags: ['Shorts'], sourceSceneIds: ['scene-1'], startSeconds: 0, duration: 20, layout: 'blur',
+          status: 'published', youtubeId: 'yt-1', outputPath: videoPath, publishTime: new Date().toISOString(),
+          privacyStatus: 'public', inheritedEvidence: { containsSyntheticMedia: true }
+        }]);
+        return clip;
+      };
+      const expectStatus = async (promise, status, code) => {
+        try {
+          await promise;
+        } catch (error) {
+          if (error.status === status && (!code || error.code === code)) return;
+          throw new Error(`Expected ${status} ${code || ''}, got ${error.status} ${error.code || ''}: ${error.message}`);
+        }
+        throw new Error(`Expected ${status} ${code || ''}, but the call succeeded`);
+      };
+
+      const uploads = [];
+      const statusChecks = [];
+      let gate = null;
+      let failNextUpload = false;
+      const fetchImpl = async (url, init = {}) => {
+        if (init.method !== 'POST') {
+          statusChecks.push(url);
+          return { ok: true, status: 200, json: async () => ({ success: true, status: 'completed' }) };
+        }
+        uploads.push({ url, init });
+        if (gate) await gate;
+        if (failNextUpload) {
+          failNextUpload = false;
+          return { ok: false, status: 500, json: async () => ({ success: false, message: 'temporary outage' }) };
+        }
+        return { ok: true, status: 200, json: async () => ({ success: true, request_id: `req-${uploads.length}` }) };
+      };
+      const crossPoster = new UploadPostCrossPoster({ apiKey: 'up-key', user: 'my-brand', fetchImpl });
+      const service = new ShortsRepurposingService(db, {}, { logger: this.logger, crossPoster });
+
+      // Posting to TikTok first and asking for both platforms later must only send Instagram.
+      const partial = await publishedShort('prod-crosspost-partial');
+      const first = await service.crossPost(partial.productionId, partial.id, { confirmed: true, platforms: ['tiktok'] });
+      if (uploads.length !== 1 || uploads[0].init.body.getAll('platform[]').join(',') !== 'tiktok') {
+        throw new Error('A TikTok-only cross-post did not send exactly one TikTok upload');
+      }
+      const both = await service.crossPost(partial.productionId, partial.id, { confirmed: true, platforms: ['tiktok', 'instagram'] });
+      if (uploads.length !== 2) throw new Error('Requesting both platforms after a TikTok-only post did not send exactly one more upload');
+      const instagramForm = uploads[1].init.body;
+      if (instagramForm.getAll('platform[]').join(',') !== 'instagram' || uploads[1].init.headers['Idempotency-Key'] !== `agenttube-short-${partial.id}-instagram`) {
+        throw new Error('The second cross-post re-sent TikTok instead of only the missing Instagram platform');
+      }
+      if (
+        both.crossPost.platforms.join(',') !== 'instagram,tiktok' ||
+        (both.crossPost.submissions || []).length !== 2 ||
+        both.crossPost.submissions[0].requestId !== first.crossPost.requestId ||
+        both.crossPost.submissions[1].requestId !== both.crossPost.requestId
+      ) {
+        throw new Error('The cross-post record did not keep both submissions');
+      }
+      await service.crossPost(partial.productionId, partial.id, { confirmed: true, platforms: ['instagram', 'tiktok'] });
+      if (uploads.length !== 2) throw new Error('A Short already on both platforms was uploaded again');
+      const status = await service.crossPostStatus(partial.productionId, partial.id);
+      if ((status.submissions || []).length !== 2 || statusChecks.length !== 2 || !status.submissions.every(entry => entry.status?.status === 'completed')) {
+        throw new Error('Cross-post status did not report every submission');
+      }
+
+      // Synthetic media is disclosed on Instagram as well as TikTok.
+      if (uploads[0].init.body.get('is_aigc') !== 'true' || instagramForm.get('is_ai_generated') !== 'true') {
+        throw new Error('Synthetic media was not labelled AI-generated on both platforms');
+      }
+
+      // A failed upload releases the Short for a retry, and concurrent requests cannot double-post.
+      const race = await publishedShort('prod-crosspost-race');
+      failNextUpload = true;
+      await expectStatus(service.crossPost(race.productionId, race.id, { confirmed: true }), 502);
+      let openGate;
+      gate = new Promise(resolve => { openGate = resolve; });
+      const inFlight = service.crossPost(race.productionId, race.id, { confirmed: true });
+      for (let attempt = 0; attempt < 200 && uploads.length < 4; attempt++) await new Promise(resolve => setTimeout(resolve, 5));
+      if (uploads.length !== 4) throw new Error('The retried cross-post never reached Upload-Post');
+      let rejection;
+      const concurrent = service.crossPost(race.productionId, race.id, { confirmed: true })
+        .then(() => { rejection = null; }, error => { rejection = error; });
+      for (let attempt = 0; attempt < 200 && rejection === undefined && uploads.length === 4; attempt++) await new Promise(resolve => setTimeout(resolve, 5));
+      if (!rejection || rejection.status !== 409 || rejection.code !== 'CROSS_POST_IN_PROGRESS') {
+        openGate();
+        await concurrent;
+        throw new Error('A concurrent cross-post was not rejected with 409 CROSS_POST_IN_PROGRESS');
+      }
+      openGate();
+      gate = null;
+      const settled = await inFlight;
+      if (!settled.crossPost.requestId || uploads.length !== 4) throw new Error('The in-flight cross-post did not finish with a single upload');
+      await service.crossPost(race.productionId, race.id, { confirmed: true });
+      if (uploads.length !== 4) throw new Error('Repeating a finished cross-post sent another upload');
+    } finally {
+      await db.close();
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+    this.logger.info('Upload-Post cross-posting safety test completed successfully');
   }
 
   async testProvenanceDesk() {

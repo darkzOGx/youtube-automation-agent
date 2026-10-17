@@ -39,6 +39,7 @@ class ShortsRepurposingService {
     this.height = Number(options.height || 1920);
     this.runFFmpeg = options.runFFmpeg || runFFmpeg;
     this.crossPoster = options.crossPoster || new UploadPostCrossPoster();
+    this.crossPostsInFlight = new Set();
   }
 
   async propose(productionId, input = {}) {
@@ -330,35 +331,64 @@ class ShortsRepurposingService {
     }
     const platforms = this.crossPoster.resolvePlatforms(input.platforms);
     const previous = clip.crossPost || {};
-    if (previous.requestId && platforms.every(platform => (previous.platforms || []).includes(platform))) return clip;
+    const posted = new Set(previous.platforms || []);
+    // A platform that already received this Short is never sent again; only the missing ones go out.
+    const remaining = platforms.filter(platform => !posted.has(platform));
+    if (!remaining.length) return clip;
     if (input.confirmed !== true) {
-      const error = new Error(`Confirm that this Short should be posted to ${platforms.join(' and ')}`);
+      const error = new Error(`Confirm that this Short should be posted to ${remaining.join(' and ')}`);
       error.status = 409;
       error.code = 'CROSS_POST_CONFIRMATION_REQUIRED';
       throw error;
     }
-    await this.requireFile(clip.outputPath, 'The rendered Short MP4 is missing');
-    const result = await this.crossPoster.publishShort({
-      clipId: clip.id,
-      videoPath: clip.outputPath,
-      title: clip.title,
-      description: clip.description,
-      platforms,
-      aiGenerated: clip.inheritedEvidence?.containsSyntheticMedia === true
-    });
-    return this.db.updateShortClip(clip.id, {
-      crossPost: { provider: 'upload-post', platforms, ...result, submittedAt: new Date().toISOString() }
-    });
+    // Upload-Post dedupes by idempotency key, but a local guard keeps two quick clicks from racing
+    // each other to the provider and from overwriting each other's stored result.
+    if (this.crossPostsInFlight.has(clip.id)) {
+      const error = new Error('This Short is already being cross-posted; wait for that request to finish');
+      error.status = 409;
+      error.code = 'CROSS_POST_IN_PROGRESS';
+      throw error;
+    }
+    this.crossPostsInFlight.add(clip.id);
+    try {
+      await this.requireFile(clip.outputPath, 'The rendered Short MP4 is missing');
+      const result = await this.crossPoster.publishShort({
+        clipId: clip.id,
+        videoPath: clip.outputPath,
+        title: clip.title,
+        description: clip.description,
+        platforms: remaining,
+        aiGenerated: clip.inheritedEvidence?.containsSyntheticMedia === true
+      });
+      const submission = { platforms: remaining, ...result, submittedAt: new Date().toISOString() };
+      return await this.db.updateShortClip(clip.id, {
+        crossPost: {
+          provider: 'upload-post',
+          platforms: [...posted, ...remaining].sort(),
+          requestId: submission.requestId,
+          jobId: submission.jobId,
+          submittedAt: submission.submittedAt,
+          submissions: [...(previous.submissions || []), submission]
+        }
+      });
+    } finally {
+      this.crossPostsInFlight.delete(clip.id);
+    }
   }
 
   async crossPostStatus(productionId, clipId) {
     const clip = await this.requireClip(productionId, clipId);
-    if (!clip.crossPost?.requestId) {
+    const submissions = clip.crossPost?.submissions || [];
+    if (!submissions.length) {
       const error = new Error('This Short has not been cross-posted');
       error.status = 404;
       throw error;
     }
-    return { crossPost: clip.crossPost, status: await this.crossPoster.getStatus(clip.crossPost.requestId) };
+    const withStatus = [];
+    for (const submission of submissions) {
+      withStatus.push({ ...submission, status: submission.requestId ? await this.crossPoster.getStatus(submission.requestId) : null });
+    }
+    return { crossPost: clip.crossPost, submissions: withStatus };
   }
 
   inheritedEvidence(bundle) {

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Added optional cross-posting of published Shorts to TikTok and Instagram Reels through Upload-Post (`UPLOAD_POST_API_KEY` and `UPLOAD_POST_USER`): reuses the rendered MP4, sends only the platforms that have not received the Short yet under a stable idempotency key, rejects a concurrent request for the same Short, and labels synthetic media as AI-generated on both platforms (#71, #72)
+
 ## v2.11.0 — 2026-10-13
 
 - Fixed the readiness text probe failing on thinking Gemini models (`gemini-3.7-flash`, `gemini-3.1-pro-preview`): the probe budget now leaves room for thoughts, and a Gemini response that runs out of tokens before writing text is retried once with a larger budget (#63)

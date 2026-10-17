@@ -107,11 +107,11 @@ curl -X POST http://localhost:3456/api/content/:productionId/shorts/:clipId/cros
   -H "Content-Type: application/json" -H "x-api-key: $API_KEY" \
   -d '{"confirmed": true, "platforms": ["tiktok", "instagram"]}'
 
-# per-platform result
+# every submission with its Upload-Post status
 curl http://localhost:3456/api/content/:productionId/shorts/:clipId/cross-post -H "x-api-key: $API_KEY"
 ```
 
-Cross-posting only accepts Shorts whose YouTube upload already succeeded, so it inherits every review gate above. It reuses the rendered MP4, sends an idempotency key so a retried request cannot post twice, and labels the TikTok post as AI-generated when the source production contains synthetic media. Without the two variables the feature stays off.
+Cross-posting only accepts Shorts whose YouTube upload already succeeded, so it inherits every review gate above. It reuses the rendered MP4, sends an idempotency key so a retried request cannot post twice, and only ever sends a platform that has not received the Short yet, so posting to TikTok first and adding Instagram later is safe. A second request for the same Short while one is still in flight is rejected. Both posts are labelled AI-generated when the source production contains synthetic media. Without the two variables the feature stays off.
 
 ### Review research and provenance
 

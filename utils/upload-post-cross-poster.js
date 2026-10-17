@@ -46,6 +46,9 @@ class UploadPostCrossPoster {
     form.append('async_upload', 'true');
     form.append('external_id', `agenttube-short-${clipId}`);
     if (platforms.includes('instagram')) form.append('media_type', 'REELS');
+    // Disclosure comes from AgentTube's own provenance record, not from file metadata:
+    // is_ai_generated covers every platform and is_aigc is TikTok's explicit flag.
+    if (aiGenerated) form.append('is_ai_generated', 'true');
     if (aiGenerated && platforms.includes('tiktok')) form.append('is_aigc', 'true');
     const video = await fs.readFile(videoPath);
     form.append('video', new Blob([video], { type: 'video/mp4' }), path.basename(videoPath));
