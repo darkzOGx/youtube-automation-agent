@@ -18,7 +18,13 @@
     "agent:publishing": "node agents/publishing-scheduling-agent.js",
     "agent:analytics": "node agents/analytics-optimization-agent.js",
     "credentials:setup": "node utils/credential-manager.js setup",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "studio:install": "npm --prefix studio-3d install",
+    "studio:assets": "npm --prefix studio-3d run assets",
+    "studio:build": "npm --prefix studio-3d run build",
+    "studio:dev": "npm --prefix studio-3d run dev",
+    "studio:lint": "npm --prefix studio-3d run lint",
+    "studio:test": "npm --prefix studio-3d test"
   },
   "dependencies": {
     "@google-cloud/local-auth": "^3.0.0",
@@ -50,5 +56,11 @@
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "allowScripts": {
+    "sqlite3@5.1.7": true,
+    "ffmpeg-static@5.3.0": true,
+    "sharp@0.33.5": true,
+    "protobufjs@7.6.4": true
   }
 }

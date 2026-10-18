@@ -64,6 +64,24 @@ Open `http://localhost:3456`. The walkthrough explains each provider choice, tes
 
 Already know what you are doing? `npm run setup` offers a shorter classic flow, and `.env.example` documents every setting.
 
+### Watch the pipeline in 3D (optional)
+
+`/studio` renders your agents as characters in an office. Each character is one real agent: when a video moves through the pipeline the agent that owns the current stage walks to a desk and works, a failed stage sends its agent to the boardroom, and anything waiting on you shows up as your own task.
+
+```bash
+npm run studio:install
+npm run studio:assets   # fetches the 3D models — read the licence note below
+npm run studio:build
+npm start               # then open http://localhost:3456/studio
+```
+
+The view is **read-only**: it polls the existing `/api/dashboard` and changes nothing. Approving, scheduling, and publishing stay in the operator console at `/`, behind the review, media-rights, and quality gates. Skipping it costs you nothing — the pipeline never depends on it.
+
+> [!IMPORTANT]
+> The office and character models are **CC BY-NC 4.0** by [Arturo Paracuellos (unboring.net)](https://unboring.net) — attribution required, **commercial use prohibited** — so they are not distributed here and `npm run studio:assets` fetches them on demand. AgentTube itself stays MIT. If your channel earns revenue, license the models commercially or supply your own: see [docs/3d-assets.md](docs/3d-assets.md). Without the assets the studio shows setup instructions instead of the office; everything else is unaffected.
+
+The simulation is adapted from [The Delegation](https://github.com/arturitu/the-delegation) (MIT). Its in-browser Gemini layer was removed — AgentTube keeps provider credentials on the server, and the browser never holds an API key. See [studio-3d/NOTICE.md](studio-3d/NOTICE.md).
+
 ### Verify production readiness
 
 Before activating autonomous production, open **Production readiness** in the dashboard and choose **Run verified check**. The gate makes small live text and narration requests, verifies access to the connected YouTube channel, creates and decodes a temporary MP4 containing audio and video, and validates every queued upload's metadata. It never creates or uploads a YouTube video, and temporary probe assets are deleted after the run.

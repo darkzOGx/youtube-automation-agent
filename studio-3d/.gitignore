@@ -1,0 +1,7 @@
+node_modules/
+dist/
+
+# 3D assets are NOT redistributed with this repository.
+# They are CC BY-NC 4.0 (non-commercial) and fetched on demand: npm run assets
+public/models/
+public/vendor/

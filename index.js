@@ -388,6 +388,16 @@ class YouTubeAutomationAgent {
     this.app.get('/', (req, res) => {
       res.sendFile(path.join(__dirname, 'dashboard', 'index.html'));
     });
+
+    // Optional read-only 3D studio. Built separately (npm run studio:build) and absent
+    // until then; the dashboard above remains the only interface that changes anything.
+    const studioDir = path.join(__dirname, 'studio-3d', 'dist');
+    this.app.use('/studio', express.static(studioDir));
+    this.app.get('/studio/*', (req, res) => {
+      res.sendFile(path.join(studioDir, 'index.html'), error => {
+        if (error) res.status(404).send('The 3D studio is not built. Run: npm run studio:build');
+      });
+    });
     
     // Health check
     this.app.get('/health', (req, res) => {

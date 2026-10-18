@@ -1,0 +1,43 @@
+# Licenses for studio-3d
+
+## Source code: MIT
+
+The code in `src/` is derived from The Delegation by Arturo Paracuellos.
+See [NOTICE.md](NOTICE.md) for the exact upstream commit and the list of changes.
+
+Copyright (c) 2026 Arturo Paracuellos (unboring.net)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+## 3D assets: CC BY-NC 4.0 — not distributed here
+
+`character.glb` and `office.glb` are not part of this repository. When fetched with
+`npm run assets`, they remain the intellectual property of Arturo Paracuellos
+(unboring.net) under the Creative Commons Attribution-NonCommercial 4.0 International
+License:
+
+- **Attribution** is required: credit Arturo Paracuellos (unboring.net).
+- **Commercial use is prohibited.** They may not be used in projects that generate
+  revenue.
+
+<http://creativecommons.org/licenses/by-nc/4.0/>
+
+Because AgentTube is normally used to operate a revenue-generating channel, treat the
+3D view as a non-commercial, local-only tool unless you license the models commercially
+or substitute your own.

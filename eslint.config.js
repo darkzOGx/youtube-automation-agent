@@ -4,6 +4,8 @@ module.exports = [
   {
     ignores: [
       'node_modules/**',
+      // Separate ESM/TypeScript app with its own checks: npm run studio:lint
+      'studio-3d/**',
       'coverage/**',
       'logs/**',
       'temp/**',
