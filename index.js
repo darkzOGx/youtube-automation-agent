@@ -27,6 +27,11 @@ const { AudienceEngagementService } = require('./utils/audience-engagement-servi
 const { GrowthExperimentService } = require('./utils/growth-experiment-service');
 const { AITextService } = require('./utils/ai-text-service');
 const { DiscoverabilityService } = require('./utils/discoverability-service');
+const {
+  requireElenaIntegrationToken,
+  validateResearchRequest,
+  validateDraftRequest
+} = require('./utils/elena-integration');
 const { version } = require('./package.json');
 const chalk = require('chalk');
 
@@ -55,6 +60,7 @@ class YouTubeAutomationAgent {
     this.engagement = null;
     this.experiments = null;
     this.discoverability = null;
+    this.elenaRequestInFlight = false;
     this.setupRequired = false;
   }
 
@@ -482,7 +488,152 @@ class YouTubeAutomationAgent {
       }
     });
 
+    this.setupElenaAPI();
     this.setupOperatorAPI();
+  }
+
+  setupElenaAPI() {
+    const authenticate = requireElenaIntegrationToken();
+    const singleRequest = (req, res, next) => {
+      if (this.elenaRequestInFlight) {
+        return res.status(429).json({ success: false, error: 'Another ELENA request is in progress' });
+      }
+
+      this.elenaRequestInFlight = true;
+      let released = false;
+      const release = () => {
+        if (released) return;
+        released = true;
+        this.elenaRequestInFlight = false;
+      };
+      res.once('finish', release);
+      res.once('close', release);
+      return next();
+    };
+
+    this.app.post('/api/elena/research', authenticate, singleRequest, async (req, res) => {
+      const validation = validateResearchRequest(req.body, process.env.ELENA_WORKSPACE_ID);
+      if (!validation.valid) {
+        return res.status(validation.status).json({ success: false, error: validation.error });
+      }
+      if (this.setupRequired || !this.agents.strategy) {
+        return res.status(503).json({ success: false, error: 'Content research is not configured' });
+      }
+
+      try {
+        const strategyAgent = this.agents.strategy;
+        await strategyAgent.analyzeTrends();
+        const terms = validation.value.topic.toLowerCase().match(/[a-z0-9]{3,}/g) || [];
+        const signals = (strategyAgent.trendingTopics || [])
+          .filter(signal => {
+            const signalTopic = String(signal.topic || '').toLowerCase();
+            return terms.some(term => signalTopic.includes(term));
+          })
+          .slice(0, 5)
+          .map(signal => ({
+            topic: String(signal.topic || '').slice(0, 200),
+            score: Number.isFinite(Number(signal.score)) ? Number(signal.score) : 0,
+            sources: [...new Set((signal.sources || []).filter(source => ['trending', 'competitor'].includes(source)))],
+            evidence: (signal.evidence || [])
+              .filter(source => {
+                try {
+                  const url = new URL(source.url);
+                  return url.protocol === 'https:' && ['youtube.com', 'www.youtube.com'].includes(url.hostname);
+                } catch (_error) {
+                  return false;
+                }
+              })
+              .slice(0, 5)
+              .map(source => ({
+                title: String(source.title || '').slice(0, 200),
+                url: source.url,
+                publisher: String(source.publisher || '').slice(0, 100)
+              }))
+          }));
+
+        return res.json({
+          success: true,
+          workspaceId: validation.value.workspaceId,
+          result: {
+            requestedTopic: validation.value.topic,
+            generatedAt: new Date().toISOString(),
+            signals,
+            note: signals.length
+              ? 'Signals are current YouTube trend and configured-competitor evidence; they are not a comprehensive topic search.'
+              : 'No matching current YouTube trend or configured-competitor signals were found.'
+          }
+        });
+      } catch (error) {
+        this.logger.error('ELENA research request failed:', error);
+        return res.status(502).json({ success: false, error: 'Content research failed' });
+      }
+    });
+
+    this.app.post('/api/elena/drafts', authenticate, singleRequest, async (req, res) => {
+      const validation = validateDraftRequest(req.body, process.env.ELENA_WORKSPACE_ID);
+      if (!validation.valid) {
+        return res.status(validation.status).json({ success: false, error: validation.error });
+      }
+      if (this.setupRequired || !this.agents.strategy || !this.agents.scriptWriter) {
+        return res.status(503).json({ success: false, error: 'Content drafting is not configured' });
+      }
+
+      try {
+        const strategyAgent = this.agents.strategy;
+        await strategyAgent.analyzeTrends();
+        const topicTerms = validation.value.topic.toLowerCase().match(/[a-z0-9]{3,}/g) || [];
+        const researchSources = (strategyAgent.trendingTopics || [])
+          .filter(signal => topicTerms.some(term => String(signal.topic || '').toLowerCase().includes(term)))
+          .flatMap(signal => signal.evidence || [])
+          .map(source => source.url)
+          .filter(url => {
+            try {
+              const parsed = new URL(url);
+              return parsed.protocol === 'https:' && ['youtube.com', 'www.youtube.com'].includes(parsed.hostname);
+            } catch (_error) {
+              return false;
+            }
+          })
+          .slice(0, 10);
+        const strategy = await strategyAgent.generateContentStrategy(validation.value.topic);
+        const requestedLength = validation.value.length || 'medium';
+        Object.assign(strategy, {
+          topic: validation.value.topic,
+          targetAudience: process.env.TARGET_AUDIENCE || strategy.targetAudience,
+          contentType: validation.value.contentType || strategy.contentType,
+          angle: validation.value.angle || strategy.angle,
+          requestedLength: {
+            short: '3-5 minutes',
+            medium: '8-12 minutes',
+            long: '15-20 minutes'
+          }[requestedLength],
+          researchSources
+        });
+        const script = await this.agents.scriptWriter.generateScript(strategy);
+
+        return res.status(201).json({
+          success: true,
+          workspaceId: validation.value.workspaceId,
+          result: {
+            status: 'draft',
+            approvalRequired: true,
+            approved: false,
+            script: {
+              title: script.title,
+              hook: script.hook,
+              fullScript: script.fullScript,
+              duration: script.duration,
+              keywords: script.keywords || [],
+              claims: script.claims || [],
+              generatedAt: script.metadata?.generatedAt || new Date().toISOString()
+            }
+          }
+        });
+      } catch (error) {
+        this.logger.error('ELENA draft request failed:', error);
+        return res.status(502).json({ success: false, error: 'Content draft generation failed' });
+      }
+    });
   }
 
   setupOperatorAPI() {

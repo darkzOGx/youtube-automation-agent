@@ -64,6 +64,10 @@ Open `http://localhost:3456`. The walkthrough explains each provider choice, tes
 
 Already know what you are doing? `npm run setup` offers a shorter classic flow, and `.env.example` documents every setting.
 
+### ELENA integration
+
+This repository exposes an optional, permission-bounded ELENA seam for content research and unapproved script drafts only. It does not add a Discord bot or give ELENA publish, schedule, job, or autonomous-operator controls. See the [ELENA integration contract](docs/integrations/elena.md) for authentication, workspace binding, request/response schemas, and network requirements.
+
 ### Verify production readiness
 
 Before activating autonomous production, open **Production readiness** in the dashboard and choose **Run verified check**. The gate makes small live text and narration requests, verifies access to the connected YouTube channel, creates and decodes a temporary MP4 containing audio and video, and validates every queued upload's metadata. It never creates or uploads a YouTube video, and temporary probe assets are deleted after the run.
