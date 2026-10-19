@@ -41,6 +41,7 @@ class SystemTest {
       { name: 'Reported Issue Fixes (#63, #65, #66)', test: () => this.testReportedIssueFixes() },
       { name: 'Resumable Generation Checkpoints', test: () => this.testResumableGenerationCheckpoints() },
       { name: 'API Validation and Security', test: () => this.testAPIValidationAndSecurity() },
+      { name: 'ELENA Integration Boundary', test: () => this.testElenaIntegrationBoundary() },
       { name: 'Publishing Safety', test: () => this.testPublishingSafety() },
       { name: 'Multi-Provider Credential Validation', test: () => this.testCredentialValidation() },
       { name: 'AI Text Service Token Compatibility', test: () => this.testAITextServiceTokenParams() },
@@ -2402,6 +2403,162 @@ class SystemTest {
     }
 
     this.logger.info('API validation and security test completed successfully');
+  }
+
+  async testElenaIntegrationBoundary() {
+    const { YouTubeAutomationAgent } = require('./index');
+    const envKeys = ['ELENA_INTEGRATION_TOKEN', 'ELENA_WORKSPACE_ID', 'API_KEY'];
+    const previousEnv = Object.fromEntries(envKeys.map(key => [key, process.env[key]]));
+    const token = 'elena-test-token-'.padEnd(40, 'x');
+    const agent = new YouTubeAutomationAgent();
+    const forbiddenCalls = [];
+    let capturedStrategy = null;
+    let server = null;
+
+    try {
+      delete process.env.ELENA_INTEGRATION_TOKEN;
+      process.env.ELENA_WORKSPACE_ID = 'workspace-allowed';
+      delete process.env.API_KEY;
+      agent.setupRequired = false;
+      agent.db = { getChannelStrategy: async () => null };
+      agent.agents = {
+        strategy: {
+          trendingTopics: [],
+          analyzeTrends: async function() {
+            this.trendingTopics = [{
+              topic: 'Battery recycling advances',
+              score: 1.25,
+              sources: ['trending', 'ignored'],
+              evidence: [{
+                title: 'Battery recycling explained',
+                url: 'https://www.youtube.com/watch?v=example',
+                publisher: 'Example channel'
+              }]
+            }];
+          },
+          generateContentStrategy: async topic => ({
+            topic,
+            angle: 'Existing angle',
+            targetAudience: 'General audience',
+            contentType: 'explainer',
+            keywords: ['battery recycling']
+          })
+        },
+        scriptWriter: {
+          generateScript: async strategy => {
+            capturedStrategy = strategy;
+            return {
+              title: 'Battery recycling draft',
+              hook: 'A draft hook',
+              fullScript: 'Draft text',
+              duration: 480,
+              keywords: strategy.keywords,
+              claims: [],
+              metadata: { generatedAt: '2026-10-19T16:00:00.000Z' }
+            };
+          }
+        },
+        publishing: {
+          scheduleContent: async () => forbiddenCalls.push('schedule')
+        }
+      };
+      agent.autonomous = { start: async () => forbiddenCalls.push('operator') };
+      agent.scheduler = { resumeAutomation: async () => forbiddenCalls.push('scheduler') };
+      agent.startGenerationJob = async () => forbiddenCalls.push('job');
+      agent.setupAPI();
+      server = await new Promise(resolve => {
+        const running = agent.app.listen(0, '127.0.0.1', () => resolve(running));
+      });
+
+      const baseUrl = `http://127.0.0.1:${server.address().port}`;
+      const request = (path, body, authorization) => fetch(`${baseUrl}${path}`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(authorization ? { authorization } : {})
+        },
+        body: JSON.stringify(body)
+      });
+
+      const disabled = await request('/api/elena/research', {
+        workspaceId: 'workspace-allowed',
+        topic: 'battery recycling'
+      }, 'Bearer any-token');
+      if (disabled.status !== 503) throw new Error('ELENA endpoint did not fail closed without its integration token');
+
+      process.env.ELENA_INTEGRATION_TOKEN = token;
+      const unauthorized = await request('/api/elena/research', {
+        workspaceId: 'workspace-allowed',
+        topic: 'battery recycling'
+      }, 'Bearer wrong-token');
+      if (unauthorized.status !== 401) throw new Error('ELENA endpoint accepted an invalid bearer token');
+
+      delete process.env.ELENA_WORKSPACE_ID;
+      const unbound = await request('/api/elena/research', {
+        workspaceId: 'workspace-allowed',
+        topic: 'battery recycling'
+      }, `Bearer ${token}`);
+      if (unbound.status !== 503) throw new Error('ELENA endpoint did not fail closed without a workspace binding');
+      process.env.ELENA_WORKSPACE_ID = 'workspace-allowed';
+
+      const wrongWorkspace = await request('/api/elena/research', {
+        workspaceId: 'another-workspace',
+        topic: 'battery recycling'
+      }, `Bearer ${token}`);
+      if (wrongWorkspace.status !== 403) throw new Error('ELENA endpoint accepted an unbound workspace');
+
+      const unknownField = await request('/api/elena/drafts', {
+        workspaceId: 'workspace-allowed',
+        topic: 'battery recycling',
+        publish: true
+      }, `Bearer ${token}`);
+      if (unknownField.status !== 400) throw new Error('ELENA draft endpoint accepted an unsupported control field');
+
+      const researchResponse = await request('/api/elena/research', {
+        workspaceId: 'workspace-allowed',
+        topic: 'battery recycling'
+      }, `Bearer ${token}`);
+      const research = await researchResponse.json();
+      if (
+        researchResponse.status !== 200 ||
+        research.result?.signals?.length !== 1 ||
+        research.result.signals[0].evidence[0].url !== 'https://www.youtube.com/watch?v=example'
+      ) {
+        throw new Error('ELENA research endpoint did not return the bounded research contract');
+      }
+
+      const draftResponse = await request('/api/elena/drafts', {
+        workspaceId: 'workspace-allowed',
+        topic: 'battery recycling',
+        angle: 'Municipal program tradeoffs',
+        contentType: 'tutorial',
+        length: 'short'
+      }, `Bearer ${token}`);
+      const draft = await draftResponse.json();
+      if (
+        draftResponse.status !== 201 ||
+        draft.result?.status !== 'draft' ||
+        draft.result.approvalRequired !== true ||
+        draft.result.approved !== false ||
+        capturedStrategy?.angle !== 'Municipal program tradeoffs' ||
+        capturedStrategy?.contentType !== 'tutorial' ||
+        capturedStrategy?.requestedLength !== '3-5 minutes' ||
+        capturedStrategy?.researchSources?.[0] !== 'https://www.youtube.com/watch?v=example'
+      ) {
+        throw new Error('ELENA draft endpoint did not return a review-gated script draft');
+      }
+      if (forbiddenCalls.length || agent.activeJobs.size) {
+        throw new Error('ELENA integration invoked a job, scheduler, operator, or publishing control');
+      }
+    } finally {
+      if (server) await new Promise(resolve => server.close(resolve));
+      for (const key of envKeys) {
+        if (previousEnv[key] === undefined) delete process.env[key];
+        else process.env[key] = previousEnv[key];
+      }
+    }
+
+    this.logger.info('ELENA integration boundary test completed successfully');
   }
 
   createMockResponse() {
