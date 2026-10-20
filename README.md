@@ -45,7 +45,7 @@ See the complete release history in [CHANGELOG.md](CHANGELOG.md).
 - **Self-hosted:** your credentials, media, and channel data stay under your control.
 - **Approval-first:** nothing is scheduled until quality, rights, and human-review gates pass by default.
 - **Strategy-driven:** give the Autonomous Channel Operator an objective, audience, pillars, cadence, and guardrails; it turns them into researched content plans and production runs.
-- **Provider-flexible:** use Gemini, OpenAI, OpenRouter, Kimi, MiMo, GLM, or another OpenAI-compatible text endpoint, plus Seedance, MiniMax H3, Gemini Omni Flash, Kling, Wan, or local FFmpeg for video.
+- **Provider-flexible:** use Gemini, OpenAI, OpenRouter, Kimi, MiMo, GLM, DeepSeek, MiniMax, or another OpenAI-compatible text endpoint, plus Seedance, MiniMax H3, Gemini Omni Flash, Kling, Wan, or local FFmpeg for video.
 - **Observable:** follow persistent generation jobs, failures, review state, publishing, and local activation milestones from the dashboard.
 
 <!-- Launch gate: add only a real 30–45 second dashboard demo captured from a verified end-to-end run. -->
@@ -233,11 +233,13 @@ All OpenAI-compatible providers work out of the box — the system auto-configur
 ```mermaid
 graph LR
     subgraph Direct
-        OA[OpenAI<br/>GPT-5.6 family]
-        GM[Gemini<br/>3.7 Flash / 3.1 Pro]
+        OA[OpenAI<br/>GPT-6 family]
+        GM[Gemini<br/>3.8 Flash / 4 Argon]
         KM[Kimi<br/>K3]
-        MM[MiMo<br/>V2.5 Pro]
+        MM[MiMo<br/>V2.6 Pro]
         GL[GLM<br/>GLM-5.3]
+        DS[DeepSeek<br/>V4.1 Flash]
+        MX[MiniMax<br/>M3.1 Flash]
     end
     subgraph Router
         OR[OpenRouter<br/>400+ models]
@@ -248,14 +250,16 @@ graph LR
 
 | Provider | Models | Base URL | Cost |
 |----------|--------|----------|------|
-| **OpenAI** | GPT-5.6 Sol, Terra, Luna | `api.openai.com/v1` | provider pricing |
+| **OpenAI** | GPT-6.1 Sol, GPT-6 Astra, GPT-6 Luna | `api.openai.com/v1` | provider pricing |
 | **OpenRouter** | 400+ models; curated defaults are validated against its live catalog | `openrouter.ai/api/v1` | varies by model |
-| **Google Gemini** | Gemini 3.7 Flash, 3.1 Pro Preview, 3.5 Flash-Lite | via `@google/genai` SDK | free tiers vary by model and modality |
+| **Google Gemini** | Gemini 3.8 Flash, Gemini 4 Argon, 3.5 Flash-Lite | via `@google/genai` SDK | free tiers vary by model and modality; Gemini 4 Argon is paid only |
 | **Kimi (Moonshot AI)** | Kimi K3, K2.7 Code, K2.6 | `api.moonshot.ai/v1` | provider pricing |
-| **MiMo (Xiaomi)** | MiMo V2.5 Pro, V2.5 | `api.xiaomimimo.com/v1` | provider pricing |
-| **GLM (Zhipu AI)** | GLM-5.3, 5.2, 5.1 | `api.z.ai/api/paas/v4/` | provider pricing |
+| **MiMo (Xiaomi)** | MiMo V2.6 Pro, V2.6 Flash | `api.xiaomimimo.com/v1` | provider pricing |
+| **GLM (Zhipu AI)** | GLM-5.3, 5.3 Flash, 5.2 | `api.z.ai/api/paas/v4/` | provider pricing |
+| **DeepSeek** | DeepSeek V4.1 Flash, V4 Pro | `api.deepseek.com` | provider pricing |
+| **MiniMax** | MiniMax M3.1 Flash, M3 | `api.minimax.io/v1` | provider pricing |
 
-Additional integrations: Anthropic Claude (`claude-fable-5`), ElevenLabs (Eleven v3 TTS), Replicate (Wan 2.7 video), local models via Ollama, any OpenAI-compatible endpoint.
+Additional integrations: Anthropic Claude (`claude-fable-5-1`), ElevenLabs (Eleven v3 TTS), Replicate (Wan 2.7 video), local models via Ollama, any OpenAI-compatible endpoint.
 
 ### AI video providers
 
@@ -265,7 +269,7 @@ Local slideshow rendering remains the default, so upgrading does not start paid 
 | --- | --- | --- | --- |
 | ByteDance | `bytedance/seedance-2.5` through Replicate | Cinematic long scenes and large reference sets | 4–30 seconds |
 | MiniMax | `MiniMax-H3` | Multimodal references, native stereo audio, optional 2K | 4–15 seconds |
-| Google | `gemini-omni-flash-preview` | Fast generation and conversational editing | 3–10 seconds |
+| Google | `gemini-omni-1.1-flash` | Fast generation and conversational editing | 3–10 seconds |
 | Kuaishou | `kling-v3-omni` | Storyboards and character/voice consistency | 3–15 seconds |
 | Alibaba | Wan 2.7 task-specific models | Efficient generation, reference video, and continuation | 2–15 seconds |
 
@@ -297,13 +301,15 @@ Long-form productions use hybrid assembly: Lumen generates bounded provider clip
 1. Get a key from [Google AI Studio](https://aistudio.google.com/)
 2. Set `GEMINI_API_KEY` in `.env`
 
-#### Kimi / MiMo / GLM
+#### Kimi / MiMo / GLM / DeepSeek / MiniMax
 
 | Provider | Get key at | Env var |
 |----------|-----------|---------|
 | Kimi (Moonshot AI) | [platform.kimi.ai](https://platform.kimi.ai) | `MOONSHOT_API_KEY` |
 | MiMo (Xiaomi) | [mimo.mi.com](https://mimo.mi.com) | `MIMO_API_KEY` |
 | GLM (Zhipu AI) | [z.ai](https://z.ai) | `GLM_API_KEY` |
+| DeepSeek | [platform.deepseek.com](https://platform.deepseek.com/api_keys) | `DEEPSEEK_API_KEY` |
+| MiniMax | [platform.minimax.io](https://platform.minimax.io/user-center/basic-information/interface-key) | `MINIMAX_TEXT_API_KEY` (`MINIMAX_API_KEY` is the H3 video key) |
 
 ### Environment Variables
 
@@ -315,6 +321,8 @@ OPENAI_API_KEY=sk-...
 # MOONSHOT_API_KEY=...
 # MIMO_API_KEY=...
 # GLM_API_KEY=...
+# DEEPSEEK_API_KEY=...
+# MINIMAX_TEXT_API_KEY=... # MiniMax M3 text
 
 # Optional: premium TTS
 # ELEVENLABS_API_KEY=...
@@ -510,7 +518,7 @@ class ClaudeAIService {
   }
   async generateContent(prompt) {
     const message = await this.client.messages.create({
-      model: 'claude-fable-5',
+      model: 'claude-fable-5-1',
       max_tokens: 1024,
       messages: [{ role: 'user', content: prompt }]
     });
@@ -602,13 +610,15 @@ MIT — see [LICENSE](LICENSE).
 
 ## Acknowledgments
 
-- [OpenAI](https://openai.com/) — GPT-5.6 Sol, GPT Image 2, GPT-4o-mini-tts
+- [OpenAI](https://openai.com/) — GPT-6.1 Sol, GPT Image 2, GPT-4o-mini-tts
 - [OpenRouter](https://openrouter.ai/) — unified multi-model API
-- [Google](https://ai.google.dev/) — Gemini 3.7 Flash, Gemini 3.1 Flash Image, Gemini 3.1 Flash TTS
+- [Google](https://ai.google.dev/) — Gemini 3.8 Flash, Gemini 4 Argon, Gemini 3.1 Flash Image, Gemini 3.8 Flash TTS
 - [Google Cloud](https://console.cloud.google.com/) — YouTube Data API
 - [Moonshot AI](https://www.moonshot.ai/) — Kimi K3
-- [Xiaomi](https://mimo.mi.com/) — MiMo V2.5 Pro
+- [Xiaomi](https://mimo.mi.com/) — MiMo V2.6 Pro
 - [Zhipu AI](https://z.ai/) — GLM-5.3
+- [DeepSeek](https://www.deepseek.com/) — DeepSeek V4.1 Flash
+- [MiniMax](https://www.minimax.io/) — MiniMax M3 text and H3 video
 - [ElevenLabs](https://elevenlabs.io/) — Eleven v3 TTS
 - [Replicate](https://replicate.com/) — Wan 2.7 video generation
 - [ConstructionBids.ai](https://constructionbids.ai) - AI scans every federal, state & local public works bid and matches you to contracts you'll win.

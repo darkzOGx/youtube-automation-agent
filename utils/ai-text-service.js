@@ -2,8 +2,8 @@ const OpenAI = require('openai');
 const { Logger } = require('./logger');
 
 const GEMINI_MODELS = [
-  'gemini-3.7-flash',
-  'gemini-3.1-pro-preview',
+  'gemini-3.8-flash',
+  'gemini-4-argon',
   'gemini-3.5-flash-lite',
 ];
 const GEMINI_DEFAULT_MODEL = GEMINI_MODELS[0];
@@ -14,15 +14,15 @@ const PROVIDERS = {
   openai: {
     name: 'OpenAI',
     baseURL: 'https://api.openai.com/v1',
-    defaultModel: 'gpt-5.6',
-    models: ['gpt-5.6', 'gpt-5.6-terra', 'gpt-5.6-luna'],
+    defaultModel: 'gpt-6.1-sol',
+    models: ['gpt-6.1-sol', 'gpt-6-astra', 'gpt-6-luna'],
     envKey: 'OPENAI_API_KEY',
   },
   openrouter: {
     name: 'OpenRouter',
     baseURL: 'https://openrouter.ai/api/v1',
-    defaultModel: 'openai/gpt-5.6-sol',
-    models: ['openai/gpt-5.6-sol', 'anthropic/claude-fable-5', 'google/gemini-3.7-flash', 'moonshotai/kimi-k3', 'z-ai/glm-5.3'],
+    defaultModel: 'openai/gpt-6.1-sol',
+    models: ['openai/gpt-6.1-sol', 'anthropic/claude-fable-5.1', 'google/gemini-3.8-flash', 'moonshotai/kimi-k3', 'z-ai/glm-5.3', 'deepseek/deepseek-v4.1-flash', 'minimax/minimax-m3'],
     envKey: 'OPENROUTER_API_KEY',
   },
   kimi: {
@@ -35,16 +35,32 @@ const PROVIDERS = {
   mimo: {
     name: 'MiMo (Xiaomi)',
     baseURL: 'https://api.xiaomimimo.com/v1',
-    defaultModel: 'mimo-v2.5-pro',
-    models: ['mimo-v2.5-pro', 'mimo-v2.5'],
+    defaultModel: 'mimo-v2.6-pro',
+    models: ['mimo-v2.6-pro', 'mimo-v2.6-flash'],
     envKey: 'MIMO_API_KEY',
   },
   glm: {
     name: 'GLM (Zhipu AI)',
     baseURL: 'https://api.z.ai/api/paas/v4/',
     defaultModel: 'glm-5.3',
-    models: ['glm-5.3', 'glm-5.2', 'glm-5.1'],
+    models: ['glm-5.3', 'glm-5.3-flash', 'glm-5.2'],
     envKey: 'GLM_API_KEY',
+  },
+  deepseek: {
+    name: 'DeepSeek',
+    baseURL: 'https://api.deepseek.com',
+    defaultModel: 'deepseek-flash',
+    models: ['deepseek-flash', 'deepseek-v4-pro'],
+    envKey: 'DEEPSEEK_API_KEY',
+  },
+  minimax: {
+    name: 'MiniMax',
+    baseURL: 'https://api.minimax.io/v1',
+    defaultModel: 'MiniMax-M3.1-Flash',
+    models: ['MiniMax-M3.1-Flash', 'MiniMax-M3'],
+    // MINIMAX_API_KEY already selects MiniMax H3 video; reusing it here would
+    // silently switch Gemini users with a video key over to MiniMax text.
+    envKey: 'MINIMAX_TEXT_API_KEY',
   },
 };
 
@@ -109,7 +125,7 @@ class AITextService {
 
     if (this.gemini) {
       const config = { maxOutputTokens: maxTokens };
-      if (!/^gemini-3\.(?:[5-9]|\d{2,})-/.test(model)) config.temperature = temperature;
+      if (!/^gemini-(?:3\.(?:[5-9]|\d{2,})|[4-9]|\d{2,})[.-]/.test(model)) config.temperature = temperature;
       let response = await this.gemini.models.generateContent({
         model,
         contents: prompt,

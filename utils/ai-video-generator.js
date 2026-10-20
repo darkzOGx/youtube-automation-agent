@@ -131,7 +131,7 @@ class AIVideoGenerator {
         generatedPath = await this.generateOpenAITTS(text, outputPath);
       } else if (this.gemini) {
         provider = 'gemini';
-        model = process.env.GEMINI_TTS_MODEL || 'gemini-3.1-flash-tts-preview';
+        model = process.env.GEMINI_TTS_MODEL || 'gemini-3.8-flash-tts';
         generatedPath = await this.generateGeminiTTS(text, outputPath);
       } else {
         generatedPath = await this.simulateTTSGeneration(text, outputPath);
@@ -214,7 +214,7 @@ class AIVideoGenerator {
   }
 
   async generateGeminiTTS(text, outputPath) {
-    const model = process.env.GEMINI_TTS_MODEL || 'gemini-3.1-flash-tts-preview';
+    const model = process.env.GEMINI_TTS_MODEL || 'gemini-3.8-flash-tts';
     const voiceName = process.env.GEMINI_TTS_VOICE || 'Kore';
 
     const response = await this.gemini.models.generateContent({

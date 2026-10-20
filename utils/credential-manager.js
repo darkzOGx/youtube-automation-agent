@@ -353,6 +353,68 @@ class CredentialManager {
     console.log(chalk.green('GLM credentials configured successfully!'));
   }
 
+  // DeepSeek Setup
+  async setupDeepSeekCredentials() {
+    console.log(chalk.cyan('\nDeepSeek Setup'));
+    console.log(chalk.gray('Get your API key from: https://platform.deepseek.com/api_keys'));
+
+    const answers = await inquirer.prompt([
+      {
+        type: 'password',
+        name: 'apiKey',
+        message: 'Enter your DeepSeek API Key:',
+        validate: input => input.length > 0 || 'API key is required'
+      },
+      {
+        type: 'list',
+        name: 'model',
+        message: 'Select model:',
+        choices: [...PROVIDERS.deepseek.models],
+        default: PROVIDERS.deepseek.defaultModel
+      }
+    ]);
+
+    this.credentials.aiProvider = {
+      provider: 'deepseek',
+      apiKey: answers.apiKey,
+      model: answers.model
+    };
+
+    await this.saveCredentials();
+    console.log(chalk.green('DeepSeek credentials configured successfully!'));
+  }
+
+  // MiniMax (text) Setup
+  async setupMiniMaxCredentials() {
+    console.log(chalk.cyan('\nMiniMax Setup'));
+    console.log(chalk.gray('Get your API key from: https://platform.minimax.io/user-center/basic-information/interface-key'));
+
+    const answers = await inquirer.prompt([
+      {
+        type: 'password',
+        name: 'apiKey',
+        message: 'Enter your MiniMax API Key:',
+        validate: input => input.length > 0 || 'API key is required'
+      },
+      {
+        type: 'list',
+        name: 'model',
+        message: 'Select model:',
+        choices: [...PROVIDERS.minimax.models],
+        default: PROVIDERS.minimax.defaultModel
+      }
+    ]);
+
+    this.credentials.aiProvider = {
+      provider: 'minimax',
+      apiKey: answers.apiKey,
+      model: answers.model
+    };
+
+    await this.saveCredentials();
+    console.log(chalk.green('MiniMax credentials configured successfully!'));
+  }
+
   // Azure Speech Services (TTS)
   async setupAzureSpeechCredentials() {
     console.log(chalk.cyan('\n🎙️  Azure Speech Services Setup'));
@@ -537,7 +599,7 @@ class CredentialManager {
     }
 
     if (!this.hasAITextProvider()) {
-      missing.push('an AI provider (OpenAI, Gemini, OpenRouter, Kimi, MiMo, or GLM)');
+      missing.push('an AI provider (OpenAI, Gemini, OpenRouter, Kimi, MiMo, GLM, DeepSeek, or MiniMax)');
     }
 
     return missing;
@@ -641,12 +703,14 @@ class CredentialManager {
         name: 'service',
         message: 'Select your preferred AI service:',
         choices: [
-          { name: 'OpenAI (GPT-5.6)', value: 'openai' },
-          { name: 'Google Gemini (Gemini 3.7)', value: 'gemini' },
+          { name: 'OpenAI (GPT-6.1 Sol)', value: 'openai' },
+          { name: 'Google Gemini (Gemini 3.8 Flash)', value: 'gemini' },
           { name: 'OpenRouter (400+ models, one API key)', value: 'openrouter' },
           { name: 'Kimi (Moonshot AI — K3)', value: 'kimi' },
-          { name: 'MiMo (Xiaomi — V2.5 Pro)', value: 'mimo' },
+          { name: 'MiMo (Xiaomi — V2.6 Pro)', value: 'mimo' },
           { name: 'GLM (Zhipu AI — GLM-5.3)', value: 'glm' },
+          { name: 'DeepSeek (V4.1 Flash)', value: 'deepseek' },
+          { name: 'MiniMax (M3.1 Flash)', value: 'minimax' },
         ]
       }
     ]);
@@ -658,6 +722,8 @@ class CredentialManager {
       case 'kimi': return await this.setupKimiCredentials();
       case 'mimo': return await this.setupMiMoCredentials();
       case 'glm': return await this.setupGLMCredentials();
+      case 'deepseek': return await this.setupDeepSeekCredentials();
+      case 'minimax': return await this.setupMiniMaxCredentials();
     }
   }
 

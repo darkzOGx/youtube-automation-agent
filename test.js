@@ -1917,7 +1917,7 @@ class SystemTest {
     try {
       // #63: a thinking model that spends the whole budget on thoughts is retried
       // once with room for the answer, and the readiness probe budget fits thoughts.
-      const gemini = new AITextService({ gemini: { apiKey: 'test-key', model: 'gemini-3.7-flash' } });
+      const gemini = new AITextService({ gemini: { apiKey: 'test-key', model: 'gemini-3.8-flash' } });
       const geminiCalls = [];
       gemini.gemini.models.generateContent = async request => {
         geminiCalls.push(request);
@@ -2557,11 +2557,11 @@ class SystemTest {
   }
 
   async testCredentialValidation() {
-    const { PROVIDERS } = require('./utils/ai-text-service');
+    const { PROVIDERS, AITextService } = require('./utils/ai-text-service');
     const manager = new CredentialManager();
 
     // Isolate the test from any API keys set in the environment
-    const envKeys = [...Object.values(PROVIDERS).map(p => p.envKey), 'GEMINI_API_KEY'];
+    const envKeys = [...Object.values(PROVIDERS).map(p => p.envKey), 'GEMINI_API_KEY', 'MINIMAX_API_KEY'];
     const savedEnv = {};
     for (const key of envKeys) {
       savedEnv[key] = process.env[key];
@@ -2590,6 +2590,23 @@ class SystemTest {
       if (missingYouTube.length !== 1 || missingYouTube[0] !== 'youtube') {
         throw new Error('Missing YouTube credentials were not detected');
       }
+
+      // MINIMAX_API_KEY is the H3 video key. It must not count as a text
+      // provider or pull a Gemini user onto MiniMax text.
+      process.env.MINIMAX_API_KEY = 'mm-video-test';
+      manager.credentials = { youtube: { client_id: 'x' } };
+      if (manager.getMissingCredentials().length !== 1) {
+        throw new Error('A MiniMax video key was treated as an AI text provider');
+      }
+      const geminiText = new AITextService({ gemini: { apiKey: 'gm-test' } });
+      if (geminiText.providerName !== 'Google Gemini') {
+        throw new Error('A MiniMax video key switched the text provider away from Gemini');
+      }
+      process.env.MINIMAX_TEXT_API_KEY = 'mm-text-test';
+      const minimaxText = new AITextService({});
+      if (minimaxText.providerName !== 'MiniMax' || minimaxText.model !== PROVIDERS.minimax.defaultModel) {
+        throw new Error('MINIMAX_TEXT_API_KEY did not select MiniMax text generation');
+      }
     } finally {
       for (const key of envKeys) {
         if (savedEnv[key] === undefined) {
@@ -2610,7 +2627,7 @@ class SystemTest {
     delete process.env.OPENAI_API_KEY;
     try {
       const service = new AITextService({
-        aiProvider: { provider: 'openai', apiKey: 'test-key', model: 'gpt-5.6' }
+        aiProvider: { provider: 'openai', apiKey: 'test-key', model: 'gpt-6.1-sol' }
       });
 
       // Newer OpenAI models (gpt-5.x) reject max_tokens — the request must use
@@ -2700,8 +2717,8 @@ class SystemTest {
         throw new Error('Empty response was not rejected with a descriptive error');
       }
 
-      // Gemini 3.5+ rejects/deprecates sampling parameters. Keep the latest
-      // Gemini default on the parameter-safe request path.
+      // Gemini 3.5+ and Gemini 4 reject/deprecate sampling parameters. Keep the
+      // latest Gemini models on the parameter-safe request path.
       const geminiCalls = [];
       const geminiService = Object.create(AITextService.prototype);
       geminiService.gemini = {
@@ -2713,13 +2730,22 @@ class SystemTest {
         }
       };
       geminiService.client = null;
-      geminiService.model = 'gemini-3.7-flash';
       geminiService.providerName = 'Google Gemini';
 
-      const geminiResult = await geminiService.generateText('gemini prompt', { temperature: 0.2 });
-      if (geminiResult !== 'gemini-ok') throw new Error('Gemini generation did not return content');
-      if (geminiCalls[0].config.temperature !== undefined) {
-        throw new Error('Gemini 3.7 must not receive the deprecated temperature parameter');
+      for (const model of ['gemini-3.8-flash', 'gemini-4-argon']) {
+        geminiCalls.length = 0;
+        geminiService.model = model;
+        const geminiResult = await geminiService.generateText('gemini prompt', { temperature: 0.2 });
+        if (geminiResult !== 'gemini-ok') throw new Error('Gemini generation did not return content');
+        if (geminiCalls[0].config.temperature !== undefined) {
+          throw new Error(`${model} must not receive the deprecated temperature parameter`);
+        }
+      }
+      geminiCalls.length = 0;
+      geminiService.model = 'gemini-3.1-pro-preview';
+      await geminiService.generateText('gemini prompt', { temperature: 0.2 });
+      if (geminiCalls[0].config.temperature !== 0.2) {
+        throw new Error('Gemini 3.1 lost its temperature parameter');
       }
     } finally {
       if (savedEnv === undefined) delete process.env.OPENAI_API_KEY;
@@ -3134,11 +3160,13 @@ class SystemTest {
     }
 
     const currentOpenRouterModels = [
-      'openai/gpt-5.6-sol',
-      'anthropic/claude-fable-5',
-      'google/gemini-3.7-flash',
+      'openai/gpt-6.1-sol',
+      'anthropic/claude-fable-5.1',
+      'google/gemini-3.8-flash',
       'moonshotai/kimi-k3',
-      'z-ai/glm-5.3'
+      'z-ai/glm-5.3',
+      'deepseek/deepseek-v4.1-flash',
+      'minimax/minimax-m3'
     ];
     if (JSON.stringify(PROVIDERS.openrouter.models) !== JSON.stringify(currentOpenRouterModels)) {
       throw new Error('OpenRouter curated models are not the verified current catalog');
@@ -3705,14 +3733,14 @@ class SystemTest {
     delete process.env.OPENAI_API_KEY;
     try {
       const configured = new AITextService({
-        aiProvider: { provider: 'openai', apiKey: 'test-key', model: 'gpt-5.6' }
+        aiProvider: { provider: 'openai', apiKey: 'test-key', model: 'gpt-6.1-sol' }
       });
       if (!configured.isAvailable()) {
         throw new Error('AITextService must initialize from a credentials-file aiProvider config');
       }
 
       const wrapped = new AITextService({
-        credentials: { aiProvider: { provider: 'openai', apiKey: 'test-key', model: 'gpt-5.6' } }
+        credentials: { aiProvider: { provider: 'openai', apiKey: 'test-key', model: 'gpt-6.1-sol' } }
       });
       if (wrapped.isAvailable()) {
         throw new Error('A CredentialManager-shaped argument must not look configured; index.js has to unwrap it');
