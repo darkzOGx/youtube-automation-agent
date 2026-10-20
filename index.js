@@ -1712,7 +1712,7 @@ class YouTubeAutomationAgent {
       })),
       assetUrls: {
         video: bundle.assets?.finalVideo?.path && !bundle.assets?.finalVideo?.simulated ? `/api/content/${bundle.id}/asset/video` : null,
-        thumbnail: bundle.assets?.thumbnail?.path ? `/api/content/${bundle.id}/asset/thumbnail` : null,
+        thumbnail: bundle.assets?.thumbnail?.path && !bundle.assets?.thumbnail?.simulated ? `/api/content/${bundle.id}/asset/thumbnail` : null,
         experimentThumbnails: (experiment?.thumbnailVariants || []).map((_variant, index) =>
           `/api/content/${bundle.id}/asset/experiment-thumbnail-${index}`
         ),

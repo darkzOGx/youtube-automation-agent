@@ -36,19 +36,19 @@
     "openai": "^6.0.0",
     "playwright": "^1.54.2",
     "replicate": "^1.4.0",
+    "sharp": "^0.34.5",
     "sqlite3": "^5.1.6",
-    "winston": "^3.11.0",
-    "sharp": "^0.33.0"
+    "winston": "^3.11.0"
   },
   "optionalDependencies": {
     "ffmpeg-static": "^5.2.0"
   },
   "devDependencies": {
-    "nodemon": "^3.0.2",
+    "@eslint/js": "9.39.4",
     "eslint": "9.39.4",
-    "@eslint/js": "9.39.4"
+    "nodemon": "^3.0.2"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=18.17.0"
   }
 }

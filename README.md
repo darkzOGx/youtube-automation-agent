@@ -45,7 +45,7 @@ See the complete release history in [CHANGELOG.md](CHANGELOG.md).
 - **Self-hosted:** your credentials, media, and channel data stay under your control.
 - **Approval-first:** nothing is scheduled until quality, rights, and human-review gates pass by default.
 - **Strategy-driven:** give the Autonomous Channel Operator an objective, audience, pillars, cadence, and guardrails; it turns them into researched content plans and production runs.
-- **Provider-flexible:** use Gemini, OpenAI, OpenRouter, Kimi, MiMo, GLM, DeepSeek, MiniMax, or another OpenAI-compatible text endpoint, plus Seedance, MiniMax H3, Gemini Omni Flash, Kling, Wan, or local FFmpeg for video.
+- **Provider-flexible:** use Gemini, OpenAI, OpenRouter, Kimi, MiMo, GLM, DeepSeek, or MiniMax for text, plus Seedance, MiniMax H3, Gemini Omni Flash, Kling, Wan, or local FFmpeg for video.
 - **Observable:** follow persistent generation jobs, failures, review state, publishing, and local activation milestones from the dashboard.
 
 <!-- Launch gate: add only a real 30–45 second dashboard demo captured from a verified end-to-end run. -->
@@ -228,7 +228,7 @@ Each agent handles one stage of the pipeline:
 
 ## AI Providers
 
-All OpenAI-compatible providers work out of the box — the system auto-configures the SDK base URL. Pick one, or use OpenRouter to access everything through a single key.
+Every text provider below works out of the box — the system sets the SDK base URL for you. Pick one, or use OpenRouter to access everything through a single key.
 
 ```mermaid
 graph LR
@@ -259,7 +259,7 @@ graph LR
 | **DeepSeek** | DeepSeek V4.1 Flash, V4 Pro | `api.deepseek.com` | provider pricing |
 | **MiniMax** | MiniMax M3.1 Flash, M3 | `api.minimax.io/v1` | provider pricing |
 
-Additional integrations: Anthropic Claude (`claude-fable-5-1`), ElevenLabs (Eleven v3 TTS), Replicate (Wan 2.7 video), local models via Ollama, any OpenAI-compatible endpoint.
+Additional integrations: ElevenLabs (Eleven v3 TTS), Replicate (Wan 2.7 video), and Anthropic Claude through OpenRouter (`anthropic/claude-fable-5.1`). To add another provider, see [Custom AI provider](#custom-ai-provider).
 
 ### AI video providers
 

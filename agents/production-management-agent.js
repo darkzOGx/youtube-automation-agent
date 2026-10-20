@@ -223,31 +223,32 @@ class ProductionManagementAgent {
       // Try to generate AI thumbnail first
       const thumbnailScript = thumbnail.script || script || { title: thumbnail.title || 'Untitled Video' };
       const aiThumbnail = await this.aiVideoGenerator.generateThumbnail(thumbnailScript, 'ethereal');
-      
-      return {
-        path: aiThumbnail.path,
-        originalPath: thumbnail.path,
-        dimensions: aiThumbnail.dimensions,
-        fileSize: aiThumbnail.fileSize,
-        generatedWith: 'AI'
-      };
+
+      // generateThumbnail returns a simulated placeholder instead of throwing when
+      // no image provider works; the designer's real image beats that placeholder.
+      if (!aiThumbnail.simulated) {
+        return {
+          path: aiThumbnail.path,
+          originalPath: thumbnail.path,
+          dimensions: aiThumbnail.dimensions,
+          fileSize: aiThumbnail.fileSize,
+          generatedWith: 'AI'
+        };
+      }
     } catch (error) {
       this.logger.error('AI thumbnail generation failed:', error);
-      
-      // Fallback to original processing
-      const productionThumbnailPath = path.join(
-        __dirname, '..', 'data', 'assets', 
-        `thumbnail_${Date.now()}.jpg`
-      );
-      
-      if (thumbnail.path && await fs.access(thumbnail.path).then(() => true).catch(() => false)) {
-        const originalBuffer = await fs.readFile(thumbnail.path);
-        await fs.writeFile(productionThumbnailPath, originalBuffer);
-      } else {
-        // Create placeholder
-        await fs.writeFile(productionThumbnailPath + '.placeholder', 'Thumbnail placeholder');
-      }
-      
+    }
+
+    // Fallback to original processing
+    const productionThumbnailPath = path.join(
+      __dirname, '..', 'data', 'assets',
+      `thumbnail_${Date.now()}.jpg`
+    );
+
+    if (thumbnail.path && await fs.access(thumbnail.path).then(() => true).catch(() => false)) {
+      const originalBuffer = await fs.readFile(thumbnail.path);
+      await fs.mkdir(path.dirname(productionThumbnailPath), { recursive: true });
+      await fs.writeFile(productionThumbnailPath, originalBuffer);
       return {
         path: productionThumbnailPath,
         originalPath: thumbnail.path,
@@ -255,6 +256,17 @@ class ProductionManagementAgent {
         fileSize: thumbnail.fileSize || 0
       };
     }
+
+    // Create placeholder
+    await fs.mkdir(path.dirname(productionThumbnailPath), { recursive: true });
+    await fs.writeFile(productionThumbnailPath + '.placeholder', 'Thumbnail placeholder');
+    return {
+      path: productionThumbnailPath + '.placeholder',
+      originalPath: thumbnail.path,
+      dimensions: thumbnail.dimensions || { width: 1792, height: 1024 },
+      fileSize: 0,
+      simulated: true
+    };
   }
 
   calculatePublishTime(strategy) {

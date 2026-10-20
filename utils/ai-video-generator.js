@@ -715,6 +715,8 @@ class AIVideoGenerator {
         }
         
         .content {
+            position: relative;
+            z-index: 2;
             text-align: center;
             color: white;
             max-width: 80%;
@@ -745,10 +747,20 @@ class AIVideoGenerator {
             width: 100%;
             height: 100%;
             object-fit: cover;
-            opacity: 0.3;
-            z-index: -1;
+            z-index: 0;
         }
-        
+
+        /* Darkens the image just enough to keep the slide text readable */
+        .scrim {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.6) 100%);
+            z-index: 1;
+        }
+
         .particles {
             position: absolute;
             top: 0;
@@ -777,20 +789,19 @@ class AIVideoGenerator {
     
     <!-- Title Slide -->
     <div class="slide active">
-        ${visualAssets[0] ? `<img class="background-image" src="${visualAssets[0]}" />` : ''}
+        ${visualAssets[0] ? `<img class="background-image" src="${visualAssets[0]}" /><div class="scrim"></div>` : ''}
         <div class="content">
             <h1>${script.title}</h1>
-            <p>Ethereal Dreamscript</p>
         </div>
     </div>
-    
+
     ${this.generateContentSlides(script, visualAssets).join('')}
-    
+
     <!-- Subscribe Slide -->
     <div class="slide">
         <div class="content">
-            <h2>✨ Subscribe for More Stories ✨</h2>
-            <p>New content daily at 2:00 PM</p>
+            <h2>Thanks for watching</h2>
+            <p>Subscribe for more videos like this</p>
         </div>
     </div>
     
@@ -835,7 +846,7 @@ class AIVideoGenerator {
         
         slides.push(`
         <div class="slide">
-            ${visualAssets[assetIndex] ? `<img class="background-image" src="${visualAssets[assetIndex]}" />` : ''}
+            ${visualAssets[assetIndex] ? `<img class="background-image" src="${visualAssets[assetIndex]}" /><div class="scrim"></div>` : ''}
             <div class="content">
                 <h2>${section.title}</h2>
                 ${this.formatSectionContent(section)}
@@ -860,11 +871,20 @@ class AIVideoGenerator {
       ).join('');
     }
     
+    // Script writers store spoken lines as an array of strings
+    if (Array.isArray(section.content)) {
+      return section.content
+        .filter(line => typeof line === 'string' && line.trim())
+        .slice(0, 3)
+        .map(line => `<p>${line.slice(0, 120)}${line.length > 120 ? '...' : ''}</p>`)
+        .join('');
+    }
+
     if (typeof section.content === 'string') {
       return `<p>${section.content.slice(0, 200)}${section.content.length > 200 ? '...' : ''}</p>`;
     }
-    
-    return '<p>Content coming soon...</p>';
+
+    return '';
   }
 
   calculateScriptDuration(script) {

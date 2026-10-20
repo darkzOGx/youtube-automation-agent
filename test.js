@@ -39,6 +39,7 @@ class SystemTest {
       { name: 'DarkzSEO Discoverability Preflight', test: () => this.testDiscoverabilityPreflight() },
       { name: 'Open Issue Regressions', test: () => this.testOpenIssueRegressions() },
       { name: 'Reported Issue Fixes (#63, #65, #66)', test: () => this.testReportedIssueFixes() },
+      { name: 'Reported Discussion Fixes (#31, #73, #74)', test: () => this.testReportedDiscussionFixes() },
       { name: 'Resumable Generation Checkpoints', test: () => this.testResumableGenerationCheckpoints() },
       { name: 'API Validation and Security', test: () => this.testAPIValidationAndSecurity() },
       { name: 'Publishing Safety', test: () => this.testPublishingSafety() },
@@ -1893,6 +1894,85 @@ class SystemTest {
     }
 
     this.logger.info('DarkzSEO discoverability preflight test completed successfully');
+  }
+
+  async testReportedDiscussionFixes() {
+    const fs = require('fs').promises;
+    const os = require('os');
+    const sharp = require('sharp');
+    const { AIVideoGenerator } = require('./utils/ai-video-generator');
+    const { ProductionManagementAgent } = require('./agents/production-management-agent');
+    const { OperatorService } = require('./utils/operator-service');
+
+    // Discussion #73: the slideshow must not print another channel's branding or
+    // placeholder copy, and must show generated images instead of washing them out.
+    const html = new AIVideoGenerator({}).createSlideshowHTML({
+      title: 'Slideshow copy test',
+      mainContent: {
+        sections: [
+          { title: 'First chapter', content: ['Spoken line one.', 'Spoken line two.'] },
+          { title: 'Empty chapter', content: [] }
+        ]
+      }
+    }, ['data:image/png;base64,AAAA', 'data:image/png;base64,BBBB']);
+    if (/Ethereal Dreamscript|New content daily|coming soon/i.test(html)) {
+      throw new Error('The slideshow still renders hard-coded channel text or placeholder copy');
+    }
+    if (!html.includes('Spoken line one.')) {
+      throw new Error('Array section content was not rendered on its chapter slide');
+    }
+    if (/\.background-image\s*\{[^}]*opacity:\s*0?\.\d/.test(html)) {
+      throw new Error('Generated slideshow images are still washed out behind the gradient');
+    }
+
+    // Discussion #31: a simulated AI thumbnail must not replace the designer's real
+    // image, and a placeholder that remains must not pass the thumbnail check.
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'yaa-thumb-'));
+    const createdFiles = [];
+    const db = new Database();
+    await db.initialize();
+    try {
+      const designerPath = path.join(dir, 'designer.jpg');
+      await sharp({ create: { width: 64, height: 36, channels: 3, background: { r: 20, g: 40, b: 200 } } })
+        .jpeg().toFile(designerPath);
+      const agent = Object.create(ProductionManagementAgent.prototype);
+      agent.logger = this.logger;
+      agent.aiVideoGenerator = {
+        generateThumbnail: async () => ({
+          path: path.join(dir, 'thumbnail_sim.info'), dimensions: { width: 1792, height: 1024 }, fileSize: 1024, simulated: true
+        })
+      };
+      const kept = await agent.processThumbnail({ path: designerPath, dimensions: { width: 1280, height: 720 }, fileSize: 1 }, { title: 'x' });
+      createdFiles.push(kept.path);
+      const keptImage = await sharp(kept.path).metadata().catch(() => null);
+      if (kept.simulated || !keptImage?.width) {
+        throw new Error('A simulated AI thumbnail replaced the designer thumbnail');
+      }
+      const placeholder = await agent.processThumbnail({ path: path.join(dir, 'missing.jpg') }, { title: 'x' });
+      createdFiles.push(placeholder.path);
+      if (!placeholder.simulated) throw new Error('A placeholder thumbnail was not marked as simulated');
+
+      const quality = await new OperatorService(db).runQualityChecks({
+        script: { title: 'Thumbnail check', fullScript: 'x'.repeat(250) },
+        seo: { title: 'Thumbnail check', description: 'x'.repeat(80), tags: ['one', 'two', 'three'] },
+        assets: { thumbnail: placeholder, finalVideo: { path: 'final.mp4' } }
+      }, { bannedTopics: [] });
+      const thumbnailCheck = quality.checks.find(check => check.id === 'thumbnail');
+      if (!thumbnailCheck || thumbnailCheck.passed) {
+        throw new Error('A placeholder thumbnail passed the thumbnail quality check');
+      }
+    } finally {
+      await db.close();
+      await fs.rm(dir, { recursive: true, force: true });
+      for (const file of createdFiles) await fs.rm(file, { force: true });
+    }
+
+    // Discussion #74: sharp 0.33's wasm32 build crashes with @emnapi/runtime >= 1.4
+    // (Termux and other platforms without a native binary).
+    const [major, minor] = require('sharp/package.json').version.split('.').map(Number);
+    if (major === 0 && minor < 34) {
+      throw new Error(`sharp ${major}.${minor} cannot load its wasm32 build with current @emnapi/runtime`);
+    }
   }
 
   async testReportedIssueFixes() {

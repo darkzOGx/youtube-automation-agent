@@ -27,8 +27,10 @@ class OperatorService {
         tags.length >= 3 ? `${tags.length} tags provided` : 'Add at least 3 relevant tags', false),
       this.check('script', script.length >= 200,
         script.length >= 200 ? 'Script content is present' : 'Script is missing or unusually short'),
-      this.check('thumbnail', Boolean(thumbnail?.path),
-        thumbnail?.path ? 'Thumbnail asset is present' : 'Thumbnail asset is missing', false),
+      this.check('thumbnail', Boolean(thumbnail?.path && !thumbnail?.simulated),
+        thumbnail?.simulated
+          ? 'Thumbnail is a placeholder; no image was generated'
+          : thumbnail?.path ? 'Thumbnail asset is present' : 'Thumbnail asset is missing', false),
       this.check('video', Boolean(finalVideo?.path && !finalVideo?.simulated),
         finalVideo?.simulated
           ? 'Only a simulated video was produced'

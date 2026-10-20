@@ -6,6 +6,10 @@
 - Added DeepSeek (`DEEPSEEK_API_KEY`) and MiniMax M3 text (`MINIMAX_TEXT_API_KEY`) as text providers; the existing `MINIMAX_API_KEY` still only enables MiniMax H3 video
 - Moved Gemini Omni video to `gemini-omni-1.1-flash` and Gemini narration to `gemini-3.8-flash-tts` ahead of Google's shutdown of the preview models
 - Gemini 4 models no longer receive the ignored `temperature` parameter
+- Fixed slideshow videos showing a hard-coded "Ethereal Dreamscript" subtitle, a "New content daily at 2:00 PM" end card, and "Content coming soon..." on every chapter; chapter slides now show the script's lines, and generated images are shown at full strength under a light scrim instead of 30% opacity
+- When AI thumbnail generation falls back to a placeholder, productions now keep the designer's real thumbnail; a remaining placeholder no longer passes the thumbnail check or appears as a broken image in Review Studio
+- Upgraded sharp to 0.34 so its WebAssembly build loads on platforms without a native binary, such as Android/Termux (requires Node.js 18.17+)
+- Corrected the README's provider list: there is no generic OpenAI-compatible endpoint or Ollama setting, and Claude is available through OpenRouter
 
 ## v2.11.0 — 2026-10-13
 
