@@ -70,7 +70,7 @@ Before activating autonomous production, open **Production readiness** in the da
 
 AI image generation can incur a larger provider charge, so its live probe is a separate opt-in checkbox. Without that checkbox, image configuration is reported as verified, skipped, or using the built-in gradient fallback without making a paid image request.
 
-AI video verification has its own **Include paid video probe** checkbox. When enabled, Lumen creates the provider's shortest supported test clip, records the external task and model, downloads and decodes the MP4, then removes the temporary asset. It never silently tries a second paid provider.
+AI video verification has its own **Include paid video probe** checkbox. When enabled, YouTube Automation Agent creates the provider's shortest supported test clip, records the external task and model, downloads and decodes the MP4, then removes the temporary asset. It never silently tries a second paid provider.
 
 Results persist locally in SQLite with exact remediation steps. A recorded blocking failure stops autonomous generation and publishing until a later run passes; manual work remains available when readiness has never been checked or the last result is older than 24 hours.
 
@@ -78,7 +78,7 @@ Results persist locally in SQLite with exact remediation steps. A recorded block
 
 Every generation stage writes a local SQLite checkpoint. If a provider times out or the application restarts, the dashboard shows the saved-stage count and the first incomplete stage. Choose **Resume** to continue from there, or select an earlier stage when you intentionally want to regenerate that stage and everything after it. Saved files are validated before reuse; missing artifacts are regenerated automatically.
 
-Autonomous Operator runs preserve their research and editorial plan, so **Resume run** continues unfinished plan items instead of researching and generating completed videos again. Publishing remains fail-closed: if an upload may have reached YouTube but no video ID was returned, Lumen requires channel reconciliation before another upload attempt.
+Autonomous Operator runs preserve their research and editorial plan, so **Resume run** continues unfinished plan items instead of researching and generating completed videos again. Publishing remains fail-closed: if an upload may have reached YouTube but no video ID was returned, YouTube Automation Agent requires channel reconciliation before another upload attempt.
 
 ### Repair one scene without starting over
 
@@ -130,39 +130,39 @@ The optional external adapter uses a shell-free Python child process, sends cont
 - FFmpeg, installed automatically through `ffmpeg-static`
 - Python 3.9+ only when explicitly testing an external DarkzSEO checkout
 
-Gemini offers free access for supported text and TTS usage. Gemini AI image generation currently requires paid-tier access; without an image provider, Lumen can assemble gradient-based visuals instead.
+Gemini offers free access for supported text and TTS usage. Gemini AI image generation currently requires paid-tier access; without an image provider, YouTube Automation Agent can assemble gradient-based visuals instead.
 
 ### Run the Autonomous Channel Operator
 
 Open **Autonomous operator** in the dashboard and describe the channel outcome—not a task list. Set the objective, audience, content pillars, publishing cadence, success metric, and boundaries, then choose **Activate & run now**.
 
-Lumen refreshes YouTube trend and configured-competitor signals, checks recent channel topics, creates an evidence-labeled editorial plan, and sends each planned video through strategy, script, thumbnail, SEO, production, and workflow management. Active strategies also guide scheduled generation at the requested weekly cadence. Operator runs, decisions, progress, and failures persist in SQLite and remain visible in the dashboard.
+YouTube Automation Agent refreshes YouTube trend and configured-competitor signals, checks recent channel topics, creates an evidence-labeled editorial plan, and sends each planned video through strategy, script, thumbnail, SEO, production, and workflow management. Active strategies also guide scheduled generation at the requested weekly cadence. Operator runs, decisions, progress, and failures persist in SQLite and remain visible in the dashboard.
 
 By default, finished videos wait for factual review, media-rights confirmation, and approval. Once approved, the existing publishing agent schedules and uploads them. Turning on autonomy does not bypass those gates, and simulated videos still cannot publish.
 
 ### Close the performance loop
 
-After publication, Lumen captures comparable 24-hour and 7-day performance snapshots. It evaluates CTR, retention, engagement, watch time, format, length, hook style, and title style against the channel's own history—not a universal view-count target.
+After publication, YouTube Automation Agent captures comparable 24-hour and 7-day performance snapshots. It evaluates CTR, retention, engagement, watch time, format, length, hook style, and title style against the channel's own history—not a universal view-count target.
 
 Open **Analytics → What the agent learned** to review the evidence and confidence behind each recommendation. Pending or rejected recommendations never influence generation. Once you approve one, the next Autonomous Channel Operator run includes it as an explicit planning constraint. Simulated analytics fallbacks are stored as unverified and are never eligible for baselines or recommendations.
 
-When an approved learning calls for better packaging, Lumen prepares a control plus title and thumbnail variants for new videos. Review Studio shows those options before approval; the selected combination is the only one handed to the publishing queue. Lumen does not silently swap live YouTube metadata.
+When an approved learning calls for better packaging, YouTube Automation Agent prepares a control plus title and thumbnail variants for new videos. Review Studio shows those options before approval; the selected combination is the only one handed to the publishing queue. YouTube Automation Agent does not silently swap live YouTube metadata.
 
 ### Prove a growth recommendation
 
 Open **Analytics → Controlled Growth Experiments** after a video with approved-learning packaging variants is published. Create a draft plan with a 24–168 hour window per arm and a minimum-impressions threshold, review the exact title and thumbnail combinations, then separately approve and start the live test.
 
-Lumen records a cumulative analytics sample before and after each arm and evaluates only the interval delta. Every arm must reach the configured impression and click floor. The leading CTR must clear a 95% evidence threshold without a material retention regression or traffic-source shift; otherwise the result is explicitly **inconclusive**. Simulated analytics never advance an experiment.
+YouTube Automation Agent records a cumulative analytics sample before and after each arm and evaluates only the interval delta. Every arm must reach the configured impression and click floor. The leading CTR must clear a 95% evidence threshold without a material retention regression or traffic-source shift; otherwise the result is explicitly **inconclusive**. Simulated analytics never advance an experiment.
 
-Arm rotations are limited to the plan you approved. After the final arm, Lumen restores the control title and thumbnail before presenting the result. Applying the winner is a separate confirmation; only then does the validated packaging pattern become an approved learning for future Autonomous Operator runs. Experiment state and evidence are stored in SQLite so restarts do not erase progress.
+Arm rotations are limited to the plan you approved. After the final arm, YouTube Automation Agent restores the control title and thumbnail before presenting the result. Applying the winner is a separate confirmation; only then does the validated packaging pattern become an approved learning for future Autonomous Operator runs. Experiment state and evidence are stored in SQLite so restarts do not erase progress.
 
 ### Align the channel with outcomes and ROI
 
 The Autonomous Operator strategy can define a measurable primary outcome—views, watch hours, net subscribers, engagement rate, or estimated revenue—plus a numeric target, evidence window, monthly production budget, and currency. The existing free-text outcome context remains available for goals that need human nuance.
 
-At each real analytics window, Lumen stores subscriber gains and losses, watch hours, monetization evidence when the channel exposes it, and known production costs from durable scene records. **Analytics → Outcome & ROI Studio** shows target progress, evidence coverage, net subscribers, estimated revenue, known cost, ROI, and comparisons by content pillar, format, and production provider.
+At each real analytics window, YouTube Automation Agent stores subscriber gains and losses, watch hours, monetization evidence when the channel exposes it, and known production costs from durable scene records. **Analytics → Outcome & ROI Studio** shows target progress, evidence coverage, net subscribers, estimated revenue, known cost, ROI, and comparisons by content pillar, format, and production provider.
 
-Missing evidence is explicit. A channel without monetization access shows revenue as unavailable rather than zero, and ROI stays unavailable until both revenue and complete cost evidence exist. When at least two comparable videos exist in each group, the learning engine can propose reallocating future content toward the pillar or format that best advances the configured outcome. That proposal remains pending until you approve it; Lumen never changes the strategy or budget silently.
+Missing evidence is explicit. A channel without monetization access shows revenue as unavailable rather than zero, and ROI stays unavailable until both revenue and complete cost evidence exist. When at least two comparable videos exist in each group, the learning engine can propose reallocating future content toward the pillar or format that best advances the configured outcome. That proposal remains pending until you approve it; YouTube Automation Agent never changes the strategy or budget silently.
 
 ### Find the exact scene that lost viewers
 
@@ -180,7 +180,7 @@ When three or more commenters ask for the same thing, the analysis mines an **au
 
 ## From idea to published video
 
-| Stage | What Lumen does | What you control |
+| Stage | What YouTube Automation Agent does | What you control |
 | --- | --- | --- |
 | Research | Finds topics and builds a content strategy | Niche, audience, blocked topics |
 | Script | Writes the hook, narrative, CTA, and metadata | Voice, format, length, brand direction |
@@ -189,7 +189,7 @@ When three or more commenters ask for the same thing, the analysis mines an **au
 | Publish | Schedules and uploads approved content | Privacy, timing, final decision |
 | Learn | Captures 24-hour and 7-day evidence, measures the configured outcome and economics, then proposes the next move | Choose the KPI and approve or reject each learning before it guides planning |
 
-Lumen distinguishes real MP4 output from simulated placeholders. Simulated output cannot enter the approval or publishing path.
+YouTube Automation Agent distinguishes real MP4 output from simulated placeholders. Simulated output cannot enter the approval or publishing path.
 
 For release history, see [CHANGELOG.md](CHANGELOG.md).
 
@@ -273,7 +273,7 @@ Local slideshow rendering remains the default, so upgrading does not start paid 
 | Kuaishou | `kling-v3-omni` | Storyboards and character/voice consistency | 3–15 seconds |
 | Alibaba | Wan 2.7 task-specific models | Efficient generation, reference video, and continuation | 2–15 seconds |
 
-Long-form productions use hybrid assembly: Lumen generates bounded provider clips for the hook and important sections, fills the remaining timeline locally, mixes the existing narration, and keeps the generated caption file alongside the production. As soon as a provider returns its task ID, Lumen persists it before polling so interrupted jobs can resume that known task instead of submitting it again.
+Long-form productions use hybrid assembly: YouTube Automation Agent generates bounded provider clips for the hook and important sections, fills the remaining timeline locally, mixes the existing narration, and keeps the generated caption file alongside the production. As soon as a provider returns its task ID, YouTube Automation Agent persists it before polling so interrupted jobs can resume that known task instead of submitting it again.
 
 ## Configuration
 
@@ -364,7 +364,7 @@ GENERATION_RETRY_BASE_MS=1000
 
 The dashboard calculates setup, first-real-MP4, approval, publication, and repeat-generation milestones locally from SQLite and files on disk. A video counts only when a non-simulated `.mp4` with an MP4 container signature still exists.
 
-Anonymous milestone reporting is disabled by default and has no built-in collector. It activates only when you explicitly set both telemetry variables. The allowlisted payload contains the milestone name and time, Lumen version, OS family, Node major version, and a random installation ID. It never includes credentials, channel data, prompts, topics, titles, filenames, or video contents.
+Anonymous milestone reporting is disabled by default and has no built-in collector. It activates only when you explicitly set both telemetry variables. The allowlisted payload contains the milestone name and time, YouTube Automation Agent version, OS family, Node major version, and a random installation ID. It never includes credentials, channel data, prompts, topics, titles, filenames, or video contents.
 
 ## Automation Schedule
 
@@ -585,7 +585,7 @@ If this was useful, check out:
 
 [@darkzOGx](https://github.com/darkzOGx), a solo builder shipping AI automation and developer tools. Find me on [X](https://x.com/darkzOGx) and [laderalabs.io](https://laderalabs.io).
 
-If Lumen saves you time, a star helps it reach more developers.
+If YouTube Automation Agent saves you time, a star helps it reach more developers.
 
 ## Contributing
 

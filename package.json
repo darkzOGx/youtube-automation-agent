@@ -1,7 +1,7 @@
 {
   "name": "youtube-automation-agent",
   "version": "2.11.0",
-  "description": "Lumen is an open-source AI agent that runs a YouTube channel end to end",
+  "description": "YouTube Automation Agent is an open-source AI agent that runs a YouTube channel end to end",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

@@ -96,7 +96,7 @@ function selectForkCandidates(forks) {
 
 function markdownBaseline(snapshot) {
   const lines = [
-    `# Lumen growth baseline — ${snapshot.snapshotDate}`,
+    `# YouTube Automation Agent growth baseline — ${snapshot.snapshotDate}`,
     '',
     `Captured at ${snapshot.capturedAt}. GitHub traffic and clone figures are rolling aggregates and are not cohort-aligned.`,
     '',
@@ -141,7 +141,7 @@ function markdownBaseline(snapshot) {
 
 function markdownForks(census) {
   const lines = [
-    `# Lumen public fork census — ${census.snapshotDate}`,
+    `# YouTube Automation Agent public fork census — ${census.snapshotDate}`,
     '',
     `GitHub's repository summary reported ${census.repositoryForkCount.toLocaleString()} forks. The paginated REST census returned ${census.totalForks.toLocaleString()} unique public fork records and compared ${census.comparedCandidates} high-signal candidates with upstream.`,
     '',

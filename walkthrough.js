@@ -379,7 +379,7 @@ class SetupWalkthrough {
     const { providerId } = await inquirer.prompt([{
       type: 'list',
       name: 'providerId',
-      message: 'Which video provider should Lumen use?',
+      message: 'Which video provider should YouTube Automation Agent use?',
       choices: Object.entries(VIDEO_PROVIDER_GUIDE).map(([value, guide]) => ({ name: guide.label, value }))
     }]);
     const guide = VIDEO_PROVIDER_GUIDE[providerId];

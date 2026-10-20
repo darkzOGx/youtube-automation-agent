@@ -340,7 +340,7 @@ function renderChannelSnapshot(snapshot) {
   if (!snapshot.available) {
     $('#channel-snapshot-title').textContent = 'Channel snapshot';
     container.innerHTML = empty(snapshot.reason || 'Channel statistics are unavailable.');
-    note.textContent = 'Whole-channel totals from YouTube, including videos published outside Lumen.';
+    note.textContent = 'Whole-channel totals from YouTube, including videos published outside YouTube Automation Agent.';
     return;
   }
   // null means YouTube did not provide the value; it is shown as unavailable, never as 0.
@@ -364,7 +364,7 @@ function renderChannelSnapshot(snapshot) {
     html += `<div class="empty">${escapeHTML(recent.reason || '28-day analytics are unavailable.')}${recent.activationUrl ? ` <a href="${escapeHTML(recent.activationUrl)}" target="_blank" rel="noopener noreferrer">Enable YouTube Analytics API</a>` : ''}</div>`;
   }
   container.innerHTML = html;
-  note.textContent = 'Whole-channel totals from YouTube, including videos published outside Lumen. Analytics data lags about two days.';
+  note.textContent = 'Whole-channel totals from YouTube, including videos published outside YouTube Automation Agent. Analytics data lags about two days.';
 }
 
 function formatOutcomeValue(value, kind = 'number', currency = 'USD') {
@@ -451,7 +451,7 @@ function renderLearning(learning = {}) {
           ${item.status !== 'rejected' ? `<button class="text-button" data-learning-action="reject" data-learning-id="${escapeHTML(item.id)}">Reject</button>` : ''}
         </span>
       </div>
-    </article>`).join('') : empty('No recommendation yet. Lumen needs at least two real, sufficiently exposed measurements.');
+    </article>`).join('') : empty('No recommendation yet. YouTube Automation Agent needs at least two real, sufficiently exposed measurements.');
 }
 
 function renderGrowthExperiments(summary = {}) {
@@ -719,7 +719,7 @@ function renderActivation(activation = {}) {
   if (milestones.firstRealVideo?.achieved) {
     container.insertAdjacentHTML('beforeend', `
       <div class="activation-share">
-        <span>Made something real with Lumen?</span>
+        <span>Made something real with YouTube Automation Agent?</span>
         <a class="button secondary small" href="https://github.com/darkzOGx/youtube-automation-agent/discussions/new?category=show-and-tell" target="_blank" rel="noreferrer">Share what you built</a>
       </div>`);
   }
@@ -832,7 +832,7 @@ function switchView(view) {
   $$('.view').forEach(item => item.classList.toggle('active', item.id === `${view}-view`));
   const titles = {
     overview: ['OPERATOR OVERVIEW', 'Know what happens next.'],
-    operator: ['AUTONOMOUS OPERATOR', 'Give Lumen the strategy.'],
+    operator: ['AUTONOMOUS OPERATOR', 'Give YouTube Automation Agent the strategy.'],
     pipeline: ['CONTENT OPERATIONS', 'From idea to published.'],
     calendar: ['EDITORIAL PLANNING', 'Plan before you generate.'],
     analytics: ['PERFORMANCE', 'Turn results into the next move.'],
@@ -1290,7 +1290,7 @@ document.addEventListener('click', async event => {
     const id = experiment.dataset.experimentId;
     const prompts = {
       approve: 'Approve this complete experiment plan? This does not change YouTube yet.',
-      start: 'Start this live test? Lumen will rotate only the approved arms and restore the control before asking you to adopt a winner.',
+      start: 'Start this live test? YouTube Automation Agent will rotate only the approved arms and restore the control before asking you to adopt a winner.',
       adopt: 'Adopt the evidence-backed winner on YouTube and approve its learning for future plans?',
       cancel: 'Cancel this experiment and restore the control title and thumbnail?'
     };

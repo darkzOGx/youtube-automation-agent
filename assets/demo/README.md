@@ -1,6 +1,6 @@
 # Demo capture specification
 
-Capture a real Lumen run in approximately 30–45 seconds:
+Capture a real YouTube Automation Agent run in approximately 30–45 seconds:
 
 1. Enter: `Create a channel about forgotten American engineering projects`.
 2. Start generation and show strategy, script, narration, visuals, video, thumbnail, and SEO stages completing.
