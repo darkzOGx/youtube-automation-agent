@@ -2442,7 +2442,7 @@ Add this section after "### Find the exact scene that lost viewers":
 ```markdown
 ### Engage with your audience
 
-Open **Engagement** in the dashboard. AgentTube syncs comments for recently published videos every four hours (more often for fresh videos) and classifies them into themes, sentiment, and questions. Likely spam, scams, and toxic comments are quarantined into a separate needs-attention list — AgentTube never deletes or hides a comment; acting on flagged comments stays in YouTube Studio.
+Open **Engagement** in the dashboard. YouTube Automation Agent syncs comments for recently published videos every four hours (more often for fresh videos) and classifies them into themes, sentiment, and questions. Likely spam, scams, and toxic comments are quarantined into a separate needs-attention list — YouTube Automation Agent never deletes or hides a comment; acting on flagged comments stays in YouTube Studio.
 
 Choose **Draft replies** to generate suggested answers in your channel's voice. Nothing posts automatically: every reply waits in the queue where you can edit, discard, or approve it, and approval requires an explicit confirmation. Posting requires re-authorizing YouTube once to grant the comment permission (`youtube.force-ssl`); until then the studio works in read-and-draft mode. A daily posting cap (default 50, `ENGAGEMENT_DAILY_REPLY_CAP`) keeps approval sessions bounded.
 

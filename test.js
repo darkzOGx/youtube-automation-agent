@@ -1770,7 +1770,7 @@ class SystemTest {
 
     try {
       const bundledReport = await new DarkzSEOAdapter({ scriptPath: null }).audit({
-        id: 'bundled-audit', platform: 'youtube', brand: 'AgentTube', title: 'Best workflow review',
+        id: 'bundled-audit', platform: 'youtube', brand: 'YouTube Automation Agent', title: 'Best workflow review',
         description: 'A useful comparison.', transcript: 'Detailed content '.repeat(100),
         sections: [{ title: 'What should you choose?', content: 'answer '.repeat(61) }]
       });
@@ -1809,13 +1809,13 @@ class SystemTest {
       });
       const production = {
         id: productionId,
-        script: { title: 'AgentTube discoverability', fullScript: 'Detailed content '.repeat(200), sections: [] },
-        seo: { title: 'AgentTube discoverability', description: 'A detailed discoverability review.', chapters: [] },
+        script: { title: 'YouTube Automation Agent discoverability', fullScript: 'Detailed content '.repeat(200), sections: [] },
+        seo: { title: 'YouTube Automation Agent discoverability', description: 'A detailed discoverability review.', chapters: [] },
         provenance: { sources: [] }
       };
       await db.saveProductionSnapshot(production);
       const service = new DiscoverabilityService(db, { adapter: fakeAdapter });
-      const first = await service.auditProduction(production, { channel_name: 'AgentTube' });
+      const first = await service.auditProduction(production, { channel_name: 'YouTube Automation Agent' });
       if (first.engineVersion !== '1.4.0' || first.findings.length !== 1 || first.pendingCount !== 1) {
         throw new Error('The versioned DarkzSEO report was not persisted');
       }
@@ -1835,7 +1835,7 @@ class SystemTest {
       if (!shortReasonRejected) throw new Error('A false-positive dismissal without reviewer evidence was accepted');
 
       await service.reviewFinding(first.findings[0].id, { status: 'dismissed', reason: 'The cited source is attached in the approved evidence desk.' });
-      const second = await service.auditProduction(production, { channel_name: 'AgentTube' });
+      const second = await service.auditProduction(production, { channel_name: 'YouTube Automation Agent' });
       if (second.findings[0].reviewStatus !== 'dismissed' || second.pendingCount !== 0) {
         throw new Error('Finding review evidence did not carry forward across matching audits');
       }
@@ -1878,7 +1878,7 @@ class SystemTest {
       const unavailableService = new DiscoverabilityService(db, {
         adapter: { audit: async () => { const error = new Error('Python is not installed'); error.code = 'DARKZSEO_UNAVAILABLE'; throw error; } }
       });
-      const unavailable = await unavailableService.auditProduction(production, { channel_name: 'AgentTube' });
+      const unavailable = await unavailableService.auditProduction(production, { channel_name: 'YouTube Automation Agent' });
       if (unavailable.status !== 'unavailable' || unavailable.errorCode !== 'DARKZSEO_UNAVAILABLE' || unavailable.findings.length !== 0) {
         throw new Error('An unavailable DarkzSEO runtime was not stored explicitly');
       }

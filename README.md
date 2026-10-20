@@ -10,14 +10,14 @@ Research topics → write scripts → generate narration and visuals → assembl
 
 ## What's new on master
 
-- **v2.11.0 (October 13, 2026):** Gemini thinking models now pass the readiness check, image-generation failures explain exactly what to fix, Analytics shows whole-channel YouTube statistics (including videos published outside AgentTube), and the dashboard listens on this machine only by default. Set `HOST=0.0.0.0` together with `API_KEY` if you open it from other devices. See the [changelog](CHANGELOG.md).
+- **v2.11.0 (October 13, 2026):** Gemini thinking models now pass the readiness check, image-generation failures explain exactly what to fix, Analytics shows whole-channel YouTube statistics (including videos published outside YouTube Automation Agent), and the dashboard listens on this machine only by default. Set `HOST=0.0.0.0` together with `API_KEY` if you open it from other devices. See the [changelog](CHANGELOG.md).
 - **v2.10.0 is now on master:** DarkzSEO discoverability audits, controlled growth experiments, and outcome-aware channel operation are available together in the approval-first workflow.
 
 ### September 21, 2026 reliability hotfixes
 
 The latest production fixes are included in [`124a1ed`](https://github.com/darkzOGx/youtube-automation-agent/commit/124a1ed18e474878d5829812dd632e579adbd860) and [`d52b40d`](https://github.com/darkzOGx/youtube-automation-agent/commit/d52b40d94a007caf5e7f256378c0265ddcf09d2b):
 
-- **DarkzSEO works without Python:** the bundled advisory audit is now the default. AgentTube no longer auto-selects sibling Python checkouts, and a missing or broken explicitly configured external runtime falls back to the bundled audit instead of reporting `No module named darkzseo`.
+- **DarkzSEO works without Python:** the bundled advisory audit is now the default. YouTube Automation Agent no longer auto-selects sibling Python checkouts, and a missing or broken explicitly configured external runtime falls back to the bundled audit instead of reporting `No module named darkzseo`.
 - **Narration repairs keep correct timing:** regenerated narration updates the scene duration from the replacement audio, preventing stale timing and long silent gaps after a rebuild.
 - **Cleaner spoken narration:** internal CTA metadata and bracketed placeholders are excluded from speech, including placeholders that appear in the middle of a line.
 - **Configured visual styles are respected:** scene generation and repair prompts no longer force the `ethereal` style when the channel uses another visual direction.
@@ -29,7 +29,7 @@ These paths are covered by the 46-test system suite. Existing safety gates still
 
 ## What's new in v2.10.0
 
-**AgentTube now has a discoverability adapter layer.** v2.10.0 connects the production pipeline to DarkzSEO without merging the projects or weakening human review, then adds the evidence needed to prove what packaging and strategy actually work:
+**YouTube Automation Agent now has a discoverability adapter layer.** v2.10.0 connects the production pipeline to DarkzSEO without merging the projects or weakening human review, then adds the evidence needed to prove what packaging and strategy actually work:
 
 - **DarkzSEO Discoverability Preflight:** send a canonical content package—not the private dashboard—through versioned GEO, AIO, AEO, and web-search checks after metadata and provenance are assembled.
 - **Reviewable evidence:** persist stable rule IDs, severity, engine/schema identity, fingerprints, and operator decisions in SQLite. Keep a finding actionable or dismiss a false positive with a reason that carries into matching future audits.
@@ -38,7 +38,7 @@ These paths are covered by the 46-test system suite. Existing safety gates still
 - **Outcome & ROI Studio:** align the operator with a measurable KPI, target window, budget, and available revenue/cost evidence without converting missing economics into false zeroes.
 - **Platform-ready foundation:** audits already retain their target platform, providing the durable contract for planned TikTok and Instagram/Reels publishing and analytics adapters.
 
-The content preflight works out of the box. Set `DARKZSEO_PATH` only when developing against a separate DarkzSEO 1.4+ checkout. If that optional external runtime is missing or broken, AgentTube automatically uses the bundled audit.
+The content preflight works out of the box. Set `DARKZSEO_PATH` only when developing against a separate DarkzSEO 1.4+ checkout. If that optional external runtime is missing or broken, YouTube Automation Agent automatically uses the bundled audit.
 
 See the complete release history in [CHANGELOG.md](CHANGELOG.md).
 
@@ -86,7 +86,7 @@ Every production now keeps a durable scene manifest with its narration, visual p
 
 Paid video regeneration always shows the provider and generated seconds and requires a separate confirmation. Uploaded assets require an explicit rights confirmation. Narration edits invalidate that scene's audio and factual review; live narration must be regenerated and any new factual claim must be reviewed against verified evidence before approval.
 
-Narration is fail-closed. AgentTube records the TTS provider, model, external task when available, generation time, cost evidence, and failure reason for every scene. If narration is missing, simulated, stale, or failed, the production cannot be approved, scheduled, or published. Use **Regenerate narration only** to repair the audio without spending video-generation credits or replacing a visual.
+Narration is fail-closed. YouTube Automation Agent records the TTS provider, model, external task when available, generation time, cost evidence, and failure reason for every scene. If narration is missing, simulated, stale, or failed, the production cannot be approved, scheduled, or published. Use **Regenerate narration only** to repair the audio without spending video-generation credits or replacing a visual.
 
 An intentionally silent production requires a separate operator confirmation and a stored reason of at least 10 characters. The override remains visible in Review Studio, can be reversed, and is included in the narration revision history. Silence is never inferred from a failed provider call.
 
@@ -94,7 +94,7 @@ When the timeline is ready, **Rebuild final video** creates a new MP4 and scene-
 
 ### Repurpose an approved video into Shorts
 
-Open **Shorts Repurposing Studio** inside Review Studio and choose **Create 3 Short drafts**. AgentTube selects self-contained windows from the durable scene timeline and preserves the exact source-scene IDs, start time, duration, rationale, title, description, tags, layout, and inherited review evidence for each candidate. Draft selection is local and does not call an AI provider.
+Open **Shorts Repurposing Studio** inside Review Studio and choose **Create 3 Short drafts**. YouTube Automation Agent selects self-contained windows from the durable scene timeline and preserves the exact source-scene IDs, start time, duration, rationale, title, description, tags, layout, and inherited review evidence for each candidate. Draft selection is local and does not call an AI provider.
 
 Choose a blurred-canvas, center-crop, or stacked-focus layout, then render a real 9:16 MP4 with mobile-safe burned captions and a separate SRT file. The source video and narration are reused, so the default workflow does not spend new image, video, or TTS credits. Changing the layout invalidates the prior render and requires a fresh local render.
 
@@ -120,7 +120,7 @@ To test a separate DarkzSEO 1.4+ checkout instead of the bundled auditor:
 DARKZSEO_PATH=../darkzseo/darkzseo.py npm start
 ```
 
-The optional external adapter uses a shell-free Python child process, sends content JSON over stdin, and reads JSON-only stdout. The public PyPI `darkzseo` 1.3.3 package has a different site-audit CLI and is not used by AgentTube.
+The optional external adapter uses a shell-free Python child process, sends content JSON over stdin, and reads JSON-only stdout. The public PyPI `darkzseo` 1.3.3 package has a different site-audit CLI and is not used by YouTube Automation Agent.
 
 ### What you need
 
@@ -166,13 +166,13 @@ Missing evidence is explicit. A channel without monetization access shows revenu
 
 ### Find the exact scene that lost viewers
 
-At each real analytics window, AgentTube also requests YouTube's audience-retention curve and maps its 100 elapsed-time points onto the stored scene durations. Open **Analytics → Scene-aware retention** to see the curve divided by scene, compare absolute and relative retention, and inspect drop-off, rewatch, strong-hold, or steady signals for each beat.
+At each real analytics window, YouTube Automation Agent also requests YouTube's audience-retention curve and maps its 100 elapsed-time points onto the stored scene durations. Open **Analytics → Scene-aware retention** to see the curve divided by scene, compare absolute and relative retention, and inspect drop-off, rewatch, strong-hold, or steady signals for each beat.
 
-Retention snapshots are stored separately for long-form videos and Shorts. Missing, sparse, or simulated curves never enter this evidence layer. A scene finding creates a pending learning recommendation; it cannot guide future scripts, pacing, or scene structure until the operator approves it, and AgentTube never rewrites a published video. Use **Refresh curve** for a read-only update from YouTube Analytics, or `GET /api/retention/:videoId` to inspect stored evidence.
+Retention snapshots are stored separately for long-form videos and Shorts. Missing, sparse, or simulated curves never enter this evidence layer. A scene finding creates a pending learning recommendation; it cannot guide future scripts, pacing, or scene structure until the operator approves it, and YouTube Automation Agent never rewrites a published video. Use **Refresh curve** for a read-only update from YouTube Analytics, or `GET /api/retention/:videoId` to inspect stored evidence.
 
 ### Engage with your audience
 
-Open **Engagement** in the dashboard. AgentTube syncs comments for recently published videos every four hours (more often for fresh videos) and classifies them into themes, sentiment, and questions. Likely spam, scams, and toxic comments are quarantined into a separate needs-attention list — AgentTube never deletes or hides a comment; acting on flagged comments stays in YouTube Studio.
+Open **Engagement** in the dashboard. YouTube Automation Agent syncs comments for recently published videos every four hours (more often for fresh videos) and classifies them into themes, sentiment, and questions. Likely spam, scams, and toxic comments are quarantined into a separate needs-attention list — YouTube Automation Agent never deletes or hides a comment; acting on flagged comments stays in YouTube Studio.
 
 Choose **Draft replies** to generate suggested answers in your channel's voice. Nothing posts automatically: every reply waits in the queue where you can edit, discard, or approve it, and approval requires an explicit confirmation. Posting requires re-authorizing YouTube once to grant the comment permission (`youtube.force-ssl`); until then the studio works in read-and-draft mode. A daily posting cap (default 50, `ENGAGEMENT_DAILY_REPLY_CAP`) keeps approval sessions bounded.
 
@@ -280,7 +280,7 @@ Long-form productions use hybrid assembly: Lumen generates bounded provider clip
 1. Create a project in [Google Cloud Console](https://console.cloud.google.com/)
 2. Enable **YouTube Data API v3**
 3. Create an OAuth 2.0 client (**Desktop app**, not Web application)
-4. Save the JSON as `config/credentials.json`; AgentTube uses its configured loopback redirect URI exactly
+4. Save the JSON as `config/credentials.json`; YouTube Automation Agent uses its configured loopback redirect URI exactly
 
 #### OpenAI
 
