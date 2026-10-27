@@ -48,7 +48,7 @@ Autonomous Operator runs preserve their research and editorial plan, so **Resume
 
 Local slideshow rendering is the default, so upgrading does not start paid video requests. The slideshow is rendered in headless Chromium (install it once with `npx playwright install chromium`) and assembled with FFmpeg. Generated images fill each slide; slides without an image use a gradient background.
 
-To generate real clips, choose a provider in **Channel setup**, set a paid-seconds cap, then run the separately opted-in paid video readiness probe. The supported providers and their clip limits are listed in the [README](../README.md#video).
+To generate real clips, choose a provider in **Channel setup**, set a paid-seconds cap, then run the separately opted-in paid video readiness probe. The supported providers and their clip limits are listed in [AI providers](providers.md#video).
 
 Long-form productions use hybrid assembly: the agent generates bounded provider clips for the hook and important sections, fills the remaining timeline locally, mixes the existing narration, and keeps the generated caption file alongside the production. As soon as a provider returns its task ID, the agent persists it before polling, so interrupted jobs can resume that known task instead of submitting it again. If a provider fails, the production falls back to the local slideshow.
 
@@ -84,7 +84,7 @@ Use the altered or synthetic media control only when the video contains realisti
 
 Every saved production receives an optional **DarkzSEO Discoverability Preflight** in Review Studio after metadata and provenance are assembled. The bundled content auditor reviews a canonical content package (not the private dashboard) with versioned GEO, AIO, AEO, and web-search checks, and stores the engine version, schema version, severity summary, stable rule IDs, and individual findings in SQLite.
 
-Findings are advisory. Keep a useful recommendation as actionable, or dismiss a false positive with a reviewer reason that carries forward to matching findings on later audits. The bundled audit requires no Python package and never silently changes scripts or metadata.
+Findings are advisory. Keep a useful recommendation as actionable, or dismiss a false positive with a reviewer reason that carries forward to matching findings on later audits. The bundled audit requires no Python package and never silently changes scripts or metadata. Python is only needed to test an external DarkzSEO checkout, described next.
 
 To test a separate DarkzSEO 1.4+ checkout (requires Python 3.9+) instead of the bundled auditor:
 
