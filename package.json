@@ -8,6 +8,7 @@
     "setup": "node setup.js",
     "walkthrough": "node walkthrough.js",
     "growth:snapshot": "node scripts/growth/snapshot-github.js",
+    "docs:screenshots": "node scripts/docs/capture-screenshots.js",
     "scheduler": "node schedules/daily-automation.js",
     "test": "node test.js",
     "agent:strategy": "node agents/content-strategy-agent.js",
