@@ -1,6 +1,7 @@
 /* ============================================================
-   YouTube Automation Agent console enhancement layer — motion, command palette,
-   instrumentation. Loads after app.js; touches nothing internal.
+   YouTube Automation Agent console enhancement layer — command palette,
+   shortcuts, instrumentation. Loads after app.js; touches nothing internal.
+   Motion is limited to the boot fade, dialogs, toasts, and data refreshes.
    Cross-file globals below are declared by app.js.
    ============================================================ */
 /* global ui, renderNotifications */
@@ -44,24 +45,10 @@
     window.switchView = function (view) {
       if (!VIEW_META[view]) return baseSwitchView(view);
       const changed = view !== currentView;
-      const previous = currentView;
       currentView = view;
       baseSwitchView(view);
       document.title = `${VIEW_META[view][2]} · YouTube Automation Agent`;
-      const section = $(`#${view}-view`);
-      if (section) {
-        // Directional slide: forward views enter from the right, back from the left.
-        const order = Object.keys(VIEW_META);
-        section.style.setProperty('--enter-from', order.indexOf(view) >= order.indexOf(previous) ? '1' : '-1');
-        delete section.dataset.viewEnter;
-        if (changed && !reduceMotion) {
-          void section.offsetWidth; // restart animation
-          section.dataset.viewEnter = 'true';
-        }
-        // Restagger static children + arm scroll reveals
-        Array.from(section.children).forEach((child, i) => child.style.setProperty('--i', i));
-        armReveals(section);
-      }
+      if (changed) window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' });
     };
   }
 
@@ -92,6 +79,8 @@
       origRenderDashboard.apply(this, args);
       // Rail pause/resume glyph follows real system state
       document.body.dataset.automationPaused = String(Boolean(ui.state?.system?.automationPaused));
+      const versionLabel = $('.console-version');
+      if (versionLabel && ui.state?.system?.version) versionLabel.textContent = `v${ui.state.system.version} · local`;
       requestAnimationFrame(() => {
         ['#stat-review', '#stat-scheduled', '#stat-published', '#analytics-total'].forEach(s => countUp($(s)));
         const score = $('#stat-score');
@@ -250,85 +239,12 @@
   trigger.addEventListener('click', openPalette);
   $('.top-actions').prepend(trigger);
 
-  /* ---------- 4. Cursor spotlight + card glow + tilt ---------- */
-  if (!reduceMotion) {
-    const glowSelector = '.stat, .pipeline-item, .review-card, .job-card, .plan-card, .learning-card, .readiness-check, .retention-scene';
-    const spotlight = $('.spotlight');
-    let lastGlow = null;
-    let spotlightRaf = 0;
-    document.addEventListener('pointermove', event => {
-      document.body.classList.add('has-pointer');
-      if (spotlight) {
-        cancelAnimationFrame(spotlightRaf);
-        spotlightRaf = requestAnimationFrame(() => {
-          spotlight.style.setProperty('--mx', `${event.clientX}px`);
-          spotlight.style.setProperty('--my', `${event.clientY}px`);
-        });
-      }
-      const el = event.target.closest?.(glowSelector);
-      if (el !== lastGlow && lastGlow) lastGlow.style.setProperty('--gx', '');
-      lastGlow = el;
-      if (el) {
-        const rect = el.getBoundingClientRect();
-        el.style.setProperty('--gx', `${event.clientX - rect.left}px`);
-        el.style.setProperty('--gy', `${event.clientY - rect.top}px`);
-      }
-    }, { passive: true });
-
-    // Subtle 3D tilt on stat cards
-    $$('.stat').forEach(card => {
-      card.addEventListener('pointermove', event => {
-        const rect = card.getBoundingClientRect();
-        const rx = ((event.clientY - rect.top) / rect.height - .5) * -4;
-        const ry = ((event.clientX - rect.left) / rect.width - .5) * 4;
-        card.style.transform = `perspective(700px) rotateX(${rx.toFixed(2)}deg) rotateY(${ry.toFixed(2)}deg) translateY(-2px)`;
-      });
-      card.addEventListener('pointerleave', () => { card.style.transform = ''; });
-    });
-  }
-
-  /* ---------- 5. Button ripple ---------- */
-  if (!reduceMotion) {
-    document.addEventListener('pointerdown', event => {
-      const button = event.target.closest('.button.primary, .button.secondary, .nav-item');
-      if (!button) return;
-      const rect = button.getBoundingClientRect();
-      const ripple = document.createElement('span');
-      ripple.className = 'ripple';
-      const size = Math.max(rect.width, rect.height) * 2.1;
-      ripple.style.cssText = `width:${size}px;height:${size}px;left:${event.clientX - rect.left - size / 2}px;top:${event.clientY - rect.top - size / 2}px`;
-      button.appendChild(ripple);
-      ripple.addEventListener('animationend', () => ripple.remove());
-    });
-  }
-
-  /* ---------- 6. Scroll reveals (static panels only) ---------- */
-  const io = 'IntersectionObserver' in window && !reduceMotion
-    ? new IntersectionObserver(entries => {
-      for (const entry of entries) {
-        if (entry.isIntersecting) {
-          entry.target.classList.add('revealed');
-          io.unobserve(entry.target);
-        }
-      }
-    }, { threshold: .06, rootMargin: '0px 0px -36px 0px' })
-    : null;
-  function armReveals(scope) {
-    if (!io) return;
-    (scope || document).querySelectorAll('.panel:not(.revealed)').forEach(panel => {
-      panel.classList.add('reveal');
-      io.observe(panel);
-    });
-  }
-
-  /* ---------- 7. Sticky topbar elevation ---------- */
-  const topbar = $('.topbar');
+  /* ---------- 4. Sticky topbar elevation ---------- */
   window.addEventListener('scroll', () => {
     document.body.classList.toggle('scrolled', window.scrollY > 10);
   }, { passive: true });
-  if (topbar) armReveals(document);
 
-  /* ---------- 8. Toast v2 (icon + slide, keeps API) ---------- */
+  /* ---------- 5. Toast v2 (icon + slide, keeps API) ---------- */
   const origShowToast = window.showToast;
   if (typeof origShowToast === 'function') {
     window.showToast = function (message, type = 'success') {
@@ -348,7 +264,7 @@
     };
   }
 
-  /* ---------- 9. Live relative-time ticker ---------- */
+  /* ---------- 6. Live relative-time ticker ---------- */
   setInterval(() => {
     if (ui.state && !ui.refreshing && !document.hidden) {
       try {
@@ -357,14 +273,14 @@
     }
   }, 30000);
 
-  /* ---------- 10. Sidebar status cluster (clock + version) ---------- */
+  /* ---------- 7. Sidebar status cluster (clock + version) ---------- */
   const footer = $('.sidebar-footer');
   if (footer) {
     const cluster = document.createElement('div');
     cluster.className = 'console-meta';
     cluster.innerHTML = `
       <div class="console-clock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg><span>--:--</span></div>
-      <span class="console-version">v2.8.0 · local</span>`;
+      <span class="console-version">local</span>`;
     footer.prepend(cluster);
     const clockLabel = cluster.querySelector('.console-clock span');
     const tickClock = () => {
@@ -374,9 +290,8 @@
     setInterval(tickClock, 15000);
   }
 
-  /* ---------- 11. First-paint boot sequence ---------- */
+  /* ---------- 8. First-paint boot sequence ---------- */
   requestAnimationFrame(() => requestAnimationFrame(() => {
     document.documentElement.classList.remove('preboot');
-    armReveals($('.view.active'));
   }));
 })();

@@ -151,6 +151,7 @@ nav { display: grid; gap: 3px; }
   transition: color .15s ease, background-color .15s ease;
 }
 .nav-item svg { width: 17px; height: 17px; flex: 0 0 17px; opacity: .75; transition: opacity .15s ease; }
+.nav-item .mini-label { display: none; } /* rail-only; shown in the icon-rail media query */
 .nav-item:hover { background: rgba(151, 167, 195, .06); color: var(--text-2); }
 .nav-item:hover svg { opacity: 1; }
 .nav-item.active { background: linear-gradient(90deg, var(--red-soft), rgba(255, 77, 94, .03)); color: var(--text); }
@@ -257,8 +258,7 @@ main { padding: 0 3.2vw 72px; min-width: 0; }
   box-shadow: var(--shadow-panel);
 }
 
-.stat { padding: 18px 20px; min-height: 122px; display: flex; flex-direction: column; position: relative; overflow: hidden; transition: transform .16s ease, border-color .16s ease; }
-.stat:hover { transform: translateY(-2px); border-color: var(--line-strong); }
+.stat { padding: 18px 20px; min-height: 122px; display: flex; flex-direction: column; position: relative; overflow: hidden; }
 .stat::after {
   content: ""; position: absolute; left: 20px; right: 20px; bottom: 0; height: 2px;
   background: linear-gradient(90deg, var(--red), transparent 70%); opacity: .5; border-radius: 99px 99px 0 0;
@@ -531,8 +531,7 @@ label:has(input:disabled) > span { color: var(--muted); }
 .readiness-actions { display: grid; gap: 11px; padding: 16px; border: 1px solid var(--line-strong); background: var(--surface-inset); border-radius: var(--radius); }
 .readiness-actions small { color: var(--muted); line-height: 1.45; }
 .readiness-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-.readiness-check { border: 1px solid var(--line); background: linear-gradient(155deg, var(--surface-2), var(--surface-1)); border-radius: var(--radius); padding: 17px; min-height: 180px; transition: border-color .15s ease, transform .15s ease; }
-.readiness-check:hover { transform: translateY(-1px); }
+.readiness-check { border: 1px solid var(--line); background: linear-gradient(155deg, var(--surface-2), var(--surface-1)); border-radius: var(--radius); padding: 17px; min-height: 180px; }
 .readiness-check.passed { border-color: rgba(61, 220, 151, .28); }
 .readiness-check.failed { border-color: rgba(255, 77, 94, .38); }
 .readiness-check.warning, .readiness-check.skipped { border-color: rgba(255, 194, 71, .3); }
@@ -766,7 +765,11 @@ label:has(input:disabled) > span { color: var(--muted); }
 }
 
 /* ============================================================
-   PRODUCTION LAYER — ambience, choreography, palette, glow
+   PRODUCTION LAYER — boot, topbar, command palette, toast
+   Motion policy: one page-load moment (boot-in), a short fade when a
+   view opens, and motion that answers an action (dialog, toast,
+   data refresh). No ambient animation, cursor effects, or per-card
+   choreography.
    ============================================================ */
 
 /* ---------- Preboot gate ---------- */
@@ -774,81 +777,9 @@ label:has(input:disabled) > span { color: var(--muted); }
 html:not(.preboot) body { animation: boot-in .55s cubic-bezier(.2, .7, .3, 1); }
 @keyframes boot-in { from { opacity: 0; transform: translateY(8px) scale(.995); } }
 
-/* ---------- Aurora ambience ---------- */
-.aurora {
-  position: fixed; inset: -20%; z-index: 0; pointer-events: none;
-  background:
-    radial-gradient(38% 42% at 22% 24%, rgba(217, 44, 70, .13), transparent 68%),
-    radial-gradient(34% 38% at 78% 18%, rgba(110, 168, 255, .09), transparent 66%),
-    radial-gradient(40% 44% at 62% 82%, rgba(196, 123, 255, .07), transparent 70%),
-    radial-gradient(30% 34% at 12% 74%, rgba(61, 220, 151, .05), transparent 64%);
-  filter: blur(46px);
-}
-body:not(.cmdk-open) .aurora { animation: aurora-drift 26s ease-in-out infinite alternate; }
-@keyframes aurora-drift {
-  0% { transform: translate3d(0, 0, 0) scale(1); }
-  50% { transform: translate3d(-2.5%, 2%, 0) scale(1.06) rotate(2deg); }
-  100% { transform: translate3d(2%, -2%, 0) scale(1.02) rotate(-2deg); }
-}
-
-/* ---------- Cursor spotlight ---------- */
-.spotlight {
-  position: fixed; inset: 0; z-index: 2; pointer-events: none;
-  opacity: 0; transition: opacity .5s ease;
-}
-body.has-pointer .spotlight { opacity: 1; }
-.spotlight::before {
-  content: ""; position: absolute; inset: 0;
-  background: radial-gradient(520px circle at var(--mx, 50%) var(--my, 30%), rgba(110, 168, 255, .055), transparent 65%);
-}
-
-/* ---------- Card cursor glow + gradient border sheen ---------- */
-.stat, .pipeline-item, .review-card, .job-card, .plan-card, .learning-card, .readiness-check, .retention-scene {
-  position: relative;
-}
-.stat::before, .pipeline-item::before, .review-card::before, .job-card::before,
-.plan-card::before, .learning-card::before, .readiness-check::before, .retention-scene::before {
-  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
-  opacity: 0; transition: opacity .25s ease;
-  background: radial-gradient(220px circle at var(--gx, 50%) var(--gy, 50%), rgba(255, 77, 94, .08), transparent 60%);
-}
-.stat:hover::before, .pipeline-item:hover::before, .review-card:hover::before, .job-card:hover::before,
-.plan-card:hover::before, .learning-card:hover::before, .readiness-check:hover::before, .retention-scene:hover::before { opacity: 1; }
-.readiness-check::after {
-  content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none;
-  background: radial-gradient(170px at var(--gx, 50%) var(--gy, 50%), rgba(255, 77, 94, .55), transparent 65%);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor; mask-composite: exclude;
-  opacity: 0; transition: opacity .25s ease;
-}
-.readiness-check:hover::after { opacity: 1; }
-
-/* ---------- View enter choreography ---------- */
-.view[data-view-enter] { animation: view-slide .34s cubic-bezier(.2, .75, .25, 1) both; }
-@keyframes view-slide {
-  from { opacity: 0; transform: translateX(calc(var(--enter-from, 1) * 26px)); }
-  to { opacity: 1; transform: none; }
-}
-.view[data-view-enter] > * { animation: child-rise .4s cubic-bezier(.2, .75, .25, 1) both; animation-delay: calc(var(--i, 0) * 55ms + 40ms); }
-@keyframes child-rise { from { opacity: 0; transform: translateY(14px); } }
-
-/* ---------- Scroll reveal ---------- */
-.panel.reveal { opacity: 0; transform: translateY(16px); }
-.panel.reveal.revealed { opacity: 1; transform: none; transition: opacity .55s cubic-bezier(.2, .7, .3, 1), transform .55s cubic-bezier(.2, .7, .3, 1); }
-@media (prefers-reduced-motion: reduce) { .panel.reveal { opacity: 1; transform: none; } }
-
-/* ---------- Score pop ---------- */
+/* ---------- Score pop (data refresh) ---------- */
 .score-pop { animation: score-pop .6s cubic-bezier(.3, .8, .35, 1.15); display: inline-block; }
 @keyframes score-pop { 0% { transform: translateY(8px); opacity: 0; } 100% { transform: none; opacity: 1; } }
-
-/* ---------- Ripple ---------- */
-.ripple {
-  position: absolute; border-radius: 50%; pointer-events: none;
-  background: radial-gradient(circle, rgba(255, 255, 255, .28) 0%, transparent 62%);
-  transform: scale(0); animation: ripple .55s ease-out forwards; mix-blend-mode: screen;
-}
-@keyframes ripple { to { transform: scale(1); opacity: 0; } }
-.nav-item, .button.primary, .button.secondary { position: relative; overflow: hidden; }
 
 /* ---------- Sticky topbar elevation ---------- */
 .topbar {
@@ -1028,12 +959,6 @@ body.scrolled .topbar { border-color: rgba(151, 167, 195, .32); }
   body[data-automation-paused="true"] #automation-toggle::before { content: "\25B6"; color: var(--green); }
   main { padding: 0 2.6vw 72px; }
   .loading-bar { left: var(--sidebar-w); }
-}
-
-/* ---------- View slide tuned to new geometry ---------- */
-@keyframes view-slide {
-  from { opacity: 0; transform: translateX(calc(var(--enter-from, 1) * 30px)); }
-  to { opacity: 1; transform: none; }
 }
 
 @media (max-width: 900px) {

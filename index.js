@@ -393,6 +393,7 @@ class YouTubeAutomationAgent {
     this.app.get('/health', (req, res) => {
       res.json({
         status: this.setupRequired ? 'setup_required' : 'healthy',
+        version,
         initialized: this.isInitialized,
         setupRequired: this.setupRequired,
         agents: Object.keys(this.agents),
@@ -531,6 +532,7 @@ class YouTubeAutomationAgent {
           stats, jobs, pipeline, schedule, events, notifications, profile, settings, ideas, analytics, learning, activation,
           channelStrategy, operatorRuns, readiness, engagement, experiments,
           system: {
+            version,
             initialized: this.isInitialized,
             setupRequired: this.setupRequired,
             uptime: process.uptime(),
