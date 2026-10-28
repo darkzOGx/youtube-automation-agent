@@ -82,7 +82,9 @@ class ScriptWriterAgent {
         metadata: {
           strategy: strategy,
           generatedAt: new Date().toISOString(),
-          version: '1.0'
+          version: '1.0',
+          // Placeholder copy; the quality gate blocks approval until it is rewritten
+          generationSource: 'template'
         }
       };
 
@@ -138,8 +140,10 @@ Research sources: ${JSON.stringify(strategy.researchSources || [])}
 Avoid fabricated statistics, unsupported claims, and fake urgency. List every externally verifiable factual claim in claims. Use only exact URLs from Research sources; use an empty sourceUrls array when the supplied sources do not support a claim.`;
 
     try {
+      // Medium and long scripts run past 1,800 tokens; a cut-off reply is
+      // invalid JSON and used to drop the whole script to the template.
       const response = await this.aiTextService.generateText(prompt, {
-        maxTokens: 1800,
+        maxTokens: 8192,
         temperature: 0.7
       });
       const parsed = this.parseAIJsonResponse(response);

@@ -45,6 +45,8 @@ class SystemTest {
       { name: 'Publishing Safety', test: () => this.testPublishingSafety() },
       { name: 'Multi-Provider Credential Validation', test: () => this.testCredentialValidation() },
       { name: 'AI Text Service Token Compatibility', test: () => this.testAITextServiceTokenParams() },
+      { name: 'Gemini Transient Retry and Fallback', test: () => this.testGeminiTransientRetry() },
+      { name: 'Template Script Guard', test: () => this.testTemplateScriptGuard() },
       { name: 'Placeholder Scheduling Guard', test: () => this.testPlaceholderSchedulingGuard() },
       { name: 'FFmpeg Resolution', test: () => this.testFFmpegResolution() },
       { name: 'Brand Logo Overlay', test: () => this.testBrandLogoOverlay() },
@@ -2699,6 +2701,107 @@ class SystemTest {
     }
 
     this.logger.info('Credential validation test completed successfully');
+  }
+
+  async testGeminiTransientRetry() {
+    const { AITextService } = require('./utils/ai-text-service');
+    const savedFallbacks = process.env.GEMINI_FALLBACK_MODELS;
+    delete process.env.GEMINI_FALLBACK_MODELS;
+    const busy = () => Object.assign(new Error('{"error":{"code":503,"message":"This model is currently experiencing high demand.","status":"UNAVAILABLE"}}'), { status: 503 });
+    const makeService = (handler) => {
+      const service = new AITextService({});
+      service.gemini = { models: { generateContent: handler } };
+      service.model = 'gemini-3.8-flash';
+      service.providerName = 'Google Gemini';
+      service.retryBaseMs = 1;
+      return service;
+    };
+    try {
+      let calls = 0;
+      const recovers = makeService(async () => {
+        calls += 1;
+        if (calls < 3) throw busy();
+        return { text: 'recovered' };
+      });
+      if (await recovers.generateText('p') !== 'recovered' || calls !== 3) {
+        throw new Error(`A busy Gemini model should be retried until it answers (calls: ${calls})`);
+      }
+
+      const models = [];
+      const fallsBack = makeService(async ({ model }) => {
+        models.push(model);
+        if (model === 'gemini-3.8-flash') throw busy();
+        return { text: `from ${model}` };
+      });
+      if (await fallsBack.generateText('p') !== 'from gemini-3.5-flash-lite') {
+        throw new Error('A model that stays busy should fall back to the lighter Gemini model');
+      }
+      if (models.filter(model => model === 'gemini-3.8-flash').length !== 3) {
+        throw new Error('The configured model should get all retry attempts before falling back');
+      }
+
+      let fatalCalls = 0;
+      const fatal = makeService(async () => {
+        fatalCalls += 1;
+        throw Object.assign(new Error('API key not valid'), { status: 400 });
+      });
+      try {
+        await fatal.generateText('p');
+        throw new Error('A bad-key error should not be swallowed');
+      } catch (error) {
+        if (!/API key not valid/.test(error.message) || fatalCalls !== 1) {
+          throw new Error(`Non-transient errors must fail fast without retries (calls: ${fatalCalls})`);
+        }
+      }
+
+      const budgets = [];
+      const truncated = makeService(async ({ config }) => {
+        budgets.push(config.maxOutputTokens);
+        return budgets.length === 1
+          ? { text: '{"title": "cut off mid', candidates: [{ finishReason: 'MAX_TOKENS' }] }
+          : { text: '{"title":"complete"}', candidates: [{ finishReason: 'STOP' }] };
+      });
+      if (await truncated.generateText('p', { maxTokens: 500 }) !== '{"title":"complete"}' || !(budgets[1] > budgets[0])) {
+        throw new Error('A reply cut off by MAX_TOKENS should be retried with a larger budget');
+      }
+
+      process.env.GEMINI_FALLBACK_MODELS = '';
+      const noFallback = makeService(async () => { throw busy(); });
+      try {
+        await noFallback.generateText('p');
+        throw new Error('An always-busy model should eventually reject');
+      } catch (error) {
+        if (!/high demand/.test(error.message)) throw error;
+      }
+    } finally {
+      if (savedFallbacks === undefined) delete process.env.GEMINI_FALLBACK_MODELS;
+      else process.env.GEMINI_FALLBACK_MODELS = savedFallbacks;
+    }
+  }
+
+  async testTemplateScriptGuard() {
+    const { OperatorService } = require('./utils/operator-service');
+    const operator = new OperatorService({ getRow: async () => ({ count: 0 }) });
+    const script = (fullScript, metadata = {}) => ({ fullScript, metadata });
+    const real = 'Hook: your team already uses AI. '.repeat(10);
+
+    if (operator.isTemplateScript(script(real, { generationSource: 'ai' }))) {
+      throw new Error('An AI-written script must not be treated as a template');
+    }
+    if (!operator.isTemplateScript(script(real, { generationSource: 'template' }))) {
+      throw new Error('Scripts flagged as template output must be caught');
+    }
+    if (!operator.isTemplateScript(script('Example 1: [Specific case study]\nExample 2: [Another relevant example]'))) {
+      throw new Error('Older template scripts must be caught by their placeholder lines');
+    }
+
+    const quality = await operator.runQualityChecks({
+      seo: { title: 'Title', description: 'D'.repeat(60), tags: ['a', 'b', 'c'] },
+      script: script(real, { generationSource: 'template' })
+    });
+    if (quality.passed || !quality.blockingFailures.includes('script_source')) {
+      throw new Error('A template script must block approval with the script_source check');
+    }
   }
 
   async testAITextServiceTokenParams() {

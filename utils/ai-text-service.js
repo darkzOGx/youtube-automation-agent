@@ -9,6 +9,11 @@ const GEMINI_MODELS = [
 const GEMINI_DEFAULT_MODEL = GEMINI_MODELS[0];
 // Floor for the single retry after a thinking model exhausts a small budget.
 const GEMINI_THINKING_RETRY_MIN_TOKENS = 1024;
+// Lighter models tried, in order, when the configured model stays overloaded.
+// Override with GEMINI_FALLBACK_MODELS (comma-separated, empty to disable).
+const GEMINI_FALLBACK_MODELS = ['gemini-3.5-flash-lite'];
+const GEMINI_TRANSIENT_ATTEMPTS = 3;
+const GEMINI_RETRY_BASE_MS = 2000;
 
 const PROVIDERS = {
   openai: {
@@ -71,6 +76,7 @@ class AITextService {
     this.gemini = null;
     this.model = null;
     this.providerName = null;
+    this.retryBaseMs = GEMINI_RETRY_BASE_MS;
 
     this._init(credentials);
   }
@@ -124,34 +130,88 @@ class AITextService {
     const temperature = options.temperature ?? 0.7;
 
     if (this.gemini) {
-      const config = { maxOutputTokens: maxTokens };
-      if (!/^gemini-(?:3\.(?:[5-9]|\d{2,})|[4-9]|\d{2,})[.-]/.test(model)) config.temperature = temperature;
-      let response = await this.gemini.models.generateContent({
-        model,
-        contents: prompt,
-        config,
-      });
-      let text = response && response.text;
-
-      // Thinking models (gemini-3.x flash/pro) count thoughts against
-      // maxOutputTokens, so a small budget can be spent before any text is
-      // written. Retry once with room for the thoughts plus the answer.
-      if (!this._hasText(text) && this._geminiFinishReason(response) === 'MAX_TOKENS') {
-        const retryTokens = Math.max(maxTokens * 4, GEMINI_THINKING_RETRY_MIN_TOKENS);
-        response = await this.gemini.models.generateContent({
-          model,
-          contents: prompt,
-          config: { ...config, maxOutputTokens: retryTokens },
-        });
-        text = response && response.text;
+      const candidates = [model, ...this._geminiFallbackModels().filter(candidate => candidate !== model)];
+      let lastError = null;
+      for (const candidate of candidates) {
+        try {
+          const text = await this._withTransientRetry(() => this._generateGeminiText(candidate, prompt, maxTokens, temperature));
+          if (candidate !== model) this.logger.warn(`Gemini ${model} stayed unavailable; used fallback model ${candidate}`);
+          return text;
+        } catch (error) {
+          lastError = error;
+          if (!this._isTransientError(error)) throw error;
+          this.logger.warn(`Gemini ${candidate} is unavailable after ${GEMINI_TRANSIENT_ATTEMPTS} attempts: ${this._shortError(error)}`);
+        }
       }
-
-      if (!this._hasText(text)) {
-        throw new Error(this._geminiEmptyResponseMessage(response));
-      }
-      return text;
+      throw lastError;
     }
 
+    return this._generateOpenAICompatibleText(model, prompt, maxTokens, temperature);
+  }
+
+  async _generateGeminiText(model, prompt, maxTokens, temperature) {
+    const config = { maxOutputTokens: maxTokens };
+    if (!/^gemini-(?:3\.(?:[5-9]|\d{2,})|[4-9]|\d{2,})[.-]/.test(model)) config.temperature = temperature;
+    let response = await this.gemini.models.generateContent({
+      model,
+      contents: prompt,
+      config,
+    });
+    let text = response && response.text;
+
+    // Thinking models (gemini-3.x flash/pro) count thoughts against
+    // maxOutputTokens, so a small budget can be spent before the answer is
+    // finished: no text at all, or text cut off mid-JSON. Retry once with
+    // room for the thoughts plus the whole answer.
+    if (this._geminiFinishReason(response) === 'MAX_TOKENS') {
+      const retryTokens = Math.max(maxTokens * 4, GEMINI_THINKING_RETRY_MIN_TOKENS);
+      response = await this.gemini.models.generateContent({
+        model,
+        contents: prompt,
+        config: { ...config, maxOutputTokens: retryTokens },
+      });
+      text = response && response.text;
+    }
+
+    if (!this._hasText(text)) {
+      throw new Error(this._geminiEmptyResponseMessage(response));
+    }
+    return text;
+  }
+
+  _geminiFallbackModels() {
+    if (process.env.GEMINI_FALLBACK_MODELS === undefined) return GEMINI_FALLBACK_MODELS;
+    return process.env.GEMINI_FALLBACK_MODELS.split(',').map(value => value.trim()).filter(Boolean);
+  }
+
+  // Overloaded (503) and rate-limited (429) responses are temporary; anything
+  // else (bad key, blocked prompt, empty output) is not worth retrying.
+  _isTransientError(error) {
+    const status = Number(error?.status || error?.code || error?.response?.status || 0);
+    if ([429, 500, 502, 503, 504].includes(status)) return true;
+    return /"code"\s*:\s*(429|500|503)|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|overloaded/i.test(String(error?.message || error || ''));
+  }
+
+  async _withTransientRetry(operation) {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await operation();
+      } catch (error) {
+        if (attempt >= GEMINI_TRANSIENT_ATTEMPTS || !this._isTransientError(error)) throw error;
+        const delay = this.retryBaseMs * 2 ** (attempt - 1);
+        this.logger.warn(`Gemini is busy (attempt ${attempt}/${GEMINI_TRANSIENT_ATTEMPTS}); retrying in ${delay / 1000}s`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  _shortError(error) {
+    const message = String(error?.message || error || '');
+    const parsed = message.match(/"message"\s*:\s*"([^"]+)"/);
+    return (parsed ? parsed[1] : message).slice(0, 160);
+  }
+
+  async _generateOpenAICompatibleText(model, prompt, maxTokens, temperature) {
     if (!this.client) {
       throw new Error('No AI text provider configured');
     }

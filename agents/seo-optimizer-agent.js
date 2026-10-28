@@ -113,7 +113,7 @@ Keep tags under YouTube's 500 character total guidance. Avoid fabricated statist
 
     try {
       const response = await this.aiTextService.generateText(prompt, {
-        maxTokens: 1400,
+        maxTokens: 4000,
         temperature: 0.6
       });
       const parsed = this.parseAIJsonResponse(response);

@@ -27,6 +27,10 @@ class OperatorService {
         tags.length >= 3 ? `${tags.length} tags provided` : 'Add at least 3 relevant tags', false),
       this.check('script', script.length >= 200,
         script.length >= 200 ? 'Script content is present' : 'Script is missing or unusually short'),
+      this.check('script_source', !this.isTemplateScript(production.script),
+        this.isTemplateScript(production.script)
+          ? 'Script is template placeholder copy (the AI provider was unavailable); rewrite the scenes or regenerate before approval'
+          : 'Script was written for this topic'),
       this.check('thumbnail', Boolean(thumbnail?.path && !thumbnail?.simulated),
         thumbnail?.simulated
           ? 'Thumbnail is a placeholder; no image was generated'
@@ -142,6 +146,14 @@ class OperatorService {
       blockingFailures: blockingFailures.map(check => check.id),
       checks
     };
+  }
+
+  // Scripts produced by the template fallback, flagged at generation time or
+  // recognised by the placeholder lines older template scripts contain.
+  isTemplateScript(script = {}) {
+    if (script?.metadata?.generationSource === 'template') return true;
+    const text = String(script?.fullScript || '');
+    return /\[(Specific case study|Another relevant example|Third compelling example|Detailed explanation with visuals)\]|This section covers important aspects of .+ that you need to know\./i.test(text);
   }
 
   check(id, passed, message, blocking = true) {
