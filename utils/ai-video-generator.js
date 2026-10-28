@@ -7,6 +7,7 @@ const sharp = require('sharp');
 const { Logger } = require('./logger');
 const { runFFmpeg, getMediaDuration, checkFFmpeg, ffmpegInstallHint } = require('./ffmpeg');
 const { MediaGenerationService } = require('./media-generation-service');
+const { getBrandOverlay, buildOverlayFilter } = require('./brand-overlay');
 
 const OPENAI_IMAGE_MODEL = 'gpt-image-2';
 
@@ -943,7 +944,19 @@ class AIVideoGenerator {
       : outputPath;
 
     const videoInput = options.loopVideo ? ['-stream_loop', '-1', '-i', videoPath] : ['-i', videoPath];
-    await runFFmpeg(['-y', ...videoInput, '-i', audioPath, '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'copy', '-c:a', 'aac', '-shortest', muxPath]);
+    const brand = options.brandOverlay === undefined ? getBrandOverlay() : options.brandOverlay;
+    if (brand) {
+      // Burning in the logo means re-encoding the video stream instead of copying it
+      await runFFmpeg([
+        '-y', ...videoInput, '-i', audioPath, '-loop', '1', '-i', brand.logoPath,
+        '-filter_complex', buildOverlayFilter(brand, 2),
+        '-map', '[vbrand]', '-map', '1:a:0',
+        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-c:a', 'aac', '-shortest', muxPath
+      ]);
+      this.logger.info(`Brand logo overlaid (${brand.position})`);
+    } else {
+      await runFFmpeg(['-y', ...videoInput, '-i', audioPath, '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'copy', '-c:a', 'aac', '-shortest', muxPath]);
+    }
 
     if (muxPath !== outputPath) {
       await fs.rename(muxPath, outputPath);

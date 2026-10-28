@@ -47,6 +47,7 @@ class SystemTest {
       { name: 'AI Text Service Token Compatibility', test: () => this.testAITextServiceTokenParams() },
       { name: 'Placeholder Scheduling Guard', test: () => this.testPlaceholderSchedulingGuard() },
       { name: 'FFmpeg Resolution', test: () => this.testFFmpegResolution() },
+      { name: 'Brand Logo Overlay', test: () => this.testBrandLogoOverlay() },
       { name: 'Gemini Media Provider Selection', test: () => this.testGeminiMediaProvider() },
       { name: 'Slideshow Duration Selection', test: () => this.testSlideshowDurationSelection() },
       { name: 'Slideshow Renderer', test: () => this.testSlideshowRenderer() },
@@ -2920,6 +2921,50 @@ class SystemTest {
     }
 
     this.logger.info(`FFmpeg resolution test completed (binary: ${ffmpegPath}, available: ${available})`);
+  }
+
+  async testBrandLogoOverlay() {
+    const fs = require('fs').promises;
+    const os = require('os');
+    const { getBrandOverlay, buildOverlayFilter } = require('./utils/brand-overlay');
+    const { AIVideoGenerator } = require('./utils/ai-video-generator');
+    const { runFFmpeg, getMediaDuration, checkFFmpeg } = require('./utils/ffmpeg');
+
+    if (getBrandOverlay({}) !== null) throw new Error('Brand overlay should be off without BRAND_LOGO_PATH');
+    if (getBrandOverlay({ BRAND_LOGO_PATH: path.join(os.tmpdir(), 'missing-logo.png') }) !== null) {
+      throw new Error('Brand overlay should be off when the logo file is missing');
+    }
+
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'yaa-brand-'));
+    try {
+      const logoPath = path.join(directory, 'logo.png');
+      await require('sharp')({ create: { width: 64, height: 64, channels: 4, background: { r: 0, g: 194, b: 184, alpha: 1 } } }).png().toFile(logoPath);
+      const overlay = getBrandOverlay({
+        BRAND_LOGO_PATH: logoPath, BRAND_LOGO_POSITION: 'bottom-left', BRAND_LOGO_HEIGHT: '9999', BRAND_LOGO_OPACITY: 'x'
+      });
+      if (!overlay || overlay.position !== 'bottom-left' || overlay.height !== 72 || overlay.opacity !== 0.85) {
+        throw new Error(`Brand overlay settings were not normalized: ${JSON.stringify(overlay)}`);
+      }
+      if (!buildOverlayFilter(overlay).includes('overlay=24:H-h-24')) throw new Error('Overlay filter has the wrong position');
+      if (getBrandOverlay({ BRAND_LOGO_PATH: logoPath, BRAND_LOGO_POSITION: 'middle' }).position !== 'top-right') {
+        throw new Error('Unknown logo positions should fall back to top-right');
+      }
+
+      if (await checkFFmpeg()) {
+        const videoPath = path.join(directory, 'video.mp4');
+        const audioPath = path.join(directory, 'audio.m4a');
+        const outputPath = path.join(directory, 'branded.mp4');
+        await runFFmpeg(['-y', '-f', 'lavfi', '-i', 'color=c=black:s=320x180:d=3', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', videoPath]);
+        await runFFmpeg(['-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=2', '-c:a', 'aac', audioPath]);
+        const generator = Object.create(AIVideoGenerator.prototype);
+        generator.logger = new Logger('BrandOverlayTest');
+        await generator.addAudioToVideo(videoPath, audioPath, outputPath, { brandOverlay: { ...overlay, height: 32, margin: 8 } });
+        const duration = await getMediaDuration(outputPath);
+        if (duration < 1.8 || duration > 2.3) throw new Error(`Branded video should follow the narration length, got ${duration}`);
+      }
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
   }
 
   async testGeminiMediaProvider() {
