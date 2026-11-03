@@ -57,19 +57,34 @@ class Logger {
 
   warn(message, ...args) {
     this.winston.warn(message, ...args);
-    console.log(this.formatConsoleMessage('WARN', message, chalk.yellow));
+    console.log(this.formatConsoleMessage('WARN', this.withDetail(message, args[0]), chalk.yellow));
   }
 
   error(message, error = null, ...args) {
-    if (error) {
+    if (error instanceof Error || typeof error?.message === 'string') {
       this.winston.error(message, { error: error.message, stack: error.stack, ...args });
+    } else if (error !== null && error !== undefined) {
+      this.winston.error(message, { error, ...args });
     } else {
       this.winston.error(message, ...args);
     }
-    console.log(this.formatConsoleMessage('ERROR', message, chalk.red));
-    if (error && process.env.NODE_ENV !== 'production') {
+    // The cause must reach the console even when NODE_ENV=production hides
+    // the stack; otherwise "X failed:" is printed with no reason at all.
+    console.log(this.formatConsoleMessage('ERROR', this.withDetail(message, error), chalk.red));
+    if (error?.stack && process.env.NODE_ENV !== 'production') {
       console.error(chalk.red(error.stack));
     }
+  }
+
+  // Appends an error's message (or a plain string/number detail) to a console
+  // line unless the caller already interpolated it.
+  withDetail(message, detail) {
+    let text = null;
+    if (typeof detail === 'string' || typeof detail === 'number') text = String(detail);
+    else if (detail instanceof Error || typeof detail?.message === 'string') text = detail.message;
+    text = text && text.trim();
+    if (!text || String(message).includes(text)) return message;
+    return /[:—-]\s*$/.test(message) ? `${message.trimEnd()} ${text}` : `${message}: ${text}`;
   }
 
   debug(message, ...args) {

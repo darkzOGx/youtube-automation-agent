@@ -207,7 +207,7 @@ class GoogleOmniProvider extends VideoProvider {
   constructor(credentials, options = {}) {
     const creds = normalizeCredentials(credentials);
     super('google_omni', {
-      model: options.model || process.env.GEMINI_VIDEO_MODEL || 'gemini-omni-flash-preview',
+      model: options.model || process.env.GEMINI_VIDEO_MODEL || 'gemini-omni-1.1-flash',
       capabilities: {
         minDuration: 3, maxDuration: 10, defaultResolution: '720p', maxPromptLength: 7000,
         text: true, firstFrame: true, referenceImages: 8, referenceVideos: 1,

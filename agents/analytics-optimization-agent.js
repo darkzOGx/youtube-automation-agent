@@ -2,6 +2,27 @@ const { google } = require('googleapis');
 const { Logger } = require('../utils/logger');
 const { ChannelLearningEngine } = require('../utils/channel-learning-engine');
 
+const CHANNEL_SNAPSHOT_CACHE_MS = 3 * 60 * 1000;
+
+// Explains a googleapis failure in operator terms. A Google Cloud project must
+// enable each API separately; OAuth consent alone is not enough.
+function describeGoogleApiError(error, apiName) {
+  const body = error?.response?.data?.error || {};
+  const message = String(body.message || error?.message || 'Unknown error');
+  const reasons = (body.errors || []).map(item => item.reason).concat(body.status || []);
+  const activationUrl = (message.match(/https:\/\/console\.(?:developers|cloud)\.google\.com\/[^\s"']+/) || [])[0] || null;
+  if (activationUrl || reasons.some(reason => /accessNotConfigured|SERVICE_DISABLED/i.test(reason)) || /has not been used|is disabled/i.test(message)) {
+    return { reason: `${apiName} is not enabled for your Google Cloud project. Enable it, wait a minute, then refresh.`, activationUrl };
+  }
+  if (/insufficient.*scope/i.test(message) || reasons.some(reason => /insufficientPermissions|ACCESS_TOKEN_SCOPE_INSUFFICIENT/i.test(reason))) {
+    return { reason: `YouTube was connected without ${apiName} access. Reconnect YouTube with npm run walkthrough and approve every requested permission.`, activationUrl: null };
+  }
+  if (/invalid_grant/i.test(message)) {
+    return { reason: 'The YouTube authorization expired or was revoked. Reconnect YouTube with npm run walkthrough.', activationUrl: null };
+  }
+  return { reason: `${apiName} request failed: ${message.slice(0, 240)}`, activationUrl: null };
+}
+
 class AnalyticsOptimizationAgent {
   constructor(db, credentials) {
     this.db = db;
@@ -767,6 +788,85 @@ class AnalyticsOptimizationAgent {
       topPerformers: recentReports.slice(0, 5),
       insights: this.generateChannelInsights(recentReports)
     };
+  }
+
+  // Channel-wide totals read straight from YouTube, whichever tool published
+  // the videos. getRecentAnalytics only covers videos this agent analyzed, which
+  // reads as "0" for an established channel. Unavailable data is reported with
+  // a reason and null values, never as a zero.
+  async getChannelSnapshot({ refresh = false } = {}) {
+    const cached = this.channelSnapshotCache;
+    if (!refresh && cached && Date.now() - cached.cachedAt < CHANNEL_SNAPSHOT_CACHE_MS) return cached.value;
+    if (!this.youtube) {
+      return { available: false, reason: 'Connect YouTube with npm run walkthrough to see channel statistics.' };
+    }
+
+    let channel;
+    try {
+      const response = await this.youtube.channels.list({ part: ['snippet', 'statistics'], mine: true });
+      channel = response.data.items?.[0];
+    } catch (error) {
+      return { available: false, reason: describeGoogleApiError(error, 'YouTube Data API').reason };
+    }
+    if (!channel) {
+      return { available: false, reason: 'The connected Google account does not own a YouTube channel.' };
+    }
+
+    const stats = channel.statistics || {};
+    const count = value => (value === undefined || value === null ? null : Number(value));
+    const value = {
+      available: true,
+      fetchedAt: new Date().toISOString(),
+      channel: {
+        id: channel.id,
+        title: channel.snippet?.title || null,
+        subscribers: stats.hiddenSubscriberCount ? null : count(stats.subscriberCount),
+        subscribersHidden: Boolean(stats.hiddenSubscriberCount),
+        views: count(stats.viewCount),
+        videos: count(stats.videoCount)
+      },
+      recent: await this.getChannelRecentMetrics()
+    };
+    this.channelSnapshotCache = { cachedAt: Date.now(), value };
+    return value;
+  }
+
+  async getChannelRecentMetrics() {
+    // YouTube Analytics lags about two days, so the 28-day window ends two days ago.
+    const day = 24 * 60 * 60 * 1000;
+    const end = new Date(Date.now() - 2 * day);
+    const startDate = new Date(end.getTime() - 27 * day).toISOString().split('T')[0];
+    const endDate = end.toISOString().split('T')[0];
+    try {
+      const response = await this.youtubeAnalytics.reports.query({
+        ids: 'channel==MINE',
+        startDate,
+        endDate,
+        metrics: 'views,estimatedMinutesWatched,subscribersGained,subscribersLost'
+      });
+      const headers = (response.data.columnHeaders || []).map(header => header.name);
+      const row = response.data.rows?.[0] || [];
+      const metric = name => {
+        const position = headers.indexOf(name);
+        return position >= 0 ? Number(row[position] || 0) : 0;
+      };
+      const gained = metric('subscribersGained');
+      const lost = metric('subscribersLost');
+      return {
+        available: true,
+        startDate,
+        endDate,
+        views: metric('views'),
+        watchHours: Math.round(metric('estimatedMinutesWatched') / 6) / 10,
+        subscribersGained: gained,
+        subscribersLost: lost,
+        netSubscribers: gained - lost
+      };
+    } catch (error) {
+      const { reason, activationUrl } = describeGoogleApiError(error, 'YouTube Analytics API');
+      this.logger.warn(`Channel analytics unavailable: ${reason}`);
+      return { available: false, startDate, endDate, reason, activationUrl };
+    }
   }
 
   async getAudienceRetention(videoId, period = null, isoDuration = null) {

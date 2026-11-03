@@ -321,6 +321,52 @@ function renderAnalytics(analytics, learning = {}) {
   renderRetention(learning.retention || {});
 }
 
+async function loadChannelSnapshot(refresh = false) {
+  const button = $('#channel-snapshot-refresh');
+  button.disabled = true;
+  try {
+    const data = await api(`/api/analytics/channel${refresh ? '?refresh=1' : ''}`);
+    renderChannelSnapshot(data.result || {});
+  } catch (error) {
+    renderChannelSnapshot({ available: false, reason: error.message });
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function renderChannelSnapshot(snapshot) {
+  const container = $('#channel-snapshot');
+  const note = $('#channel-snapshot-note');
+  if (!snapshot.available) {
+    $('#channel-snapshot-title').textContent = 'Channel snapshot';
+    container.innerHTML = empty(snapshot.reason || 'Channel statistics are unavailable.');
+    note.textContent = 'Whole-channel totals from YouTube, including videos published outside YouTube Automation Agent.';
+    return;
+  }
+  // null means YouTube did not provide the value; it is shown as unavailable, never as 0.
+  const count = value => (value === null || value === undefined ? 'Unavailable' : Number(value).toLocaleString());
+  const tile = (name, value, hint = '') => `<div><span>${escapeHTML(name)}</span><strong>${escapeHTML(value)}</strong>${hint ? `<small>${escapeHTML(hint)}</small>` : ''}</div>`;
+  const { channel, recent = {} } = snapshot;
+  $('#channel-snapshot-title').textContent = channel.title || 'Channel snapshot';
+  let html = '<p class="channel-snapshot-section">Lifetime</p>'
+    + tile('Subscribers', channel.subscribersHidden ? 'Hidden' : count(channel.subscribers), channel.subscribersHidden ? 'hidden on this channel' : '')
+    + tile('Views', count(channel.views))
+    + tile('Videos', count(channel.videos))
+    + tile('Updated', timeAgo(snapshot.fetchedAt) || 'just now');
+  html += `<p class="channel-snapshot-section">Last 28 days${recent.startDate ? ` · ${escapeHTML(recent.startDate)} to ${escapeHTML(recent.endDate)}` : ''}</p>`;
+  if (recent.available) {
+    const net = Number(recent.netSubscribers);
+    html += tile('Views', count(recent.views))
+      + tile('Watch hours', count(recent.watchHours))
+      + tile('Subscribers gained', count(recent.subscribersGained), `${count(recent.subscribersLost)} lost`)
+      + tile('Net subscribers', `${net > 0 ? '+' : ''}${count(net)}`);
+  } else {
+    html += `<div class="empty">${escapeHTML(recent.reason || '28-day analytics are unavailable.')}${recent.activationUrl ? ` <a href="${escapeHTML(recent.activationUrl)}" target="_blank" rel="noopener noreferrer">Enable YouTube Analytics API</a>` : ''}</div>`;
+  }
+  container.innerHTML = html;
+  note.textContent = 'Whole-channel totals from YouTube, including videos published outside YouTube Automation Agent. Analytics data lags about two days.';
+}
+
 function formatOutcomeValue(value, kind = 'number', currency = 'USD') {
   if (value === null || value === undefined) return 'Unavailable';
   const number = Number(value);
@@ -405,7 +451,7 @@ function renderLearning(learning = {}) {
           ${item.status !== 'rejected' ? `<button class="text-button" data-learning-action="reject" data-learning-id="${escapeHTML(item.id)}">Reject</button>` : ''}
         </span>
       </div>
-    </article>`).join('') : empty('No recommendation yet. Lumen needs at least two real, sufficiently exposed measurements.');
+    </article>`).join('') : empty('No recommendation yet. YouTube Automation Agent needs at least two real, sufficiently exposed measurements.');
 }
 
 function renderGrowthExperiments(summary = {}) {
@@ -673,7 +719,7 @@ function renderActivation(activation = {}) {
   if (milestones.firstRealVideo?.achieved) {
     container.insertAdjacentHTML('beforeend', `
       <div class="activation-share">
-        <span>Made something real with Lumen?</span>
+        <span>Made something real with YouTube Automation Agent?</span>
         <a class="button secondary small" href="https://github.com/darkzOGx/youtube-automation-agent/discussions/new?category=show-and-tell" target="_blank" rel="noreferrer">Share what you built</a>
       </div>`);
   }
@@ -786,7 +832,7 @@ function switchView(view) {
   $$('.view').forEach(item => item.classList.toggle('active', item.id === `${view}-view`));
   const titles = {
     overview: ['OPERATOR OVERVIEW', 'Know what happens next.'],
-    operator: ['AUTONOMOUS OPERATOR', 'Give Lumen the strategy.'],
+    operator: ['AUTONOMOUS OPERATOR', 'Give YouTube Automation Agent the strategy.'],
     pipeline: ['CONTENT OPERATIONS', 'From idea to published.'],
     calendar: ['EDITORIAL PLANNING', 'Plan before you generate.'],
     analytics: ['PERFORMANCE', 'Turn results into the next move.'],
@@ -797,6 +843,8 @@ function switchView(view) {
   $('#view-eyebrow').textContent = titles[view][0];
   $('#view-title').textContent = titles[view][1];
   location.hash = view;
+  // Loaded on demand rather than in the 8-second dashboard poll to spare API quota.
+  if (view === 'analytics') loadChannelSnapshot();
 }
 
 function selectOptions(options, selected) {
@@ -994,7 +1042,7 @@ async function openContent(productionId) {
     const title = data.title || item.seo?.title || item.script?.title || item.strategy?.topic || 'Untitled content';
     const description = data.description || item.seo?.description || '';
     const tags = data.tags || item.seo?.tags || [];
-    const publishTime = data.publishTime || item.schedule?.publish_time || item.scheduled_publish_time;
+    const publishTime = item.schedule?.publish_time || data.publishTime || item.scheduled_publish_time;
     const canReview = !['published'].includes(item.schedule?.status);
     const experiment = data.packagingExperiment;
     const selectedTitleVariant = Number(data.selectedTitleVariant || 0);
@@ -1031,6 +1079,7 @@ async function openContent(productionId) {
             <label class="toggle"><input name="factChecked" type="checkbox" ${data.factChecked ? 'checked' : ''}><span></span> Facts and claims reviewed</label>
             <label class="toggle"><input name="rightsConfirmed" type="checkbox" ${data.rightsConfirmed ? 'checked' : ''}><span></span> Media rights confirmed</label>
           </div>
+          ${item.schedule && !['published', 'uploading', 'uploaded', 'reconciliation_required'].includes(item.schedule.status) ? `<div class="form-actions"><button type="button" class="button secondary" data-reschedule-content="${escapeHTML(item.id)}">Reschedule</button><button type="button" class="button primary" data-publish-now-content="${escapeHTML(item.id)}">Publish now</button><button type="button" class="button danger" data-delete-schedule="${escapeHTML(item.id)}">Delete schedule</button></div>` : ''}
           ${canReview ? `<div class="form-actions"><button type="button" class="button primary" data-approve-content="${escapeHTML(item.id)}">Approve & schedule</button><button type="button" class="button secondary" data-save-content="${escapeHTML(item.id)}">Save draft</button><button type="button" class="button danger" data-reject-content="${escapeHTML(item.id)}">Reject</button><button type="button" class="button ghost" data-retry-content="${escapeHTML(item.id)}">Regenerate</button></div>` : `<a class="button secondary" href="${escapeHTML(item.schedule?.youtube_url || '#')}" target="_blank" rel="noopener">Open on YouTube</a>`}
       </form>`;
     $('#content-review-form').dataset.productionId = item.id;
@@ -1241,7 +1290,7 @@ document.addEventListener('click', async event => {
     const id = experiment.dataset.experimentId;
     const prompts = {
       approve: 'Approve this complete experiment plan? This does not change YouTube yet.',
-      start: 'Start this live test? Lumen will rotate only the approved arms and restore the control before asking you to adopt a winner.',
+      start: 'Start this live test? YouTube Automation Agent will rotate only the approved arms and restore the control before asking you to adopt a winner.',
       adopt: 'Adopt the evidence-backed winner on YouTube and approve its learning for future plans?',
       cancel: 'Cancel this experiment and restore the control title and thumbnail?'
     };
@@ -1550,6 +1599,37 @@ document.addEventListener('click', async event => {
     } catch (_error) { /* toast already shown */ }
   }
 
+  const reschedule = event.target.closest('[data-reschedule-content]');
+  if (reschedule) {
+    const publishTime = contentFormData().publishTime;
+    if (!publishTime) return showToast('Choose a future publish time first.', 'error');
+    try {
+      await mutate(`/api/content/${encodeURIComponent(reschedule.dataset.rescheduleContent)}/schedule`, 'PATCH', { publishTime }, 'Content rescheduled.');
+      await openContent(reschedule.dataset.rescheduleContent);
+    } catch (_error) { /* toast already shown */ }
+    return;
+  }
+
+  const publishNow = event.target.closest('[data-publish-now-content]');
+  if (publishNow) {
+    if (!confirm('Publish this video to YouTube now using the selected privacy setting?')) return;
+    try {
+      await mutate(`/api/content/${encodeURIComponent(publishNow.dataset.publishNowContent)}/publish-now`, 'POST', {}, 'Content published.');
+      $('#content-dialog').close();
+    } catch (_error) { /* toast already shown */ }
+    return;
+  }
+
+  const deleteSchedule = event.target.closest('[data-delete-schedule]');
+  if (deleteSchedule) {
+    if (!confirm('Delete this schedule entry? The generated content and assets will be kept.')) return;
+    try {
+      await mutate(`/api/content/${encodeURIComponent(deleteSchedule.dataset.deleteSchedule)}/schedule`, 'DELETE', undefined, 'Schedule deleted; generated content was kept.');
+      await openContent(deleteSchedule.dataset.deleteSchedule);
+    } catch (_error) { /* toast already shown */ }
+    return;
+  }
+
   const reject = event.target.closest('[data-reject-content]');
   if (reject) {
     const notes = prompt('Why are you rejecting this content?', 'Needs a different angle');
@@ -1594,6 +1674,7 @@ document.addEventListener('change', event => {
 $('#generate-button').addEventListener('click', () => $('#generate-dialog').showModal());
 $('#add-idea-button').addEventListener('click', () => $('#idea-dialog').showModal());
 $('#refresh-button').addEventListener('click', () => refreshDashboard());
+$('#channel-snapshot-refresh').addEventListener('click', () => loadChannelSnapshot(true));
 $('#pipeline-filter').addEventListener('change', () => renderPipeline(ui.state?.pipeline || []));
 
 $('#experiment-create-form').addEventListener('submit', async event => {

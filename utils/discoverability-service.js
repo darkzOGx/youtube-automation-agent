@@ -15,7 +15,8 @@ class DiscoverabilityService {
     const provenance = production.provenance || {};
     const sourceSections = Array.isArray(script.sections)
       ? script.sections
-      : Array.isArray(script.mainContent) ? script.mainContent : [];
+      : Array.isArray(script.mainContent?.sections) ? script.mainContent.sections
+        : Array.isArray(script.mainContent) ? script.mainContent : [];
     const sections = sourceSections.length
       ? sourceSections.map(section => ({
           title: section.title || section.heading || '',

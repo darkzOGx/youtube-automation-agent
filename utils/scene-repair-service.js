@@ -2,15 +2,15 @@ const crypto = require('crypto');
 const fs = require('fs').promises;
 const path = require('path');
 const sharp = require('sharp');
-const { runFFmpeg } = require('./ffmpeg');
+const { getMediaDuration, runFFmpeg } = require('./ffmpeg');
 const { ProvenanceService } = require('./provenance-service');
 
 const VIDEO_EXTENSIONS = new Set(['.mp4']);
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
 
 function textFromSection(section = {}) {
-  if (typeof section.content === 'string') return section.content;
-  if (Array.isArray(section.content)) return section.content.filter(item => typeof item === 'string' && !item.startsWith('[')).join(' ');
+  if (typeof section.content === 'string') return /\[[^\]]*\]/.test(section.content) ? '' : section.content;
+  if (Array.isArray(section.content)) return section.content.filter(item => typeof item === 'string' && !/\[[^\]]*\]/.test(item)).join(' ');
   if (Array.isArray(section.items)) return section.items.map(item => `${item.title || ''}. ${item.description || ''}`).join(' ');
   if (Array.isArray(section.steps)) return section.steps.map(item => `${item.title || ''}. ${item.description || ''}`).join(' ');
   return '';
@@ -53,7 +53,9 @@ function scriptScenes(script = {}) {
     });
   }
   if (script.callToAction) {
-    const scriptText = Object.values(script.callToAction).filter(value => typeof value === 'string').join(' ');
+    const cta = script.callToAction;
+    const scriptText = [cta.subscribe, cta.like, cta.comment, cta.nextVideo]
+      .filter(value => typeof value === 'string').join(' ');
     if (scriptText) scenes.push({
       label: 'Call to action', scriptText,
       prompt: `${scriptText}. Clean closing visual with open composition, no captions or on-screen text.`
@@ -126,6 +128,7 @@ class SceneRepairService {
     this.mediaGeneration = videoGenerator?.mediaGeneration;
     this.logger = options.logger || { info() {}, warn() {}, error() {} };
     this.dataRoot = options.dataRoot || path.join(__dirname, '..', 'data');
+    this.getMediaDuration = options.getMediaDuration || getMediaDuration;
   }
 
   async ensureManifest(bundle) {
@@ -278,11 +281,13 @@ class SceneRepairService {
       if (!await this.videoGenerator.isUsableAudioFile(generatedPath)) {
         throw this.error('Narration regeneration returned no usable audio; configure a live TTS provider and retry', 422, 'NARRATION_UNAVAILABLE');
       }
+      const duration = await this.narrationDuration(generatedPath, scene);
       const cost = evidence.cost || {
         provider: evidence.provider || 'configured-tts', amount: null, currency: null, invoiceRequired: true
       };
       const next = await this.db.updateProductionScene(productionId, sceneId, {
         audioPath: generatedPath,
+        duration,
         narrationStatus: 'current',
         narrationProvider: evidence.provider || 'configured-tts',
         narrationModel: evidence.model || null,
@@ -424,7 +429,8 @@ class SceneRepairService {
           containsSyntheticMedia: true
         };
       } else {
-        const assets = await this.videoGenerator.generateVisualAssets(scene.prompt, 'ethereal', 1);
+        const profile = await this.db.getChannelProfile?.() || {};
+        const assets = await this.videoGenerator.generateVisualAssets(scene.prompt, profile.visual_style || 'ethereal', 1);
         const assetPath = assets[0];
         if (!assetPath || !IMAGE_EXTENSIONS.has(path.extname(assetPath).toLowerCase()) || !await this.pathExists(assetPath)) {
           throw this.error('No real replacement image was generated; configure an image provider or upload an asset', 422, 'SCENE_ASSET_UNAVAILABLE');
@@ -441,7 +447,7 @@ class SceneRepairService {
         }
         const evidence = this.videoGenerator.lastNarrationResult || {};
         narration = {
-          audioPath: generatedPath, narrationStatus: 'current',
+          audioPath: generatedPath, duration: await this.narrationDuration(generatedPath, scene), narrationStatus: 'current',
           narrationProvider: evidence.provider || 'configured-tts', narrationModel: evidence.model || null,
           narrationTaskId: evidence.externalTaskId || null, narrationError: null,
           narrationGeneratedAt: evidence.generatedAt || new Date().toISOString(), narrationCost: evidence.cost || {}
@@ -510,6 +516,15 @@ class SceneRepairService {
       costEvidence: { billed: false }
     });
     return next;
+  }
+
+  async narrationDuration(audioPath, scene) {
+    try {
+      return Math.max(2, (await this.getMediaDuration(audioPath)) + 0.5);
+    } catch (error) {
+      this.logger.warn(`Could not measure narration duration for scene ${scene.id}, keeping previous duration: ${error.message}`);
+      return scene.duration;
+    }
   }
 
   async rebuild(productionId) {

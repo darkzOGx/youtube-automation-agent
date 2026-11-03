@@ -22,6 +22,52 @@ npm run lint
 
 You don't need API keys to work on most of the codebase — the test suite and the simulation fallbacks run without them. For end-to-end runs, `npm run setup` walks you through credentials (any one AI provider is enough).
 
+## Project structure
+
+```
+youtube-automation-agent/
+├── agents/          # one file per pipeline agent (strategy, script, thumbnail, SEO, production, publishing, analytics)
+├── dashboard/       # web dashboard served by index.js
+├── database/        # SQLite schema and access layer
+├── schedules/       # cron-based automation
+├── scripts/         # maintenance scripts (growth snapshot, README screenshots)
+├── utils/           # AI text, media, and video providers; operator, readiness, engagement, and other services
+├── config/          # credential files (examples are committed)
+├── data/            # generated content and the local database
+├── docs/            # feature guide, API reference, providers, troubleshooting, design notes
+├── examples/        # verified real output from the community
+├── index.js         # Express server and agent startup
+├── walkthrough.js   # guided setup (npm run walkthrough)
+├── setup.js         # classic setup (npm run setup)
+└── test.js          # system test suite (npm test)
+```
+
+## Extending
+
+### Add a text provider
+
+Any provider with an OpenAI-compatible chat completions API can be added as a preset in `utils/ai-text-service.js`:
+
+```javascript
+deepseek: {
+  name: 'DeepSeek',
+  baseURL: 'https://api.deepseek.com',
+  defaultModel: 'deepseek-flash',
+  models: ['deepseek-flash', 'deepseek-v4-pro'],
+  envKey: 'DEEPSEEK_API_KEY',
+},
+```
+
+Then add a matching entry to `AI_PROVIDER_GUIDE` in `walkthrough.js` and a setup option in `utils/credential-manager.js`, add the provider to [`docs/providers.md`](docs/providers.md), and run `npm test`. The walkthrough test fails if any provider is missing a complete guide.
+
+### Add a video provider
+
+Video providers live in `utils/video-providers.js`. Each one extends `VideoProvider`, implements `isAvailable`, `createTask`, `getTask`, and `downloadResult`, and is registered in `VideoProviderRegistry`.
+
+## README screenshots
+
+The screenshots in the README are captured by `npm run docs:screenshots`, which starts the dashboard from your checkout and saves PNGs to `assets/screenshots/`. Re-run it after a visible dashboard change. Capture from a database with at least one real production: the project never presents mock or simulated output as real.
+
 ## Where help is most wanted
 
 Check the [open issues](https://github.com/darkzOGx/youtube-automation-agent/issues) and the roadmap in the latest [release notes](https://github.com/darkzOGx/youtube-automation-agent/releases). Current priorities: Gemini image/TTS parity, slideshow rendering performance, and template-content quality.

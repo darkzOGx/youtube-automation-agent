@@ -2,25 +2,27 @@ const OpenAI = require('openai');
 const { Logger } = require('./logger');
 
 const GEMINI_MODELS = [
-  'gemini-3.7-flash',
-  'gemini-3.1-pro-preview',
+  'gemini-3.8-flash',
+  'gemini-4-argon',
   'gemini-3.5-flash-lite',
 ];
 const GEMINI_DEFAULT_MODEL = GEMINI_MODELS[0];
+// Floor for the single retry after a thinking model exhausts a small budget.
+const GEMINI_THINKING_RETRY_MIN_TOKENS = 1024;
 
 const PROVIDERS = {
   openai: {
     name: 'OpenAI',
     baseURL: 'https://api.openai.com/v1',
-    defaultModel: 'gpt-5.6',
-    models: ['gpt-5.6', 'gpt-5.6-terra', 'gpt-5.6-luna'],
+    defaultModel: 'gpt-6.1-sol',
+    models: ['gpt-6.1-sol', 'gpt-6-astra', 'gpt-6-luna'],
     envKey: 'OPENAI_API_KEY',
   },
   openrouter: {
     name: 'OpenRouter',
     baseURL: 'https://openrouter.ai/api/v1',
-    defaultModel: 'openai/gpt-5.6-sol',
-    models: ['openai/gpt-5.6-sol', 'anthropic/claude-fable-5', 'google/gemini-3.7-flash', 'moonshotai/kimi-k3', 'z-ai/glm-5.3'],
+    defaultModel: 'openai/gpt-6.1-sol',
+    models: ['openai/gpt-6.1-sol', 'anthropic/claude-fable-5.1', 'google/gemini-3.8-flash', 'moonshotai/kimi-k3', 'z-ai/glm-5.3', 'deepseek/deepseek-v4.1-flash', 'minimax/minimax-m3'],
     envKey: 'OPENROUTER_API_KEY',
   },
   atlascloud: {
@@ -40,16 +42,32 @@ const PROVIDERS = {
   mimo: {
     name: 'MiMo (Xiaomi)',
     baseURL: 'https://api.xiaomimimo.com/v1',
-    defaultModel: 'mimo-v2.5-pro',
-    models: ['mimo-v2.5-pro', 'mimo-v2.5'],
+    defaultModel: 'mimo-v2.6-pro',
+    models: ['mimo-v2.6-pro', 'mimo-v2.6-flash'],
     envKey: 'MIMO_API_KEY',
   },
   glm: {
     name: 'GLM (Zhipu AI)',
     baseURL: 'https://api.z.ai/api/paas/v4/',
     defaultModel: 'glm-5.3',
-    models: ['glm-5.3', 'glm-5.2', 'glm-5.1'],
+    models: ['glm-5.3', 'glm-5.3-flash', 'glm-5.2'],
     envKey: 'GLM_API_KEY',
+  },
+  deepseek: {
+    name: 'DeepSeek',
+    baseURL: 'https://api.deepseek.com',
+    defaultModel: 'deepseek-flash',
+    models: ['deepseek-flash', 'deepseek-v4-pro'],
+    envKey: 'DEEPSEEK_API_KEY',
+  },
+  minimax: {
+    name: 'MiniMax',
+    baseURL: 'https://api.minimax.io/v1',
+    defaultModel: 'MiniMax-M3.1-Flash',
+    models: ['MiniMax-M3.1-Flash', 'MiniMax-M3'],
+    // MINIMAX_API_KEY already selects MiniMax H3 video; reusing it here would
+    // silently switch Gemini users with a video key over to MiniMax text.
+    envKey: 'MINIMAX_TEXT_API_KEY',
   },
 };
 
@@ -114,17 +132,29 @@ class AITextService {
 
     if (this.gemini) {
       const config = { maxOutputTokens: maxTokens };
-      if (!/^gemini-3\.(?:[5-9]|\d{2,})-/.test(model)) config.temperature = temperature;
-      const response = await this.gemini.models.generateContent({
+      if (!/^gemini-(?:3\.(?:[5-9]|\d{2,})|[4-9]|\d{2,})[.-]/.test(model)) config.temperature = temperature;
+      let response = await this.gemini.models.generateContent({
         model,
         contents: prompt,
         config,
       });
-      const text = response && response.text;
-      if (typeof text !== 'string' || !text.trim()) {
-        throw new Error(
-          `${this.providerName} returned an empty response. Check the API key and model quota — free-tier Gemini keys are rate-limited and can return empty output.`
-        );
+      let text = response && response.text;
+
+      // Thinking models (gemini-3.x flash/pro) count thoughts against
+      // maxOutputTokens, so a small budget can be spent before any text is
+      // written. Retry once with room for the thoughts plus the answer.
+      if (!this._hasText(text) && this._geminiFinishReason(response) === 'MAX_TOKENS') {
+        const retryTokens = Math.max(maxTokens * 4, GEMINI_THINKING_RETRY_MIN_TOKENS);
+        response = await this.gemini.models.generateContent({
+          model,
+          contents: prompt,
+          config: { ...config, maxOutputTokens: retryTokens },
+        });
+        text = response && response.text;
+      }
+
+      if (!this._hasText(text)) {
+        throw new Error(this._geminiEmptyResponseMessage(response));
       }
       return text;
     }
@@ -139,30 +169,71 @@ class AITextService {
       temperature,
     };
 
-    try {
-      // Newer OpenAI models (gpt-5.x and later) reject the legacy max_tokens
-      // parameter with a 400 error and require max_completion_tokens instead.
-      const response = await this.client.chat.completions.create({
-        ...params,
-        max_completion_tokens: maxTokens,
-      });
-      return this._extractContent(response);
-    } catch (error) {
-      // Older models and some providers reject max_completion_tokens with a 400;
-      // retry the same request using the legacy max_tokens spelling.
-      if (
-        error &&
-        error.status === 400 &&
-        /max(_completion)?_tokens/i.test(error.message || '')
-      ) {
-        const response = await this.client.chat.completions.create({
-          ...params,
-          max_tokens: maxTokens,
-        });
+    const tokenParams = [
+      { max_completion_tokens: maxTokens },
+      { max_tokens: maxTokens },
+    ];
+
+    let lastError = null;
+    for (let index = 0; index < tokenParams.length; index++) {
+      const request = { ...params, ...tokenParams[index] };
+      try {
+        const response = await this.client.chat.completions.create(request);
         return this._extractContent(response);
+      } catch (error) {
+        lastError = error;
+        const message = error?.message || '';
+        const unsupportedTemperature =
+          error?.status === 400 &&
+          /temperature/i.test(message) &&
+          /(unsupported value|does not support|only the default)/i.test(message);
+
+        if (unsupportedTemperature) {
+          const { temperature: _temperature, ...withoutTemperature } = request;
+          try {
+            const response = await this.client.chat.completions.create(withoutTemperature);
+            return this._extractContent(response);
+          } catch (retryError) {
+            lastError = retryError;
+          }
+        }
+
+        // Older models and some providers reject max_completion_tokens with a
+        // 400; retry with the legacy max_tokens spelling. This also applies if
+        // the temperature-compatible retry exposed the token incompatibility.
+        if (
+          index === 0 &&
+          lastError?.status === 400 &&
+          /max(_completion)?_tokens/i.test(lastError.message || '')
+        ) {
+          continue;
+        }
+        throw lastError;
       }
-      throw error;
     }
+
+    throw lastError;
+  }
+
+  _hasText(text) {
+    return typeof text === 'string' && text.trim().length > 0;
+  }
+
+  _geminiFinishReason(response) {
+    return response?.candidates?.[0]?.finishReason || null;
+  }
+
+  _geminiEmptyResponseMessage(response) {
+    const finishReason = this._geminiFinishReason(response);
+    const blockReason = response?.promptFeedback?.blockReason;
+    if (finishReason === 'MAX_TOKENS') {
+      const thoughts = response?.usageMetadata?.thoughtsTokenCount;
+      return `${this.providerName} spent its whole output budget${thoughts ? ` (${thoughts} thinking tokens)` : ''} before writing any text. Raise maxTokens, or choose a model that does not think, such as gemini-3.5-flash-lite.`;
+    }
+    if (blockReason || ['SAFETY', 'PROHIBITED_CONTENT', 'BLOCKLIST', 'SPII', 'RECITATION'].includes(finishReason)) {
+      return `${this.providerName} blocked the response (${blockReason || finishReason}). Rephrase the prompt or topic and try again.`;
+    }
+    return `${this.providerName} returned an empty response${finishReason ? ` (finishReason: ${finishReason})` : ''}. Check the API key and model quota — free-tier Gemini keys are rate-limited and can return empty output.`;
   }
 
   _extractContent(response) {

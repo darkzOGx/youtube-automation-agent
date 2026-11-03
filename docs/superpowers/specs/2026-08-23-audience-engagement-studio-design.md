@@ -6,7 +6,7 @@
 
 ## Purpose
 
-AgentTube's loop today is research → produce → publish → learn from analytics, but "learn" means
+YouTube Automation Agent's loop today is research → produce → publish → learn from analytics, but "learn" means
 numbers (CTR, retention curves, watch time). The humans watching are invisible to the agent: the
 only comment-related code in the repo reads `commentCount` as a statistic
 (`agents/analytics-optimization-agent.js:154`).

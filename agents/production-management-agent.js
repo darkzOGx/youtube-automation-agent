@@ -223,31 +223,32 @@ class ProductionManagementAgent {
       // Try to generate AI thumbnail first
       const thumbnailScript = thumbnail.script || script || { title: thumbnail.title || 'Untitled Video' };
       const aiThumbnail = await this.aiVideoGenerator.generateThumbnail(thumbnailScript, 'ethereal');
-      
-      return {
-        path: aiThumbnail.path,
-        originalPath: thumbnail.path,
-        dimensions: aiThumbnail.dimensions,
-        fileSize: aiThumbnail.fileSize,
-        generatedWith: 'AI'
-      };
+
+      // generateThumbnail returns a simulated placeholder instead of throwing when
+      // no image provider works; the designer's real image beats that placeholder.
+      if (!aiThumbnail.simulated) {
+        return {
+          path: aiThumbnail.path,
+          originalPath: thumbnail.path,
+          dimensions: aiThumbnail.dimensions,
+          fileSize: aiThumbnail.fileSize,
+          generatedWith: 'AI'
+        };
+      }
     } catch (error) {
       this.logger.error('AI thumbnail generation failed:', error);
-      
-      // Fallback to original processing
-      const productionThumbnailPath = path.join(
-        __dirname, '..', 'data', 'assets', 
-        `thumbnail_${Date.now()}.jpg`
-      );
-      
-      if (thumbnail.path && await fs.access(thumbnail.path).then(() => true).catch(() => false)) {
-        const originalBuffer = await fs.readFile(thumbnail.path);
-        await fs.writeFile(productionThumbnailPath, originalBuffer);
-      } else {
-        // Create placeholder
-        await fs.writeFile(productionThumbnailPath + '.placeholder', 'Thumbnail placeholder');
-      }
-      
+    }
+
+    // Fallback to original processing
+    const productionThumbnailPath = path.join(
+      __dirname, '..', 'data', 'assets',
+      `thumbnail_${Date.now()}.jpg`
+    );
+
+    if (thumbnail.path && await fs.access(thumbnail.path).then(() => true).catch(() => false)) {
+      const originalBuffer = await fs.readFile(thumbnail.path);
+      await fs.mkdir(path.dirname(productionThumbnailPath), { recursive: true });
+      await fs.writeFile(productionThumbnailPath, originalBuffer);
       return {
         path: productionThumbnailPath,
         originalPath: thumbnail.path,
@@ -255,6 +256,17 @@ class ProductionManagementAgent {
         fileSize: thumbnail.fileSize || 0
       };
     }
+
+    // Create placeholder
+    await fs.mkdir(path.dirname(productionThumbnailPath), { recursive: true });
+    await fs.writeFile(productionThumbnailPath + '.placeholder', 'Thumbnail placeholder');
+    return {
+      path: productionThumbnailPath + '.placeholder',
+      originalPath: thumbnail.path,
+      dimensions: thumbnail.dimensions || { width: 1792, height: 1024 },
+      fileSize: 0,
+      simulated: true
+    };
   }
 
   calculatePublishTime(strategy) {
@@ -302,9 +314,11 @@ class ProductionManagementAgent {
       // Generate visual assets using DALL-E
       const visualPrompts = this.createVisualPromptsFromScript(script);
       const visualAssets = [];
+      const profile = await this.db.getChannelProfile?.() || {};
+      const visualStyle = profile.visual_style || 'ethereal';
       
       for (const prompt of visualPrompts) {
-        const assets = await this.aiVideoGenerator.generateVisualAssets(prompt, 'ethereal', 1);
+        const assets = await this.aiVideoGenerator.generateVisualAssets(prompt, visualStyle, 1);
         visualAssets.push(...assets);
       }
       
@@ -659,20 +673,20 @@ class ProductionManagementAgent {
     const prompts = [];
     
     // Title prompt
-    prompts.push(`${script.title}, ethereal storytelling, mystical background`);
+    prompts.push(`${script.title}, clear visual storytelling`);
     
     // Content-based prompts
     if (script.mainContent && script.mainContent.sections) {
       script.mainContent.sections.forEach(section => {
         if (section.title) {
-          prompts.push(`${section.title}, ethereal dreamscape, creative visualization`);
+          prompts.push(`${section.title}, relevant explanatory visual`);
         }
       });
     }
     
     // Ensure we have at least 3 prompts
     while (prompts.length < 3) {
-      prompts.push('ethereal dreamscape, mystical storytelling, creative visualization');
+      prompts.push(`${script.title || 'Video topic'}, supporting explanatory visual`);
     }
     
     return prompts.slice(0, 5); // Limit to 5 for cost control

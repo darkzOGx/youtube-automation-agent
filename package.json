@@ -1,13 +1,14 @@
 {
   "name": "youtube-automation-agent",
-  "version": "2.10.0",
-  "description": "Lumen is an open-source AI agent that runs a YouTube channel end to end",
+  "version": "2.11.0",
+  "description": "YouTube Automation Agent is an open-source AI agent that runs a YouTube channel end to end",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
     "setup": "node setup.js",
     "walkthrough": "node walkthrough.js",
     "growth:snapshot": "node scripts/growth/snapshot-github.js",
+    "docs:screenshots": "node scripts/docs/capture-screenshots.js",
     "scheduler": "node schedules/daily-automation.js",
     "test": "node test.js",
     "agent:strategy": "node agents/content-strategy-agent.js",
@@ -36,19 +37,19 @@
     "openai": "^6.0.0",
     "playwright": "^1.54.2",
     "replicate": "^1.4.0",
+    "sharp": "^0.34.5",
     "sqlite3": "^5.1.6",
-    "winston": "^3.11.0",
-    "sharp": "^0.33.0"
+    "winston": "^3.11.0"
   },
   "optionalDependencies": {
     "ffmpeg-static": "^5.2.0"
   },
   "devDependencies": {
-    "nodemon": "^3.0.2",
+    "@eslint/js": "9.39.4",
     "eslint": "9.39.4",
-    "@eslint/js": "9.39.4"
+    "nodemon": "^3.0.2"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=18.17.0"
   }
 }

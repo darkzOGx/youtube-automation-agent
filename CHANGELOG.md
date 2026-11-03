@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+- Refreshed provider defaults and selectors: OpenAI GPT-6.1 Sol (with GPT-6 Astra and Luna), Gemini 3.8 Flash (with Gemini 4 Argon), MiMo V2.6, GLM-5.3 Flash, Claude Fable 5.1, and the current OpenRouter catalog
+- Added DeepSeek (`DEEPSEEK_API_KEY`) and MiniMax M3 text (`MINIMAX_TEXT_API_KEY`) as text providers; the existing `MINIMAX_API_KEY` still only enables MiniMax H3 video
+- Moved Gemini Omni video to `gemini-omni-1.1-flash` and Gemini narration to `gemini-3.8-flash-tts` ahead of Google's shutdown of the preview models
+- Gemini 4 models no longer receive the ignored `temperature` parameter
+- Fixed slideshow videos showing a hard-coded "Ethereal Dreamscript" subtitle, a "New content daily at 2:00 PM" end card, and "Content coming soon..." on every chapter; chapter slides now show the script's lines, and generated images are shown at full strength under a light scrim instead of 30% opacity
+- When AI thumbnail generation falls back to a placeholder, productions now keep the designer's real thumbnail; a remaining placeholder no longer passes the thumbnail check or appears as a broken image in Review Studio
+- Upgraded sharp to 0.34 so its WebAssembly build loads on platforms without a native binary, such as Android/Termux (requires Node.js 18.17+)
+- Corrected the README's provider list: there is no generic OpenAI-compatible endpoint or Ollama setting, and Claude is available through OpenRouter
+
+## v2.11.0 — 2026-10-13
+
+- Fixed the readiness text probe failing on thinking Gemini models (`gemini-3.7-flash`, `gemini-3.1-pro-preview`): the probe budget now leaves room for thoughts, and a Gemini response that runs out of tokens before writing text is retried once with a larger budget (#63)
+- Image generation failures now show the provider's actual error and a concrete fix (billing, invalid key, unavailable model, region) instead of a bare "failed:" line, including when `NODE_ENV=production` (#65)
+- Image generation now falls back to Gemini when OpenAI image generation fails (and the other way round) instead of dropping straight to simulated visuals (#65)
+- Added a whole-channel YouTube snapshot to Analytics (lifetime subscribers, views, and videos, plus 28-day views, watch hours, and subscriber change) that covers videos published outside Lumen and reports a disabled YouTube Analytics API instead of showing zeroes (#66)
+- The dashboard server now listens on `127.0.0.1` by default; set `HOST=0.0.0.0` (with `API_KEY`) for network access (#66)
+- Credential and OAuth token files are now written owner-only (`0600`), and FFmpeg inputs for looped provider clips are bounded to their timeline slot (#66)
+- Bundled the DarkzSEO-compatible content audit so the preflight no longer depends on the unpublished 1.4 Python package; external 1.4+ checkouts remain opt-in through `DARKZSEO_PATH`
+- Fixed regenerated narration timing, CTA metadata and template-placeholder speech leaks, configured visual-style propagation, and null manual strategy contexts
+- Added explicit reschedule, publish-now, and delete-schedule controls while keeping generated content when a schedule is removed
+- Fixed YouTube OAuth to use the configured loopback redirect URI instead of generating a mismatched callback
+
 ## v2.10.0 — 2026-08-24
 
 - Added a versioned DarkzSEO discoverability preflight over a shell-free Python stdin/stdout adapter, with explicit unavailable and schema-mismatch states

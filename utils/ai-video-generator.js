@@ -5,14 +5,68 @@ const path = require('path');
 const axios = require('axios');
 const sharp = require('sharp');
 const { Logger } = require('./logger');
-const { runFFmpeg, checkFFmpeg, ffmpegInstallHint } = require('./ffmpeg');
+const { runFFmpeg, getMediaDuration, checkFFmpeg, ffmpegInstallHint } = require('./ffmpeg');
 const { MediaGenerationService } = require('./media-generation-service');
+
+const OPENAI_IMAGE_MODEL = 'gpt-image-2';
+
+// Turns an image provider SDK error into one readable line that leads with the
+// fix when the cause is recognisable. @google/genai puts the raw JSON error
+// body in error.message, which is unreadable on a console.
+function describeImageProviderError(provider, model, error) {
+  const raw = String(error?.message || error || 'Unknown error');
+  let status = Number(error?.status) || null;
+  let code = String(error?.code || '');
+  let detail = raw;
+  try {
+    const body = JSON.parse(raw.slice(raw.indexOf('{')));
+    if (body?.error) {
+      status = status || Number(body.error.code) || null;
+      code = body.error.status || code;
+      detail = body.error.message || raw;
+    }
+  } catch (_error) { /* not a JSON error body */ }
+
+  const text = `${code} ${detail}`;
+  let fix = null;
+  if (provider === 'Gemini') {
+    if (/limit:\s*0\b/i.test(text) || (status === 429 && /free.?tier/i.test(text))) {
+      fix = `this key has no quota for ${model}. Gemini image models are not on the free tier: turn on billing for the Google Cloud project that owns this API key (AI Studio → API keys → Set up billing). A paid account does not help if the key belongs to a different project.`;
+    } else if (status === 429 || /RESOURCE_EXHAUSTED/i.test(code)) {
+      fix = 'Gemini rate-limited this key. Wait a minute and retry, or raise the project quota.';
+    } else if (/API key not valid|API key expired|API_KEY_INVALID/i.test(text)) {
+      fix = 'the Gemini API key was rejected. Create a new key in Google AI Studio and save it in Settings.';
+    } else if (/location is not supported|user location/i.test(text)) {
+      fix = 'Gemini image generation is not available in your region for this key.';
+    } else if (status === 404 || /NOT_FOUND|not supported for generateContent/i.test(text)) {
+      fix = `${model} is not available to this key. Set GEMINI_IMAGE_MODEL to an image model your key can use (for example gemini-3.1-flash-image).`;
+    } else if (status === 403 || /PERMISSION_DENIED|SERVICE_DISABLED/i.test(text)) {
+      fix = "this key's Google Cloud project cannot call the Gemini API. Enable the Generative Language API for that project, or create the key in Google AI Studio.";
+    }
+  } else if (provider === 'OpenAI') {
+    if (status === 401 || /invalid_api_key|Incorrect API key/i.test(text)) {
+      fix = 'the OpenAI API key was rejected. Check the key in Settings.';
+    } else if (/insufficient_quota|billing/i.test(text)) {
+      fix = 'the OpenAI account has no remaining credit. Add billing at platform.openai.com.';
+    } else if (status === 403 && /verif/i.test(text)) {
+      fix = `${model} requires a verified OpenAI organization (platform.openai.com → Settings → Organization → Verify).`;
+    } else if (status === 429) {
+      fix = 'OpenAI rate-limited this key. Wait a minute and retry.';
+    }
+  }
+
+  const label = [status, code && code !== String(status) ? code : null].filter(Boolean).join(' ');
+  const summary = `${provider} image generation (${model}) failed${label ? ` [${label}]` : ''}.`;
+  const shortDetail = detail.replace(/\s+/g, ' ').trim().slice(0, 220);
+  return fix ? `${summary} Fix: ${fix} Details: ${shortDetail}` : `${summary} ${shortDetail}`;
+}
 
 class AIVideoGenerator {
   constructor(credentials, options = {}) {
     this.logger = new Logger('AIVideoGenerator');
     const resolvedCredentials = credentials?.credentials || credentials || {};
     this.db = options.db || null;
+    this.getMediaDuration = options.getMediaDuration || getMediaDuration;
     this.lastVideoResult = null;
     this.lastNarrationResult = null;
     
@@ -77,7 +131,7 @@ class AIVideoGenerator {
         generatedPath = await this.generateOpenAITTS(text, outputPath);
       } else if (this.gemini) {
         provider = 'gemini';
-        model = process.env.GEMINI_TTS_MODEL || 'gemini-3.1-flash-tts-preview';
+        model = process.env.GEMINI_TTS_MODEL || 'gemini-3.8-flash-tts';
         generatedPath = await this.generateGeminiTTS(text, outputPath);
       } else {
         generatedPath = await this.simulateTTSGeneration(text, outputPath);
@@ -160,7 +214,7 @@ class AIVideoGenerator {
   }
 
   async generateGeminiTTS(text, outputPath) {
-    const model = process.env.GEMINI_TTS_MODEL || 'gemini-3.1-flash-tts-preview';
+    const model = process.env.GEMINI_TTS_MODEL || 'gemini-3.8-flash-tts';
     const voiceName = process.env.GEMINI_TTS_VOICE || 'Kore';
 
     const response = await this.gemini.models.generateContent({
@@ -219,20 +273,44 @@ class AIVideoGenerator {
   async generateImage(prompt, imagePath) {
     await fs.mkdir(path.dirname(imagePath), { recursive: true });
 
+    const providers = [];
     if (this.openai) {
-      return await this.generateOpenAIImage(prompt, imagePath);
+      providers.push({ name: 'OpenAI', model: OPENAI_IMAGE_MODEL, run: () => this.generateOpenAIImage(prompt, imagePath) });
     }
-
     if (this.gemini) {
-      return await this.generateGeminiImage(prompt, imagePath);
+      providers.push({ name: 'Gemini', model: this.geminiImageModel(), run: () => this.generateGeminiImage(prompt, imagePath) });
+    }
+    if (!providers.length) {
+      throw new Error('No image generation provider configured');
     }
 
-    throw new Error('No image generation provider configured');
+    // Try every configured provider before giving up, so a broken OpenAI key
+    // does not hide a working Gemini key (or the reverse).
+    const failures = [];
+    for (const [index, provider] of providers.entries()) {
+      try {
+        return await provider.run();
+      } catch (error) {
+        const description = describeImageProviderError(provider.name, provider.model, error);
+        failures.push(description);
+        if (index < providers.length - 1) {
+          this.logger.warn(`${description} Trying ${providers[index + 1].name} instead.`);
+        }
+      }
+    }
+
+    const error = new Error(failures.join(' | '));
+    error.providerFailures = failures;
+    throw error;
+  }
+
+  geminiImageModel() {
+    return process.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image';
   }
 
   async generateOpenAIImage(prompt, imagePath) {
     const response = await this.openai.images.generate({
-      model: "gpt-image-2",
+      model: OPENAI_IMAGE_MODEL,
       prompt: prompt,
       n: 1,
       size: "1536x1024",
@@ -250,7 +328,7 @@ class AIVideoGenerator {
   }
 
   async generateGeminiImage(prompt, imagePath) {
-    const model = process.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image';
+    const model = this.geminiImageModel();
 
     const response = await this.gemini.models.generateContent({
       model,
@@ -301,7 +379,8 @@ class AIVideoGenerator {
       abstract: "abstract art, geometric shapes, gradient colors, artistic composition"
     };
 
-    const enhancement = styleEnhancements[style] || styleEnhancements.ethereal;
+    const normalizedStyle = String(style || '').trim().toLowerCase();
+    const enhancement = styleEnhancements[normalizedStyle] || String(style || '').trim() || styleEnhancements.ethereal;
     return `${prompt}, ${enhancement}, high quality, 16:9 aspect ratio, digital art`;
   }
 
@@ -408,8 +487,11 @@ class AIVideoGenerator {
   async renderMediaTimeline(segments, outputPath) {
     const args = ['-y'];
     for (const segment of segments) {
-      if (segment.type === 'image') args.push('-loop', '1', '-t', Number(segment.duration).toFixed(2), '-framerate', '30', '-i', segment.path);
-      else args.push('-stream_loop', '-1', '-i', segment.path);
+      const duration = Number(segment.duration).toFixed(2);
+      if (segment.type === 'image') args.push('-loop', '1', '-t', duration, '-framerate', '30', '-i', segment.path);
+      // Loop short clips to fill their slot, but bound the input: an unbounded
+      // -stream_loop keeps FFmpeg decoding long after trim has what it needs.
+      else args.push('-stream_loop', '-1', '-t', duration, '-i', segment.path);
     }
     const filters = segments.map((segment, index) =>
       `[${index}:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black,fps=30,format=yuv420p,trim=duration=${Number(segment.duration).toFixed(2)},setpts=PTS-STARTPTS[v${index}]`
@@ -507,7 +589,7 @@ class AIVideoGenerator {
       }
 
       const videoPath = outputPath.replace('.mp4', '_visual.mp4');
-      const duration = this.calculateScriptDuration(script);
+      const duration = await this.resolveSlideshowDuration(script, audioPath);
       await this.renderSlidesToVideo(stills, duration, videoPath);
 
       // Add audio
@@ -520,13 +602,23 @@ class AIVideoGenerator {
     }
   }
 
+  async resolveSlideshowDuration(script, audioPath) {
+    try {
+      return (await this.getMediaDuration(audioPath)) + 0.5;
+    } catch (error) {
+      this.logger.warn(`Could not read narration duration, falling back to word-count estimate: ${error.message}`);
+      return this.calculateScriptDuration(script);
+    }
+  }
+
   async renderSlidesToVideo(stills, totalDuration, videoPath) {
     if (stills.length === 0) {
       throw new Error('No slides to render');
     }
 
     const fade = 0.5;
-    const perSlide = Math.max(2, totalDuration / stills.length);
+    const overlapDuration = fade * Math.max(0, stills.length - 1);
+    const perSlide = Math.max(2, (totalDuration + overlapDuration) / stills.length);
 
     const args = ['-y'];
     for (const still of stills) {
@@ -623,6 +715,8 @@ class AIVideoGenerator {
         }
         
         .content {
+            position: relative;
+            z-index: 2;
             text-align: center;
             color: white;
             max-width: 80%;
@@ -653,10 +747,20 @@ class AIVideoGenerator {
             width: 100%;
             height: 100%;
             object-fit: cover;
-            opacity: 0.3;
-            z-index: -1;
+            z-index: 0;
         }
-        
+
+        /* Darkens the image just enough to keep the slide text readable */
+        .scrim {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.6) 100%);
+            z-index: 1;
+        }
+
         .particles {
             position: absolute;
             top: 0;
@@ -685,20 +789,19 @@ class AIVideoGenerator {
     
     <!-- Title Slide -->
     <div class="slide active">
-        ${visualAssets[0] ? `<img class="background-image" src="${visualAssets[0]}" />` : ''}
+        ${visualAssets[0] ? `<img class="background-image" src="${visualAssets[0]}" /><div class="scrim"></div>` : ''}
         <div class="content">
             <h1>${script.title}</h1>
-            <p>Ethereal Dreamscript</p>
         </div>
     </div>
-    
+
     ${this.generateContentSlides(script, visualAssets).join('')}
-    
+
     <!-- Subscribe Slide -->
     <div class="slide">
         <div class="content">
-            <h2>✨ Subscribe for More Stories ✨</h2>
-            <p>New content daily at 2:00 PM</p>
+            <h2>Thanks for watching</h2>
+            <p>Subscribe for more videos like this</p>
         </div>
     </div>
     
@@ -743,7 +846,7 @@ class AIVideoGenerator {
         
         slides.push(`
         <div class="slide">
-            ${visualAssets[assetIndex] ? `<img class="background-image" src="${visualAssets[assetIndex]}" />` : ''}
+            ${visualAssets[assetIndex] ? `<img class="background-image" src="${visualAssets[assetIndex]}" /><div class="scrim"></div>` : ''}
             <div class="content">
                 <h2>${section.title}</h2>
                 ${this.formatSectionContent(section)}
@@ -768,11 +871,20 @@ class AIVideoGenerator {
       ).join('');
     }
     
+    // Script writers store spoken lines as an array of strings
+    if (Array.isArray(section.content)) {
+      return section.content
+        .filter(line => typeof line === 'string' && line.trim())
+        .slice(0, 3)
+        .map(line => `<p>${line.slice(0, 120)}${line.length > 120 ? '...' : ''}</p>`)
+        .join('');
+    }
+
     if (typeof section.content === 'string') {
       return `<p>${section.content.slice(0, 200)}${section.content.length > 200 ? '...' : ''}</p>`;
     }
-    
-    return '<p>Content coming soon...</p>';
+
+    return '';
   }
 
   calculateScriptDuration(script) {
@@ -983,4 +1095,4 @@ class AIVideoGenerator {
   }
 }
 
-module.exports = { AIVideoGenerator };
+module.exports = { AIVideoGenerator, describeImageProviderError };

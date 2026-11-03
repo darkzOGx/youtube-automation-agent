@@ -37,6 +37,9 @@ class SystemTest {
       { name: 'Shorts Repurposing Studio', test: () => this.testShortsRepurposingStudio() },
       { name: 'Research and Provenance Desk', test: () => this.testProvenanceDesk() },
       { name: 'DarkzSEO Discoverability Preflight', test: () => this.testDiscoverabilityPreflight() },
+      { name: 'Open Issue Regressions', test: () => this.testOpenIssueRegressions() },
+      { name: 'Reported Issue Fixes (#63, #65, #66)', test: () => this.testReportedIssueFixes() },
+      { name: 'Reported Discussion Fixes (#31, #73, #74)', test: () => this.testReportedDiscussionFixes() },
       { name: 'Resumable Generation Checkpoints', test: () => this.testResumableGenerationCheckpoints() },
       { name: 'API Validation and Security', test: () => this.testAPIValidationAndSecurity() },
       { name: 'Publishing Safety', test: () => this.testPublishingSafety() },
@@ -45,6 +48,7 @@ class SystemTest {
       { name: 'Placeholder Scheduling Guard', test: () => this.testPlaceholderSchedulingGuard() },
       { name: 'FFmpeg Resolution', test: () => this.testFFmpegResolution() },
       { name: 'Gemini Media Provider Selection', test: () => this.testGeminiMediaProvider() },
+      { name: 'Slideshow Duration Selection', test: () => this.testSlideshowDurationSelection() },
       { name: 'Slideshow Renderer', test: () => this.testSlideshowRenderer() },
       { name: 'Evergreen Template Topics', test: () => this.testEvergreenTopics() },
       { name: 'Walkthrough Module', test: () => this.testWalkthroughModule() },
@@ -1191,8 +1195,15 @@ class SystemTest {
           fullScript: 'A complete factual-review-safe script for testing selective scene repair without replacing the entire production.',
           hook: { text: 'Fix one weak moment without starting over.' },
           introduction: { greeting: 'Hello.', topicIntro: 'Scene repair matters.', valueProposition: 'Save time and credits.' },
-          mainContent: { sections: [{ title: 'Selective repair', content: 'Keep the scenes that work and replace only the scene that does not.' }] },
-          conclusion: { recap: ['Preserve good work.'], finalThought: 'Review the repaired timeline.' }
+          mainContent: { sections: [
+            { title: 'Selective repair', content: 'Keep the scenes that work and replace only the scene that does not.' },
+            { title: 'Examples', content: ['Example 1: [Specific case study]', 'A real example without template markers.'] }
+          ] },
+          conclusion: { recap: ['Preserve good work.'], finalThought: 'Review the repaired timeline.' },
+          callToAction: {
+            type: 'call_to_action', duration: '15 seconds', subscribe: 'Subscribe.', like: 'Like.',
+            comment: 'Comment.', nextVideo: 'Watch the next video.'
+          }
         },
         seo: { title: 'Repair one scene', description: 'A detailed description of selective scene repair for video production workflows.', tags: ['video', 'repair', 'workflow'] },
         strategy: { topic: 'Selective scene repair' },
@@ -1214,10 +1225,19 @@ class SystemTest {
         sources: [], claims: [], containsSyntheticMedia: false, status: 'not_required',
         summary: { sourceCount: 0, verifiedSources: 0, claimCount: 0, resolvedClaims: 0, highRiskClaims: 0, unresolvedClaims: 0 }
       });
+      await db.saveChannelProfile({ channelName: 'Test channel', visualStyle: 'animated' });
 
       const manifest = buildInitialSceneManifest(production, { actualProvider: 'slideshow', model: 'local-ffmpeg' });
       if (manifest.length < 3 || manifest.some(scene => scene.assetPath !== imagePath)) {
         throw new Error('Initial scene manifest did not preserve the script structure and visual assets');
+      }
+      const examplesScene = manifest.find(scene => scene.label === 'Examples');
+      const ctaScene = manifest.find(scene => scene.label === 'Call to action');
+      if (/\[[^\]]*\]/.test(examplesScene?.scriptText || '') || examplesScene?.scriptText !== 'A real example without template markers.') {
+        throw new Error('Template placeholders leaked into scene narration');
+      }
+      if (ctaScene?.scriptText !== 'Subscribe. Like. Comment. Watch the next video.') {
+        throw new Error('Call-to-action metadata leaked into spoken narration');
       }
       await db.replaceProductionScenes(production.id, manifest);
       for (const scene of await db.listProductionScenes(production.id)) {
@@ -1235,10 +1255,12 @@ class SystemTest {
         id: 'seedance', model: 'seedance-test',
         normalizeRequest: request => ({ ...request, duration: Math.min(4, Number(request.duration || 4)) })
       };
+      let useSlideshow = false;
+      let regeneratedVisualStyle = null;
       const fakeGenerator = {
         mediaGeneration: {
           settings: async () => ({ provider: 'seedance', order: ['seedance'], clipDuration: 4, resolution: '720p', aspectRatio: '16:9' }),
-          registry: { select: () => fakeProvider, get: () => fakeProvider },
+          registry: { select: () => useSlideshow ? { id: 'slideshow' } : fakeProvider, get: () => fakeProvider },
           generateClip: async ({ outputPath }) => {
             await fs.mkdir(path.dirname(outputPath), { recursive: true });
             await fs.writeFile(outputPath, Buffer.from('generated scene video'));
@@ -1246,7 +1268,7 @@ class SystemTest {
           },
           isValidVideo: async () => true
         },
-        generateVisualAssets: async () => [imagePath],
+        generateVisualAssets: async (_prompt, style) => { regeneratedVisualStyle = style; return [imagePath]; },
         async generateTTSAudio(_text, outputPath) {
           await fs.writeFile(outputPath, Buffer.from('scene narration'));
           this.lastNarrationResult = {
@@ -1290,6 +1312,11 @@ class SystemTest {
         regenerated.scene.narrationTaskId !== 'narration-task-1'
       ) {
         throw new Error('Confirmed selective regeneration did not persist visual and narration evidence');
+      }
+      useSlideshow = true;
+      await service.regenerate(production.id, roundTrip[1].id);
+      if (regeneratedVisualStyle !== 'animated') {
+        throw new Error('Scene regeneration ignored the configured channel visual style');
       }
 
       const second = roundTrip[1];
@@ -1405,7 +1432,9 @@ class SystemTest {
         },
         isUsableAudioFile: async filePath => Boolean(filePath && await fs.stat(filePath).then(stat => stat.size > 0).catch(() => false))
       };
-      const service = new SceneRepairService(db, generator, { dataRoot: directory, logger: this.logger });
+      const service = new SceneRepairService(db, generator, {
+        dataRoot: directory, logger: this.logger, getMediaDuration: async () => 5.25
+      });
 
       let confirmationBlocked = false;
       try {
@@ -1429,7 +1458,7 @@ class SystemTest {
       if (
         recovered.narrationStatus !== 'current' || recovered.narrationProvider !== 'openai' ||
         recovered.narrationModel !== 'gpt-4o-mini-tts' || recovered.narrationTaskId !== 'tts-task-1' ||
-        recovered.status !== 'needs_rebuild'
+        recovered.status !== 'needs_rebuild' || recovered.duration !== 5.75
       ) {
         throw new Error('Narration-only recovery did not preserve provider evidence and rebuild state');
       }
@@ -1713,6 +1742,7 @@ class SystemTest {
     const fs = require('fs').promises;
     const os = require('os');
     const { DiscoverabilityService } = require('./utils/discoverability-service');
+    const { DarkzSEOAdapter } = require('./utils/discoverability-adapters/darkzseo');
     const { OperatorService } = require('./utils/operator-service');
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'yaa-discoverability-'));
     const db = new Database();
@@ -1740,19 +1770,53 @@ class SystemTest {
     };
 
     try {
+      const bundledReport = await new DarkzSEOAdapter({ scriptPath: null }).audit({
+        id: 'bundled-audit', platform: 'youtube', brand: 'YouTube Automation Agent', title: 'Best workflow review',
+        description: 'A useful comparison.', transcript: 'Detailed content '.repeat(100),
+        sections: [{ title: 'What should you choose?', content: 'answer '.repeat(61) }]
+      });
+      if (
+        bundledReport.engine.version !== '1.4.0-bundled' ||
+        !bundledReport.findings.some(finding => finding.ruleId === 'aio.comparison_intent') ||
+        !bundledReport.findings.some(finding => finding.ruleId === 'aio.direct_answer')
+      ) {
+        throw new Error('The bundled discoverability audit did not provide the public content contract');
+      }
+      const configuredPath = process.env.DARKZSEO_PATH;
+      delete process.env.DARKZSEO_PATH;
+      try {
+        if (new DarkzSEOAdapter().scriptPath !== null) {
+          throw new Error('DarkzSEO selected an external Python checkout without explicit configuration');
+        }
+      } finally {
+        if (configuredPath === undefined) delete process.env.DARKZSEO_PATH;
+        else process.env.DARKZSEO_PATH = configuredPath;
+      }
+      const brokenExternal = new DarkzSEOAdapter({ scriptPath: 'broken-darkzseo.py' });
+      brokenExternal.auditExternal = async () => {
+        const error = new Error('No module named darkzseo');
+        error.code = 'DARKZSEO_FAILED';
+        throw error;
+      };
+      const fallbackReport = await brokenExternal.audit({
+        id: 'external-fallback', platform: 'youtube', title: 'Fallback audit'
+      });
+      if (fallbackReport.engine.version !== '1.4.0-bundled' || fallbackReport.status === 'unavailable') {
+        throw new Error('A broken external DarkzSEO runtime did not fall back to the bundled audit');
+      }
       await db.saveProductionData({
         id: productionId, status: 'needs_review', assets: {}, timeline: {},
         scheduledPublishTime: null, priority: 50, estimatedDuration: '1:00'
       });
       const production = {
         id: productionId,
-        script: { title: 'AgentTube discoverability', fullScript: 'Detailed content '.repeat(200), sections: [] },
-        seo: { title: 'AgentTube discoverability', description: 'A detailed discoverability review.', chapters: [] },
+        script: { title: 'YouTube Automation Agent discoverability', fullScript: 'Detailed content '.repeat(200), sections: [] },
+        seo: { title: 'YouTube Automation Agent discoverability', description: 'A detailed discoverability review.', chapters: [] },
         provenance: { sources: [] }
       };
       await db.saveProductionSnapshot(production);
       const service = new DiscoverabilityService(db, { adapter: fakeAdapter });
-      const first = await service.auditProduction(production, { channel_name: 'AgentTube' });
+      const first = await service.auditProduction(production, { channel_name: 'YouTube Automation Agent' });
       if (first.engineVersion !== '1.4.0' || first.findings.length !== 1 || first.pendingCount !== 1) {
         throw new Error('The versioned DarkzSEO report was not persisted');
       }
@@ -1772,7 +1836,7 @@ class SystemTest {
       if (!shortReasonRejected) throw new Error('A false-positive dismissal without reviewer evidence was accepted');
 
       await service.reviewFinding(first.findings[0].id, { status: 'dismissed', reason: 'The cited source is attached in the approved evidence desk.' });
-      const second = await service.auditProduction(production, { channel_name: 'AgentTube' });
+      const second = await service.auditProduction(production, { channel_name: 'YouTube Automation Agent' });
       if (second.findings[0].reviewStatus !== 'dismissed' || second.pendingCount !== 0) {
         throw new Error('Finding review evidence did not carry forward across matching audits');
       }
@@ -1815,7 +1879,7 @@ class SystemTest {
       const unavailableService = new DiscoverabilityService(db, {
         adapter: { audit: async () => { const error = new Error('Python is not installed'); error.code = 'DARKZSEO_UNAVAILABLE'; throw error; } }
       });
-      const unavailable = await unavailableService.auditProduction(production, { channel_name: 'AgentTube' });
+      const unavailable = await unavailableService.auditProduction(production, { channel_name: 'YouTube Automation Agent' });
       if (unavailable.status !== 'unavailable' || unavailable.errorCode !== 'DARKZSEO_UNAVAILABLE' || unavailable.findings.length !== 0) {
         throw new Error('An unavailable DarkzSEO runtime was not stored explicitly');
       }
@@ -1830,6 +1894,368 @@ class SystemTest {
     }
 
     this.logger.info('DarkzSEO discoverability preflight test completed successfully');
+  }
+
+  async testReportedDiscussionFixes() {
+    const fs = require('fs').promises;
+    const os = require('os');
+    const sharp = require('sharp');
+    const { AIVideoGenerator } = require('./utils/ai-video-generator');
+    const { ProductionManagementAgent } = require('./agents/production-management-agent');
+    const { OperatorService } = require('./utils/operator-service');
+
+    // Discussion #73: the slideshow must not print another channel's branding or
+    // placeholder copy, and must show generated images instead of washing them out.
+    const html = new AIVideoGenerator({}).createSlideshowHTML({
+      title: 'Slideshow copy test',
+      mainContent: {
+        sections: [
+          { title: 'First chapter', content: ['Spoken line one.', 'Spoken line two.'] },
+          { title: 'Empty chapter', content: [] }
+        ]
+      }
+    }, ['data:image/png;base64,AAAA', 'data:image/png;base64,BBBB']);
+    if (/Ethereal Dreamscript|New content daily|coming soon/i.test(html)) {
+      throw new Error('The slideshow still renders hard-coded channel text or placeholder copy');
+    }
+    if (!html.includes('Spoken line one.')) {
+      throw new Error('Array section content was not rendered on its chapter slide');
+    }
+    if (/\.background-image\s*\{[^}]*opacity:\s*0?\.\d/.test(html)) {
+      throw new Error('Generated slideshow images are still washed out behind the gradient');
+    }
+
+    // Discussion #31: a simulated AI thumbnail must not replace the designer's real
+    // image, and a placeholder that remains must not pass the thumbnail check.
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'yaa-thumb-'));
+    const createdFiles = [];
+    const db = new Database();
+    await db.initialize();
+    try {
+      const designerPath = path.join(dir, 'designer.jpg');
+      await sharp({ create: { width: 64, height: 36, channels: 3, background: { r: 20, g: 40, b: 200 } } })
+        .jpeg().toFile(designerPath);
+      const agent = Object.create(ProductionManagementAgent.prototype);
+      agent.logger = this.logger;
+      agent.aiVideoGenerator = {
+        generateThumbnail: async () => ({
+          path: path.join(dir, 'thumbnail_sim.info'), dimensions: { width: 1792, height: 1024 }, fileSize: 1024, simulated: true
+        })
+      };
+      const kept = await agent.processThumbnail({ path: designerPath, dimensions: { width: 1280, height: 720 }, fileSize: 1 }, { title: 'x' });
+      createdFiles.push(kept.path);
+      const keptImage = await sharp(kept.path).metadata().catch(() => null);
+      if (kept.simulated || !keptImage?.width) {
+        throw new Error('A simulated AI thumbnail replaced the designer thumbnail');
+      }
+      const placeholder = await agent.processThumbnail({ path: path.join(dir, 'missing.jpg') }, { title: 'x' });
+      createdFiles.push(placeholder.path);
+      if (!placeholder.simulated) throw new Error('A placeholder thumbnail was not marked as simulated');
+
+      const quality = await new OperatorService(db).runQualityChecks({
+        script: { title: 'Thumbnail check', fullScript: 'x'.repeat(250) },
+        seo: { title: 'Thumbnail check', description: 'x'.repeat(80), tags: ['one', 'two', 'three'] },
+        assets: { thumbnail: placeholder, finalVideo: { path: 'final.mp4' } }
+      }, { bannedTopics: [] });
+      const thumbnailCheck = quality.checks.find(check => check.id === 'thumbnail');
+      if (!thumbnailCheck || thumbnailCheck.passed) {
+        throw new Error('A placeholder thumbnail passed the thumbnail quality check');
+      }
+    } finally {
+      await db.close();
+      await fs.rm(dir, { recursive: true, force: true });
+      for (const file of createdFiles) await fs.rm(file, { force: true });
+    }
+
+    // Discussion #74: sharp 0.33's wasm32 build crashes with @emnapi/runtime >= 1.4
+    // (Termux and other platforms without a native binary).
+    const [major, minor] = require('sharp/package.json').version.split('.').map(Number);
+    if (major === 0 && minor < 34) {
+      throw new Error(`sharp ${major}.${minor} cannot load its wasm32 build with current @emnapi/runtime`);
+    }
+  }
+
+  async testReportedIssueFixes() {
+    const fs = require('fs').promises;
+    const os = require('os');
+    const sharp = require('sharp');
+    const { AITextService } = require('./utils/ai-text-service');
+    const { AIVideoGenerator, describeImageProviderError } = require('./utils/ai-video-generator');
+    const { AnalyticsOptimizationAgent } = require('./agents/analytics-optimization-agent');
+    const { CredentialManager } = require('./utils/credential-manager');
+    const { YouTubeAutomationAgent } = require('./index');
+
+    const envKeys = ['OPENAI_API_KEY', 'OPENROUTER_API_KEY', 'GEMINI_API_KEY', 'MOONSHOT_API_KEY', 'MIMO_API_KEY', 'GLM_API_KEY', 'HOST', 'API_KEY', 'NODE_ENV'];
+    const savedEnv = {};
+    for (const key of envKeys) {
+      savedEnv[key] = process.env[key];
+      delete process.env[key];
+    }
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'yaa-issue-fixes-'));
+    const originalGenerateText = AITextService.prototype.generateText;
+
+    try {
+      // #63: a thinking model that spends the whole budget on thoughts is retried
+      // once with room for the answer, and the readiness probe budget fits thoughts.
+      const gemini = new AITextService({ gemini: { apiKey: 'test-key', model: 'gemini-3.8-flash' } });
+      const geminiCalls = [];
+      gemini.gemini.models.generateContent = async request => {
+        geminiCalls.push(request);
+        if (geminiCalls.length === 1) {
+          return { text: undefined, candidates: [{ finishReason: 'MAX_TOKENS' }], usageMetadata: { thoughtsTokenCount: 13 } };
+        }
+        return { text: 'READY', candidates: [{ finishReason: 'STOP' }] };
+      };
+      const ready = await gemini.generateText('Reply with exactly READY.', { maxTokens: 16, temperature: 0 });
+      if (ready !== 'READY' || geminiCalls.length !== 2 || geminiCalls[1].config.maxOutputTokens < 1024) {
+        throw new Error('A thinking-model MAX_TOKENS response was not retried with a larger output budget');
+      }
+
+      geminiCalls.length = 0;
+      gemini.gemini.models.generateContent = async request => {
+        geminiCalls.push(request);
+        return { text: undefined, candidates: [{ finishReason: 'MAX_TOKENS' }], usageMetadata: { thoughtsTokenCount: 900 } };
+      };
+      let budgetMessage = '';
+      try { await gemini.generateText('prompt', { maxTokens: 64 }); } catch (error) { budgetMessage = error.message; }
+      if (geminiCalls.length !== 2 || !/output budget/.test(budgetMessage) || /API key/.test(budgetMessage)) {
+        throw new Error('An exhausted thinking budget must retry once and then explain the budget, not blame the API key');
+      }
+
+      geminiCalls.length = 0;
+      gemini.gemini.models.generateContent = async request => {
+        geminiCalls.push(request);
+        return { text: '', candidates: [{ finishReason: 'SAFETY' }] };
+      };
+      let safetyMessage = '';
+      try { await gemini.generateText('prompt'); } catch (error) { safetyMessage = error.message; }
+      if (geminiCalls.length !== 1 || !/blocked the response \(SAFETY\)/.test(safetyMessage)) {
+        throw new Error('A blocked Gemini response must not be retried and must report the block reason');
+      }
+
+      let probeOptions = null;
+      AITextService.prototype.generateText = async function (_prompt, options) {
+        probeOptions = options;
+        return 'READY';
+      };
+      const readiness = new ProductionReadinessService({}, { credentials: { gemini: { apiKey: 'test-key' } } });
+      await readiness.probeText();
+      if (!probeOptions || probeOptions.maxTokens < 256) {
+        throw new Error('The readiness text probe budget is too small for thinking models');
+      }
+      AITextService.prototype.generateText = originalGenerateText;
+
+      // #65: the cause of a failure reaches the console even when NODE_ENV=production.
+      const logger = new Logger('IssueFixTest');
+      if (logger.withDetail('Visual asset generation failed:', new Error('quota exhausted')) !== 'Visual asset generation failed: quota exhausted') {
+        throw new Error('Error details were not appended to the console line');
+      }
+      if (logger.withDetail('Fallback failed: boom', new Error('boom')) !== 'Fallback failed: boom') {
+        throw new Error('An already-interpolated error message was duplicated');
+      }
+      if (logger.withDetail('Saved', { id: 1 }) !== 'Saved') {
+        throw new Error('Structured log metadata must not be appended to the console line');
+      }
+      process.env.NODE_ENV = 'production';
+      const printed = [];
+      const originalConsoleLog = console.log;
+      console.log = line => printed.push(String(line));
+      try {
+        logger.error('Thumbnail generation failed:', new Error('limit: 0'));
+        logger.warn('Failed to initialize Gemini media service:', 'module missing');
+      } finally {
+        console.log = originalConsoleLog;
+        delete process.env.NODE_ENV;
+      }
+      if (!printed.some(line => line.includes('Thumbnail generation failed: limit: 0')) || !printed.some(line => line.includes('module missing'))) {
+        throw new Error('Production console output hid the failure cause');
+      }
+
+      const quotaError = Object.assign(new Error(JSON.stringify({ error: {
+        code: 429,
+        message: 'Quota exceeded for metric: generate_content_free_tier_requests, limit: 0, model: gemini-3.1-flash-image',
+        status: 'RESOURCE_EXHAUSTED'
+      } })), { status: 429 });
+      const quota = describeImageProviderError('Gemini', 'gemini-3.1-flash-image', quotaError);
+      if (!/429 RESOURCE_EXHAUSTED/.test(quota) || !/billing/.test(quota) || /\{"error"/.test(quota)) {
+        throw new Error('A Gemini zero-quota error was not translated into a readable billing fix');
+      }
+
+      // #65: a failing image provider falls through to the next configured one.
+      const generator = new AIVideoGenerator({ openai: { apiKey: 'test-key' }, gemini: { apiKey: 'test-key' } });
+      let openAIAttempts = 0;
+      generator.openai.images.generate = async () => {
+        openAIAttempts++;
+        throw Object.assign(new Error('401 Incorrect API key provided'), { status: 401 });
+      };
+      const image = await sharp({ create: { width: 320, height: 180, channels: 3, background: '#224488' } }).png().toBuffer();
+      generator.gemini.models.generateContent = async () => ({
+        candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: image.toString('base64') } }] } }]
+      });
+      const imagePath = path.join(directory, 'fallback.png');
+      await generator.generateImage('A blue test image', imagePath);
+      if (openAIAttempts !== 1 || (await sharp(imagePath).metadata()).width !== 320) {
+        throw new Error('A failed OpenAI image request did not fall back to Gemini');
+      }
+      generator.gemini.models.generateContent = async () => { throw quotaError; };
+      let combined = '';
+      try { await generator.generateImage('A blue test image', path.join(directory, 'none.png')); } catch (error) { combined = error.message; }
+      if (!/OpenAI image generation/.test(combined) || !/Gemini image generation/.test(combined) || !/rejected/.test(combined)) {
+        throw new Error('When every image provider fails, each provider failure and fix must be reported');
+      }
+
+      // #66: whole-channel statistics come from YouTube, cache briefly, and report a
+      // disabled Analytics API with an activation link instead of zeroes.
+      const analytics = new AnalyticsOptimizationAgent({}, {});
+      let channelCalls = 0;
+      analytics.youtube = { channels: { list: async () => {
+        channelCalls++;
+        return { data: { items: [{ id: 'UC123', snippet: { title: 'Existing Channel' }, statistics: { subscriberCount: '1200', viewCount: '45000', videoCount: '38', hiddenSubscriberCount: false } }] } };
+      } } };
+      analytics.youtubeAnalytics = { reports: { query: async () => ({ data: {
+        columnHeaders: [{ name: 'views' }, { name: 'estimatedMinutesWatched' }, { name: 'subscribersGained' }, { name: 'subscribersLost' }],
+        rows: [[3100, 5400, 40, 6]]
+      } }) } };
+      const snapshot = await analytics.getChannelSnapshot();
+      if (!snapshot.available || snapshot.channel.title !== 'Existing Channel' || snapshot.channel.subscribers !== 1200 || snapshot.channel.videos !== 38) {
+        throw new Error('Channel snapshot did not report the channel-wide YouTube totals');
+      }
+      if (!snapshot.recent.available || snapshot.recent.watchHours !== 90 || snapshot.recent.netSubscribers !== 34) {
+        throw new Error('Channel snapshot did not report 28-day analytics');
+      }
+      const day = 24 * 60 * 60 * 1000;
+      if ((new Date(snapshot.recent.endDate) - new Date(snapshot.recent.startDate)) / day !== 27) {
+        throw new Error('Channel analytics window is not 28 days');
+      }
+      await analytics.getChannelSnapshot();
+      if (channelCalls !== 1) throw new Error('Channel snapshot was not cached between dashboard visits');
+
+      analytics.youtubeAnalytics = { reports: { query: async () => {
+        const error = new Error('YouTube Analytics API has not been used in project 42 before or it is disabled. Enable it by visiting https://console.developers.google.com/apis/api/youtubeanalytics.googleapis.com/overview?project=42 then retry.');
+        error.response = { data: { error: { code: 403, message: error.message, errors: [{ reason: 'accessNotConfigured' }] } } };
+        throw error;
+      } } };
+      const disabled = await analytics.getChannelSnapshot({ refresh: true });
+      if (channelCalls !== 2 || disabled.recent.available || !/not enabled/.test(disabled.recent.reason) ||
+        !/youtubeanalytics\.googleapis\.com/.test(disabled.recent.activationUrl || '') || 'views' in disabled.recent) {
+        throw new Error('A disabled YouTube Analytics API must be reported with an activation link, not as zero');
+      }
+      const hidden = new AnalyticsOptimizationAgent({}, {});
+      hidden.youtube = { channels: { list: async () => ({ data: { items: [{ id: 'UC9', snippet: {}, statistics: { viewCount: '1', videoCount: '1', hiddenSubscriberCount: true } }] } }) } };
+      hidden.youtubeAnalytics = analytics.youtubeAnalytics;
+      const hiddenSnapshot = await hidden.getChannelSnapshot();
+      if (hiddenSnapshot.channel.subscribers !== null || !hiddenSnapshot.channel.subscribersHidden) {
+        throw new Error('Hidden subscriber counts must be unavailable, not zero');
+      }
+      const disconnected = await new AnalyticsOptimizationAgent({}, {}).getChannelSnapshot();
+      if (disconnected.available !== false || !/Connect YouTube/.test(disconnected.reason)) {
+        throw new Error('A missing YouTube connection must be explained');
+      }
+
+      // #66: the dashboard listens on loopback unless HOST says otherwise.
+      const server = new YouTubeAutomationAgent();
+      server.initialize = async () => true;
+      let listenArgs = null;
+      server.app = { listen: (port, host, callback) => { listenArgs = { port, host }; if (callback) callback(); } };
+      const quietLog = console.log;
+      console.log = () => {};
+      try {
+        await server.start();
+        if (listenArgs?.host !== '127.0.0.1') throw new Error(`Dashboard server bound to ${listenArgs?.host} instead of loopback by default`);
+        process.env.HOST = '0.0.0.0';
+        await server.start();
+        if (listenArgs?.host !== '0.0.0.0') throw new Error('HOST did not override the dashboard bind address');
+      } finally {
+        console.log = quietLog;
+        delete process.env.HOST;
+      }
+
+      // #66: credential and token files are owner-only.
+      if (process.platform !== 'win32') {
+        const credentials = new CredentialManager();
+        credentials.tokensPath = path.join(directory, 'tokens.json');
+        await fs.writeFile(credentials.tokensPath, '{}', { mode: 0o644 });
+        credentials.tokens = { youtube: { refresh_token: 'test' } };
+        await credentials.saveTokens();
+        const mode = (await fs.stat(credentials.tokensPath)).mode & 0o777;
+        if (mode !== 0o600) throw new Error(`Token file mode is ${mode.toString(8)}, expected 600`);
+      }
+    } finally {
+      AITextService.prototype.generateText = originalGenerateText;
+      for (const key of envKeys) {
+        if (savedEnv[key] === undefined) delete process.env[key];
+        else process.env[key] = savedEnv[key];
+      }
+      await fs.rm(directory, { recursive: true, force: true }).catch(() => {});
+    }
+
+    this.logger.info('Reported issue fix tests completed successfully');
+  }
+
+  async testOpenIssueRegressions() {
+    const { ModernAuth } = require('./modern-auth');
+    const { ProductionManagementAgent } = require('./agents/production-management-agent');
+    const { YouTubeAutomationAgent } = require('./index');
+
+    const auth = new ModernAuth();
+    const fixedRedirect = auth.resolveRedirect({
+      youtube: { redirect_uris: ['http://127.0.0.1'] }
+    });
+    if (fixedRedirect.hostname !== '127.0.0.1' || fixedRedirect.port < 8000 || fixedRedirect.pathname !== '/') {
+      throw new Error('OAuth did not use a desktop-app loopback redirect with a local dynamic port');
+    }
+
+    const visualStyles = [];
+    const productionAgent = Object.create(ProductionManagementAgent.prototype);
+    productionAgent.db = { getChannelProfile: async () => ({ visual_style: 'animated' }) };
+    productionAgent.logger = this.logger;
+    productionAgent.aiVideoGenerator = {
+      generateVisualAssets: async (prompt, style) => {
+        visualStyles.push({ prompt, style });
+        return [`asset-${visualStyles.length}.png`];
+      }
+    };
+    const productionData = {
+      script: { title: 'Configured visuals', mainContent: { sections: [{ title: 'Clear demonstration' }] } },
+      assets: {}, timeline: {}, estimatedDuration: '1:00'
+    };
+    await productionAgent.generateVideoContent(productionData);
+    if (!visualStyles.length || visualStyles.some(item => item.style !== 'animated' || /ethereal|mystical|dreamscape/i.test(item.prompt))) {
+      throw new Error('Initial scene generation mixed hardcoded ethereal cues with the configured visual style');
+    }
+
+    const pipeline = new YouTubeAutomationAgent();
+    pipeline.db = {
+      getChannelProfile: async () => ({}),
+      saveProductionData: async data => data.id,
+      saveProductionSnapshot: async () => {},
+      getSetting: async () => 'true',
+      saveContentReview: async () => {},
+      updateProductionStatus: async () => {}
+    };
+    pipeline.provenance = { initialize: async () => ({ sources: [], claims: [], status: 'not_required' }) };
+    pipeline.operator = {
+      runQualityChecks: async () => ({ passed: true, score: 100, checks: [], blockingFailures: [] }),
+      notify: async () => {}
+    };
+    pipeline.preparePackagingExperiment = async () => null;
+    pipeline.agents = {
+      strategy: { generateContentStrategy: async () => ({ topic: 'Null context', angle: 'Original angle' }) },
+      scriptWriter: { generateScript: async strategy => ({ title: strategy.topic, fullScript: 'Complete script.' }) },
+      thumbnailDesigner: { generateThumbnail: async () => ({ path: 'thumbnail.png' }) },
+      seoOptimizer: { optimize: async script => ({ title: script.title, description: 'Description', tags: ['test'] }) },
+      production: { processContent: async input => ({
+        id: 'null-context-production', status: 'ready', ...input, assets: {}, timeline: {},
+        scheduledPublishTime: new Date(Date.now() + 86400000).toISOString(), priority: 50
+      }) },
+      publishing: { scheduleContent: async () => null }
+    };
+    const generated = await pipeline.generateContent(null, null, 'short', { strategyContext: null });
+    if (generated.contentId !== 'null-context-production') {
+      throw new Error('A null manual strategy context still prevented generation');
+    }
+
+    this.logger.info('Open issue regression test completed successfully');
   }
 
   async testResumableGenerationCheckpoints() {
@@ -2173,15 +2599,49 @@ class SystemTest {
       throw new Error('A recorded YouTube upload was not reconciled idempotently');
     }
 
+    let deletedScheduleId = null;
+    const scheduleActions = new PublishingSchedulingAgent({
+      updateScheduleEntry: async () => {},
+      deleteScheduleEntry: async id => { deletedScheduleId = id; }
+    }, {});
+    scheduleActions.publishQueue = [{
+      id: 'schedule-actions', productionId: 'prod-actions', title: 'Actions', status: 'scheduled',
+      publishTime: new Date(Date.now() + 3600000).toISOString(), metadata: { audio: intentionalAudio }
+    }];
+    const future = new Date(Date.now() + 7200000).toISOString();
+    const rescheduled = await scheduleActions.rescheduleContent('prod-actions', future);
+    if (rescheduled.publishTime !== future || rescheduled.status !== 'scheduled') {
+      throw new Error('Scheduled content could not be rescheduled');
+    }
+    await scheduleActions.deleteScheduledContent('prod-actions');
+    if (deletedScheduleId !== 'schedule-actions' || scheduleActions.publishQueue.length) {
+      throw new Error('Deleting a schedule did not preserve content while removing the queue entry');
+    }
+
+    let uploadMetadata = null;
+    const immediate = new PublishingSchedulingAgent({ updateScheduleEntry: async () => {} }, {});
+    immediate.youtube = {
+      videos: { insert: async request => { uploadMetadata = request.requestBody; return { data: { id: 'youtube-now' } }; } },
+      thumbnails: { set: async () => {} }, captions: { insert: async () => {} }
+    };
+    immediate.getVideoStream = async () => ({ fixture: true });
+    await immediate.uploadToYouTube({
+      id: 'schedule-now', publishTime: new Date().toISOString(),
+      metadata: { seo: { title: 'Publish now', description: 'Immediate upload.', tags: ['test'] }, video: { path: 'fixture.mp4' }, privacyStatus: 'public' }
+    }, { publishNow: true });
+    if (uploadMetadata?.status?.privacyStatus !== 'public' || uploadMetadata?.status?.publishAt !== undefined) {
+      throw new Error('Publish now still sent a stale scheduled publishAt value');
+    }
+
     this.logger.info('Publishing safety test completed successfully');
   }
 
   async testCredentialValidation() {
-    const { PROVIDERS } = require('./utils/ai-text-service');
+    const { PROVIDERS, AITextService } = require('./utils/ai-text-service');
     const manager = new CredentialManager();
 
     // Isolate the test from any API keys set in the environment
-    const envKeys = [...Object.values(PROVIDERS).map(p => p.envKey), 'GEMINI_API_KEY'];
+    const envKeys = [...Object.values(PROVIDERS).map(p => p.envKey), 'GEMINI_API_KEY', 'MINIMAX_API_KEY'];
     const savedEnv = {};
     for (const key of envKeys) {
       savedEnv[key] = process.env[key];
@@ -2215,6 +2675,23 @@ class SystemTest {
       if (missingYouTube.length !== 1 || missingYouTube[0] !== 'youtube') {
         throw new Error('Missing YouTube credentials were not detected');
       }
+
+      // MINIMAX_API_KEY is the H3 video key. It must not count as a text
+      // provider or pull a Gemini user onto MiniMax text.
+      process.env.MINIMAX_API_KEY = 'mm-video-test';
+      manager.credentials = { youtube: { client_id: 'x' } };
+      if (manager.getMissingCredentials().length !== 1) {
+        throw new Error('A MiniMax video key was treated as an AI text provider');
+      }
+      const geminiText = new AITextService({ gemini: { apiKey: 'gm-test' } });
+      if (geminiText.providerName !== 'Google Gemini') {
+        throw new Error('A MiniMax video key switched the text provider away from Gemini');
+      }
+      process.env.MINIMAX_TEXT_API_KEY = 'mm-text-test';
+      const minimaxText = new AITextService({});
+      if (minimaxText.providerName !== 'MiniMax' || minimaxText.model !== PROVIDERS.minimax.defaultModel) {
+        throw new Error('MINIMAX_TEXT_API_KEY did not select MiniMax text generation');
+      }
     } finally {
       for (const key of envKeys) {
         if (savedEnv[key] === undefined) {
@@ -2235,7 +2712,7 @@ class SystemTest {
     delete process.env.OPENAI_API_KEY;
     try {
       const service = new AITextService({
-        aiProvider: { provider: 'openai', apiKey: 'test-key', model: 'gpt-5.6' }
+        aiProvider: { provider: 'openai', apiKey: 'test-key', model: 'gpt-6.1-sol' }
       });
 
       // Newer OpenAI models (gpt-5.x) reject max_tokens — the request must use
@@ -2271,6 +2748,47 @@ class SystemTest {
       if (legacyResult !== 'legacy-ok') throw new Error('Legacy fallback did not return content');
       if (attempt !== 2) throw new Error('Expected exactly one retry with max_tokens');
 
+      // Some reasoning models reject any explicit non-default temperature. The
+      // request should be retried once without that optional parameter while
+      // preserving the modern token parameter and all other request details.
+      const temperatureCalls = [];
+      service.client.chat.completions.create = async (params) => {
+        temperatureCalls.push(params);
+        if (temperatureCalls.length === 1) {
+          const err = new Error("Unsupported value: 'temperature' does not support 0.2 with this model. Only the default (1) value is supported.");
+          err.status = 400;
+          throw err;
+        }
+        return { choices: [{ message: { content: 'temperature-ok' } }] };
+      };
+      const temperatureResult = await service.generateText('temperature prompt', { maxTokens: 321, temperature: 0.2 });
+      if (temperatureResult !== 'temperature-ok') throw new Error('Temperature fallback did not return content');
+      if (temperatureCalls.length !== 2) throw new Error('Expected exactly one retry without temperature');
+      if (temperatureCalls[0].temperature !== 0.2 || temperatureCalls[0].max_completion_tokens !== 321) {
+        throw new Error('Initial request did not preserve the requested sampling and token parameters');
+      }
+      if ('temperature' in temperatureCalls[1] || temperatureCalls[1].max_completion_tokens !== 321) {
+        throw new Error('Temperature retry must omit only temperature and preserve max_completion_tokens');
+      }
+
+      // Do not hide unrelated 400s merely because their message mentions temperature.
+      let invalidTemperatureAttempts = 0;
+      service.client.chat.completions.create = async () => {
+        invalidTemperatureAttempts++;
+        const err = new Error('temperature must be between 0 and 2');
+        err.status = 400;
+        throw err;
+      };
+      let invalidTemperatureRejected = false;
+      try {
+        await service.generateText('invalid temperature prompt', { temperature: 3 });
+      } catch (error) {
+        invalidTemperatureRejected = /between 0 and 2/i.test(error.message);
+      }
+      if (!invalidTemperatureRejected || invalidTemperatureAttempts !== 1) {
+        throw new Error('Unrelated temperature validation errors must surface without retry');
+      }
+
       // An empty model body must surface as a descriptive error, not the cryptic
       // "Unexpected end of JSON input" the agents used to log.
       service.client.chat.completions.create = async () => ({ choices: [{ message: { content: '' } }] });
@@ -2284,8 +2802,8 @@ class SystemTest {
         throw new Error('Empty response was not rejected with a descriptive error');
       }
 
-      // Gemini 3.5+ rejects/deprecates sampling parameters. Keep the latest
-      // Gemini default on the parameter-safe request path.
+      // Gemini 3.5+ and Gemini 4 reject/deprecate sampling parameters. Keep the
+      // latest Gemini models on the parameter-safe request path.
       const geminiCalls = [];
       const geminiService = Object.create(AITextService.prototype);
       geminiService.gemini = {
@@ -2297,13 +2815,22 @@ class SystemTest {
         }
       };
       geminiService.client = null;
-      geminiService.model = 'gemini-3.7-flash';
       geminiService.providerName = 'Google Gemini';
 
-      const geminiResult = await geminiService.generateText('gemini prompt', { temperature: 0.2 });
-      if (geminiResult !== 'gemini-ok') throw new Error('Gemini generation did not return content');
-      if (geminiCalls[0].config.temperature !== undefined) {
-        throw new Error('Gemini 3.7 must not receive the deprecated temperature parameter');
+      for (const model of ['gemini-3.8-flash', 'gemini-4-argon']) {
+        geminiCalls.length = 0;
+        geminiService.model = model;
+        const geminiResult = await geminiService.generateText('gemini prompt', { temperature: 0.2 });
+        if (geminiResult !== 'gemini-ok') throw new Error('Gemini generation did not return content');
+        if (geminiCalls[0].config.temperature !== undefined) {
+          throw new Error(`${model} must not receive the deprecated temperature parameter`);
+        }
+      }
+      geminiCalls.length = 0;
+      geminiService.model = 'gemini-3.1-pro-preview';
+      await geminiService.generateText('gemini prompt', { temperature: 0.2 });
+      if (geminiCalls[0].config.temperature !== 0.2) {
+        throw new Error('Gemini 3.1 lost its temperature parameter');
       }
     } finally {
       if (savedEnv === undefined) delete process.env.OPENAI_API_KEY;
@@ -2367,7 +2894,9 @@ class SystemTest {
   }
 
   async testFFmpegResolution() {
-    const { getFFmpegPath, checkFFmpeg, ffmpegInstallHint } = require('./utils/ffmpeg');
+    const fs = require('fs').promises;
+    const os = require('os');
+    const { getFFmpegPath, getMediaDuration, checkFFmpeg, runFFmpeg, ffmpegInstallHint } = require('./utils/ffmpeg');
 
     const ffmpegPath = getFFmpegPath();
     if (typeof ffmpegPath !== 'string' || ffmpegPath.length === 0) {
@@ -2381,6 +2910,18 @@ class SystemTest {
 
     if (!/FFmpeg/i.test(ffmpegInstallHint())) {
       throw new Error('ffmpegInstallHint did not return install guidance');
+    }
+
+    if (available) {
+      const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'yaa-duration-'));
+      try {
+        const audioPath = path.join(directory, 'duration.m4a');
+        await runFFmpeg(['-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1', '-c:a', 'aac', audioPath]);
+        const duration = await getMediaDuration(audioPath);
+        if (duration < 0.9 || duration > 1.2) throw new Error(`Media duration probe returned ${duration}`);
+      } finally {
+        await fs.rm(directory, { recursive: true, force: true });
+      }
     }
 
     this.logger.info(`FFmpeg resolution test completed (binary: ${ffmpegPath}, available: ${available})`);
@@ -2464,7 +3005,7 @@ class SystemTest {
 
   async testSlideshowRenderer() {
     const { AIVideoGenerator } = require('./utils/ai-video-generator');
-    const { checkFFmpeg } = require('./utils/ffmpeg');
+    const { checkFFmpeg, getMediaDuration } = require('./utils/ffmpeg');
     const fs = require('fs').promises;
     const os = require('os');
 
@@ -2527,6 +3068,10 @@ class SystemTest {
       if (!stats.size) {
         throw new Error('Rendered slideshow video is empty');
       }
+      const renderedDuration = await getMediaDuration(videoPath);
+      if (renderedDuration < 5.8 || renderedDuration > 6.2) {
+        throw new Error(`Crossfades changed the requested 6s slideshow duration to ${renderedDuration}s`);
+      }
 
       // Missing narration must fail closed unless the operator explicitly confirmed silence.
       const finalPath = path.join(dir, 'final.mp4');
@@ -2550,11 +3095,59 @@ class SystemTest {
       ], hybridPath);
       const hybridStats = await fs.stat(hybridPath);
       if (!hybridStats.size) throw new Error('Hybrid provider/still timeline did not produce a video');
+
+      // A clip shorter than its slot is looped, but the looped input is bounded
+      // to the slot so FFmpeg stops decoding once the timeline is filled.
+      const shortClipPath = path.join(dir, 'short-clip.mp4');
+      await generator.renderMediaTimeline([{ type: 'image', path: stills[1], duration: 1 }], shortClipPath);
+      const loopedPath = path.join(dir, 'looped.mp4');
+      const loopStarted = Date.now();
+      await generator.renderMediaTimeline([
+        { type: 'video', path: shortClipPath, duration: 2.5 },
+        { type: 'image', path: stills[2], duration: 1 }
+      ], loopedPath);
+      const loopedDuration = await getMediaDuration(loopedPath);
+      if (loopedDuration < 3.3 || loopedDuration > 3.7) {
+        throw new Error(`Looped provider clip did not fill its 2.5s slot exactly; timeline is ${loopedDuration}s`);
+      }
+      if (Date.now() - loopStarted > 60000) throw new Error('Looped provider clip input was not bounded');
     } finally {
       await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
     }
 
     this.logger.info('Slideshow renderer test completed successfully');
+  }
+
+  async testSlideshowDurationSelection() {
+    const { AIVideoGenerator } = require('./utils/ai-video-generator');
+    const script = {
+      hook: { text: 'Hi.' },
+      introduction: { greeting: '', topicIntro: '' },
+      mainContent: { sections: [] },
+      conclusion: { finalThought: '' }
+    };
+
+    let probedPath = null;
+    const measuredGenerator = new AIVideoGenerator({}, {
+      getMediaDuration: async audioPath => {
+        probedPath = audioPath;
+        return 40;
+      }
+    });
+    const measuredDuration = await measuredGenerator.resolveSlideshowDuration(script, 'narration.mp3');
+    if (probedPath !== 'narration.mp3' || measuredDuration !== 40.5) {
+      throw new Error(`Slideshow duration must use real narration length plus margin; got ${measuredDuration}`);
+    }
+
+    const fallbackGenerator = new AIVideoGenerator({}, {
+      getMediaDuration: async () => { throw new Error('probe unavailable'); }
+    });
+    const fallbackDuration = await fallbackGenerator.resolveSlideshowDuration(script, 'narration.mp3');
+    if (fallbackDuration !== 30) {
+      throw new Error(`Unavailable narration probe must use the 30s script estimate; got ${fallbackDuration}`);
+    }
+
+    this.logger.info('Slideshow duration selection test completed successfully');
   }
 
   async testEvergreenTopics() {
@@ -2652,11 +3245,13 @@ class SystemTest {
     }
 
     const currentOpenRouterModels = [
-      'openai/gpt-5.6-sol',
-      'anthropic/claude-fable-5',
-      'google/gemini-3.7-flash',
+      'openai/gpt-6.1-sol',
+      'anthropic/claude-fable-5.1',
+      'google/gemini-3.8-flash',
       'moonshotai/kimi-k3',
-      'z-ai/glm-5.3'
+      'z-ai/glm-5.3',
+      'deepseek/deepseek-v4.1-flash',
+      'minimax/minimax-m3'
     ];
     if (JSON.stringify(PROVIDERS.openrouter.models) !== JSON.stringify(currentOpenRouterModels)) {
       throw new Error('OpenRouter curated models are not the verified current catalog');
@@ -3223,14 +3818,14 @@ class SystemTest {
     delete process.env.OPENAI_API_KEY;
     try {
       const configured = new AITextService({
-        aiProvider: { provider: 'openai', apiKey: 'test-key', model: 'gpt-5.6' }
+        aiProvider: { provider: 'openai', apiKey: 'test-key', model: 'gpt-6.1-sol' }
       });
       if (!configured.isAvailable()) {
         throw new Error('AITextService must initialize from a credentials-file aiProvider config');
       }
 
       const wrapped = new AITextService({
-        credentials: { aiProvider: { provider: 'openai', apiKey: 'test-key', model: 'gpt-5.6' } }
+        credentials: { aiProvider: { provider: 'openai', apiKey: 'test-key', model: 'gpt-6.1-sol' } }
       });
       if (wrapped.isAvailable()) {
         throw new Error('A CredentialManager-shaped argument must not look configured; index.js has to unwrap it');

@@ -98,7 +98,7 @@ class PublishingSchedulingAgent {
     }
   }
 
-  async publishContent(contentId) {
+  async publishContent(contentId, options = {}) {
     try {
       let productionBundle = null;
       if (this.db.getLatestReadinessRun) {
@@ -158,7 +158,7 @@ class PublishingSchedulingAgent {
       
       let uploadResult;
       try {
-        uploadResult = await this.uploadToYouTube(scheduleEntry);
+        uploadResult = await this.uploadToYouTube(scheduleEntry, options);
       } catch (error) {
         if (scheduleEntry.uploadAttempted && this.isUploadOutcomeUnknown(error)) {
           scheduleEntry.status = 'reconciliation_required';
@@ -196,7 +196,7 @@ class PublishingSchedulingAgent {
     }
   }
 
-  async uploadToYouTube(scheduleEntry) {
+  async uploadToYouTube(scheduleEntry, options = {}) {
     const { metadata } = scheduleEntry;
     const validation = assertValidYouTubeMetadata(metadata.seo);
     if (validation.warnings.length) {
@@ -205,6 +205,9 @@ class PublishingSchedulingAgent {
     const safeMetadata = validation.value;
     
     // Prepare video metadata
+    const requestedPrivacy = metadata.privacyStatus || process.env.DEFAULT_PRIVACY_STATUS || 'private';
+    const scheduledFor = new Date(scheduleEntry.publishTime);
+    const futureSchedule = !options.publishNow && Number.isFinite(scheduledFor.getTime()) && scheduledFor.getTime() > Date.now() + 60000;
     const videoMetadata = {
       snippet: {
         title: safeMetadata.title,
@@ -215,12 +218,12 @@ class PublishingSchedulingAgent {
         defaultAudioLanguage: safeMetadata.defaultAudioLanguage
       },
       status: {
-        privacyStatus: metadata.privacyStatus || process.env.DEFAULT_PRIVACY_STATUS || 'private',
-        publishAt: scheduleEntry.publishTime,
+        privacyStatus: futureSchedule ? 'private' : requestedPrivacy,
         selfDeclaredMadeForKids: false,
         containsSyntheticMedia: metadata.containsSyntheticMedia === true
       }
     };
+    if (futureSchedule) videoMetadata.status.publishAt = scheduleEntry.publishTime;
     
     // Resolve the file before marking the network upload as attempted.
     const videoStream = await this.getVideoStream(metadata.video.path);
@@ -628,24 +631,18 @@ class PublishingSchedulingAgent {
   async emergencyPublish(contentId, delayMinutes = 0) {
     // For urgent publishing needs
     this.logger.info(`Emergency publish requested: ${contentId}`);
-    
-    const entry = this.publishQueue.find(e => 
-      e.productionId === contentId || e.id === contentId
-    );
-    
-    if (!entry) {
-      throw new Error(`Content not found: ${contentId}`);
-    }
-    
+
     if (delayMinutes > 0) {
+      const entry = this.publishQueue.find(e => e.productionId === contentId || e.id === contentId) ||
+        await this.db.getLatestScheduleEntry?.(contentId);
+      if (!entry) throw new Error(`Content not found: ${contentId}`);
       const newPublishTime = new Date(Date.now() + (delayMinutes * 60 * 1000));
       entry.publishTime = newPublishTime.toISOString();
       await this.db.updateScheduleEntry(entry);
       this.logger.info(`Emergency scheduled for: ${entry.publishTime}`);
       return entry;
-    } else {
-      return await this.publishContent(contentId);
     }
+    return this.publishContent(contentId, { publishNow: true });
   }
 
   async pauseScheduledContent(contentId) {
@@ -681,6 +678,53 @@ class PublishingSchedulingAgent {
     await this.db.updateScheduleEntry(entry);
     
     this.logger.info(`Content resumed: ${entry.title}`);
+    return entry;
+  }
+
+  async rescheduleContent(contentId, newPublishTime) {
+    const publishTime = new Date(newPublishTime);
+    if (!Number.isFinite(publishTime.getTime()) || publishTime.getTime() <= Date.now()) {
+      const error = new Error('Choose a future publish time');
+      error.status = 400;
+      throw error;
+    }
+    const entry = this.publishQueue.find(item => item.productionId === contentId || item.id === contentId) ||
+      await this.db.getLatestScheduleEntry?.(contentId);
+    if (!entry) {
+      const error = new Error(`Scheduled content not found: ${contentId}`);
+      error.status = 404;
+      throw error;
+    }
+    if (['uploading', 'uploaded', 'published', 'reconciliation_required'].includes(entry.status)) {
+      const error = new Error(`Content cannot be rescheduled while it is ${entry.status}`);
+      error.status = 409;
+      throw error;
+    }
+    entry.publishTime = publishTime.toISOString();
+    entry.status = 'scheduled';
+    entry.error = null;
+    await this.db.updateScheduleEntry(entry);
+    if (!this.publishQueue.some(item => item.id === entry.id)) this.publishQueue.push(entry);
+    this.publishQueue.sort((a, b) => new Date(a.publishTime) - new Date(b.publishTime));
+    return entry;
+  }
+
+  async deleteScheduledContent(contentId) {
+    const entry = this.publishQueue.find(item => item.productionId === contentId || item.id === contentId) ||
+      await this.db.getLatestScheduleEntry?.(contentId);
+    if (!entry) {
+      const error = new Error(`Scheduled content not found: ${contentId}`);
+      error.status = 404;
+      throw error;
+    }
+    if (['uploading', 'uploaded', 'published', 'reconciliation_required'].includes(entry.status)) {
+      const error = new Error(`The schedule cannot be deleted while content is ${entry.status}`);
+      error.status = 409;
+      throw error;
+    }
+    await this.db.deleteScheduleEntry(entry.id);
+    this.publishQueue = this.publishQueue.filter(item => item.id !== entry.id);
+    await this.syncShortStatus(entry, 'rendered');
     return entry;
   }
 }

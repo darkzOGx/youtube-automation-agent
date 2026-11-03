@@ -84,7 +84,8 @@ class OAuthServer {
       youtube: tokens
     };
     
-    fs.writeFileSync(tokensPath, JSON.stringify(tokenData, null, 2));
+    fs.writeFileSync(tokensPath, JSON.stringify(tokenData, null, 2), { mode: 0o600 });
+    fs.chmodSync(tokensPath, 0o600);
     console.log(chalk.green('✅ Tokens saved successfully!'));
   }
 
@@ -104,7 +105,7 @@ class OAuthServer {
   }
 
   start() {
-    this.server = this.app.listen(8080, () => {
+    this.server = this.app.listen(8080, '127.0.0.1', () => {
       console.log(chalk.cyan('\n🔐 OAuth callback server started on http://localhost:8080'));
       this.generateAuthUrl();
     });

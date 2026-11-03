@@ -6,6 +6,13 @@ const chalk = require('chalk');
 const { Logger } = require('./logger');
 const { PROVIDERS, GEMINI_MODELS, GEMINI_DEFAULT_MODEL } = require('./ai-text-service');
 
+// API keys and OAuth tokens are owner-only (0600). writeFile's mode applies only
+// when the file is created, so files written by older versions are tightened too.
+async function writePrivateFile(filePath, contents) {
+  await fs.writeFile(filePath, contents, { mode: 0o600 });
+  await fs.chmod(filePath, 0o600).catch(() => {});
+}
+
 class CredentialManager {
   constructor() {
     this.logger = new Logger('CredentialManager');
@@ -46,12 +53,12 @@ class CredentialManager {
 
   async saveCredentials() {
     await fs.mkdir(path.dirname(this.credentialsPath), { recursive: true });
-    await fs.writeFile(this.credentialsPath, JSON.stringify(this.credentials, null, 2));
+    await writePrivateFile(this.credentialsPath, JSON.stringify(this.credentials, null, 2));
   }
 
   async saveTokens() {
     await fs.mkdir(path.dirname(this.tokensPath), { recursive: true });
-    await fs.writeFile(this.tokensPath, JSON.stringify(this.tokens, null, 2));
+    await writePrivateFile(this.tokensPath, JSON.stringify(this.tokens, null, 2));
   }
 
   // YouTube API Authentication
@@ -377,6 +384,68 @@ class CredentialManager {
     console.log(chalk.green('GLM credentials configured successfully!'));
   }
 
+  // DeepSeek Setup
+  async setupDeepSeekCredentials() {
+    console.log(chalk.cyan('\nDeepSeek Setup'));
+    console.log(chalk.gray('Get your API key from: https://platform.deepseek.com/api_keys'));
+
+    const answers = await inquirer.prompt([
+      {
+        type: 'password',
+        name: 'apiKey',
+        message: 'Enter your DeepSeek API Key:',
+        validate: input => input.length > 0 || 'API key is required'
+      },
+      {
+        type: 'list',
+        name: 'model',
+        message: 'Select model:',
+        choices: [...PROVIDERS.deepseek.models],
+        default: PROVIDERS.deepseek.defaultModel
+      }
+    ]);
+
+    this.credentials.aiProvider = {
+      provider: 'deepseek',
+      apiKey: answers.apiKey,
+      model: answers.model
+    };
+
+    await this.saveCredentials();
+    console.log(chalk.green('DeepSeek credentials configured successfully!'));
+  }
+
+  // MiniMax (text) Setup
+  async setupMiniMaxCredentials() {
+    console.log(chalk.cyan('\nMiniMax Setup'));
+    console.log(chalk.gray('Get your API key from: https://platform.minimax.io/user-center/basic-information/interface-key'));
+
+    const answers = await inquirer.prompt([
+      {
+        type: 'password',
+        name: 'apiKey',
+        message: 'Enter your MiniMax API Key:',
+        validate: input => input.length > 0 || 'API key is required'
+      },
+      {
+        type: 'list',
+        name: 'model',
+        message: 'Select model:',
+        choices: [...PROVIDERS.minimax.models],
+        default: PROVIDERS.minimax.defaultModel
+      }
+    ]);
+
+    this.credentials.aiProvider = {
+      provider: 'minimax',
+      apiKey: answers.apiKey,
+      model: answers.model
+    };
+
+    await this.saveCredentials();
+    console.log(chalk.green('MiniMax credentials configured successfully!'));
+  }
+
   // Azure Speech Services (TTS)
   async setupAzureSpeechCredentials() {
     console.log(chalk.cyan('\n🎙️  Azure Speech Services Setup'));
@@ -561,7 +630,7 @@ class CredentialManager {
     }
 
     if (!this.hasAITextProvider()) {
-      missing.push('an AI provider (OpenAI, Gemini, OpenRouter, Atlas Cloud, Kimi, MiMo, or GLM)');
+      missing.push('an AI provider (OpenAI, Gemini, OpenRouter, Atlas Cloud, Kimi, MiMo, GLM, DeepSeek, or MiniMax)');
     }
 
     return missing;
@@ -665,13 +734,15 @@ class CredentialManager {
         name: 'service',
         message: 'Select your preferred AI service:',
         choices: [
-          { name: 'OpenAI (GPT-5.6)', value: 'openai' },
-          { name: 'Google Gemini (Gemini 3.7)', value: 'gemini' },
+          { name: 'OpenAI (GPT-6.1 Sol)', value: 'openai' },
+          { name: 'Google Gemini (Gemini 3.8 Flash)', value: 'gemini' },
           { name: 'OpenRouter (400+ models, one API key)', value: 'openrouter' },
           { name: 'Atlas Cloud (OpenAI-compatible)', value: 'atlascloud' },
           { name: 'Kimi (Moonshot AI — K3)', value: 'kimi' },
-          { name: 'MiMo (Xiaomi — V2.5 Pro)', value: 'mimo' },
+          { name: 'MiMo (Xiaomi — V2.6 Pro)', value: 'mimo' },
           { name: 'GLM (Zhipu AI — GLM-5.3)', value: 'glm' },
+          { name: 'DeepSeek (V4.1 Flash)', value: 'deepseek' },
+          { name: 'MiniMax (M3.1 Flash)', value: 'minimax' },
         ]
       }
     ]);
@@ -684,6 +755,8 @@ class CredentialManager {
       case 'kimi': return await this.setupKimiCredentials();
       case 'mimo': return await this.setupMiMoCredentials();
       case 'glm': return await this.setupGLMCredentials();
+      case 'deepseek': return await this.setupDeepSeekCredentials();
+      case 'minimax': return await this.setupMiniMaxCredentials();
     }
   }
 

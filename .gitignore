@@ -70,6 +70,7 @@ build/
 *.gif
 !examples/*.png
 !examples/*.jpg
+!assets/screenshots/*.png
 !assets/youtube-automation-agent.jpg
 
 # Backup files

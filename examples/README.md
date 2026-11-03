@@ -1,4 +1,4 @@
-# Made with Lumen
+# Made with YouTube Automation Agent
 
 This directory is reserved for verified output evidence. Do not add mock videos, simulated runs, or estimated results.
 
@@ -16,7 +16,7 @@ For each example, provide:
 - Elapsed generation time:
 - Estimated API cost and calculation source:
 - Human editing time:
-- Lumen version or commit:
+- YouTube Automation Agent version or commit:
 - Final video URL:
 - Verification: non-simulated MP4 container signature confirmed
 ```

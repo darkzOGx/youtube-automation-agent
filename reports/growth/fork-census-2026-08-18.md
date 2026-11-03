@@ -1,4 +1,4 @@
-# Lumen public fork census — 2026-08-18
+# YouTube Automation Agent public fork census — 2026-08-18
 
 GitHub's repository summary reported 587 forks. The paginated REST census returned 597 unique public fork records and compared 40 high-signal candidates with upstream.
 

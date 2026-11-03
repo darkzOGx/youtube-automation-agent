@@ -30,6 +30,10 @@ const { DiscoverabilityService } = require('./utils/discoverability-service');
 const { version } = require('./package.json');
 const chalk = require('chalk');
 
+function isLoopbackHost(host) {
+  return ['127.0.0.1', '::1', 'localhost'].includes(String(host).toLowerCase()) || /^127\./.test(String(host));
+}
+
 class YouTubeAutomationAgent {
   constructor() {
     this.logger = new Logger('MainAgent');
@@ -389,6 +393,7 @@ class YouTubeAutomationAgent {
     this.app.get('/health', (req, res) => {
       res.json({
         status: this.setupRequired ? 'setup_required' : 'healthy',
+        version,
         initialized: this.isInitialized,
         setupRequired: this.setupRequired,
         agents: Object.keys(this.agents),
@@ -425,6 +430,18 @@ class YouTubeAutomationAgent {
         res.json({ ...analytics, learning });
       } catch (error) {
         res.status(500).json({ error: error.message });
+      }
+    });
+
+    this.app.get('/api/analytics/channel', async (req, res) => {
+      try {
+        if (!this.agents.analytics?.getChannelSnapshot) {
+          return res.json({ success: true, result: { available: false, reason: 'Connect YouTube with npm run walkthrough to see channel statistics.' } });
+        }
+        const result = await this.agents.analytics.getChannelSnapshot({ refresh: req.query.refresh === '1' });
+        return res.json({ success: true, result });
+      } catch (error) {
+        return res.status(500).json({ success: false, error: error.message });
       }
     });
 
@@ -515,6 +532,7 @@ class YouTubeAutomationAgent {
           stats, jobs, pipeline, schedule, events, notifications, profile, settings, ideas, analytics, learning, activation,
           channelStrategy, operatorRuns, readiness, engagement, experiments,
           system: {
+            version,
             initialized: this.isInitialized,
             setupRequired: this.setupRequired,
             uptime: process.uptime(),
@@ -988,6 +1006,39 @@ class YouTubeAutomationAgent {
       }
     });
 
+    this.app.patch('/api/content/:productionId/schedule', protect, async (req, res) => {
+      try {
+        if (!this.agents.publishing) return res.status(503).json({ error: 'Publishing requires completed setup' });
+        const result = await this.agents.publishing.rescheduleContent(req.params.productionId, req.body?.publishTime);
+        await this.db.updateProductionStatus(req.params.productionId, 'scheduled');
+        return res.json({ success: true, result });
+      } catch (error) {
+        return res.status(error.status || 400).json({ success: false, error: error.message, code: error.code });
+      }
+    });
+
+    this.app.post('/api/content/:productionId/publish-now', protect, async (req, res) => {
+      try {
+        if (!this.agents.publishing) return res.status(503).json({ error: 'Publishing requires completed setup' });
+        const result = await this.agents.publishing.emergencyPublish(req.params.productionId);
+        await this.db.updateProductionStatus(req.params.productionId, result.status);
+        return res.json({ success: true, result });
+      } catch (error) {
+        return res.status(error.status || 400).json({ success: false, error: error.message, code: error.code });
+      }
+    });
+
+    this.app.delete('/api/content/:productionId/schedule', protect, async (req, res) => {
+      try {
+        if (!this.agents.publishing) return res.status(503).json({ error: 'Publishing requires completed setup' });
+        const result = await this.agents.publishing.deleteScheduledContent(req.params.productionId);
+        await this.db.updateProductionStatus(req.params.productionId, 'approved');
+        return res.json({ success: true, result });
+      } catch (error) {
+        return res.status(error.status || 400).json({ success: false, error: error.message, code: error.code });
+      }
+    });
+
     this.app.patch('/api/discoverability/findings/:findingId', protect, async (req, res) => {
       try {
         const finding = await this.discoverability.reviewFinding(req.params.findingId, req.body || {});
@@ -1408,7 +1459,8 @@ class YouTubeAutomationAgent {
 
   async generateContent(topic = null, style = null, length = 'medium', options = {}) {
     this.logger.info('Starting content generation pipeline...');
-    const { jobId = null, strategyContext = {} } = options;
+    const { jobId = null, strategyContext: rawStrategyContext = {} } = options;
+    const strategyContext = rawStrategyContext || {};
     const profile = await this.db.getChannelProfile() || {};
     const lengthLabels = { short: '2-4 minutes', medium: '8-12 minutes', long: '15-20 minutes' };
 
@@ -1662,7 +1714,7 @@ class YouTubeAutomationAgent {
       })),
       assetUrls: {
         video: bundle.assets?.finalVideo?.path && !bundle.assets?.finalVideo?.simulated ? `/api/content/${bundle.id}/asset/video` : null,
-        thumbnail: bundle.assets?.thumbnail?.path ? `/api/content/${bundle.id}/asset/thumbnail` : null,
+        thumbnail: bundle.assets?.thumbnail?.path && !bundle.assets?.thumbnail?.simulated ? `/api/content/${bundle.id}/asset/thumbnail` : null,
         experimentThumbnails: (experiment?.thumbnailVariants || []).map((_variant, index) =>
           `/api/content/${bundle.id}/asset/experiment-thumbnail-${index}`
         ),
@@ -1798,8 +1850,14 @@ class YouTubeAutomationAgent {
     }
     
     const PORT = process.env.PORT || 3456;
-    this.app.listen(PORT, () => {
-      console.log(chalk.green(`\n✅ YouTube Automation Agent running on port ${PORT}`));
+    // Loopback by default: mutating routes are open whenever API_KEY is unset,
+    // so the dashboard must not be reachable from the network unless asked.
+    const HOST = process.env.HOST || '127.0.0.1';
+    this.app.listen(PORT, HOST, () => {
+      console.log(chalk.green(`\n✅ YouTube Automation Agent running on ${HOST}:${PORT}`));
+      if (!isLoopbackHost(HOST) && !process.env.API_KEY) {
+        console.log(chalk.yellow(`⚠️  HOST=${HOST} exposes the dashboard to your network without API_KEY. Set API_KEY in .env to protect generation, approval, and publishing routes.`));
+      }
       console.log(chalk.gray('─'.repeat(50)));
       console.log(chalk.white('📊 Dashboard: ') + chalk.cyan(`http://localhost:${PORT}`));
       console.log(chalk.white('🔧 API Health: ') + chalk.cyan(`http://localhost:${PORT}/health`));

@@ -138,7 +138,9 @@ class ProductionReadinessService {
     if (this.probes.text) return this.probes.text();
     const service = new AITextService(this.credentialManager.credentials || {});
     if (!service.isAvailable()) throw new Error('No AI text provider is configured');
-    const response = await service.generateText('Reply with exactly READY.', { maxTokens: 16, temperature: 0 });
+    // Thinking models use ~100 output tokens on thoughts even for a one-word
+    // reply, so the budget must leave room beyond the answer itself.
+    const response = await service.generateText('Reply with exactly READY.', { maxTokens: 256, temperature: 0 });
     return { message: `${service.providerName} returned a live response.`, details: { provider: service.providerName, responseReceived: Boolean(response) } };
   }
 
