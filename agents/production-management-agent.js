@@ -670,25 +670,31 @@ class ProductionManagementAgent {
 
   // Helper method to create visual prompts from script content
   createVisualPromptsFromScript(script) {
+    // "explanatory visual" alone reads to image models as license to draw an
+    // infographic — labeled boxes, headers, diagrams — which bakes unwanted
+    // text into the slide and fights the caption rendered on top of it.
+    // Steering explicitly toward a single photographic/illustrative scene,
+    // with no on-image typography, keeps slides legible and uncluttered.
+    const noTextSuffix = 'single clean photographic or illustrative scene, no on-image text, no words, no labels, no captions, no diagrams, no charts, no infographic layout, no icons';
     const prompts = [];
-    
+
     // Title prompt
-    prompts.push(`${script.title}, clear visual storytelling`);
-    
+    prompts.push(`${script.title}, clear visual storytelling, ${noTextSuffix}`);
+
     // Content-based prompts
     if (script.mainContent && script.mainContent.sections) {
       script.mainContent.sections.forEach(section => {
         if (section.title) {
-          prompts.push(`${section.title}, relevant explanatory visual`);
+          prompts.push(`${section.title}, relevant explanatory visual, ${noTextSuffix}`);
         }
       });
     }
-    
+
     // Ensure we have at least 3 prompts
     while (prompts.length < 3) {
-      prompts.push(`${script.title || 'Video topic'}, supporting explanatory visual`);
+      prompts.push(`${script.title || 'Video topic'}, supporting explanatory visual, ${noTextSuffix}`);
     }
-    
+
     return prompts.slice(0, 5); // Limit to 5 for cost control
   }
 
