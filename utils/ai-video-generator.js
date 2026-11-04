@@ -381,7 +381,13 @@ class AIVideoGenerator {
 
     const normalizedStyle = String(style || '').trim().toLowerCase();
     const enhancement = styleEnhancements[normalizedStyle] || String(style || '').trim() || styleEnhancements.ethereal;
-    return `${prompt}, ${enhancement}, high quality, 16:9 aspect ratio, digital art`;
+    // Belt-and-suspenders alongside the caller's own no-text instruction
+    // (createVisualPromptsFromScript): background slide images get a caption
+    // burned on top by the renderer, so any text the model draws into the
+    // image itself collides with that caption. Thumbnails call generateImage
+    // directly and skip this helper, so they're unaffected and can still ask
+    // for on-image text the normal YouTube-thumbnail way.
+    return `${prompt}, ${enhancement}, high quality, 16:9 aspect ratio, digital art, no text, no typography, no words rendered in the image`;
   }
 
   async downloadImage(url, outputPath) {
@@ -720,6 +726,13 @@ class AIVideoGenerator {
             text-align: center;
             color: white;
             max-width: 80%;
+            /* A backdrop panel behind the caption keeps it legible no matter
+               how busy the generated background image is, without having to
+               darken the image itself (which would wash it out). */
+            padding: 32px 48px;
+            border-radius: 24px;
+            background: rgba(0, 0, 0, 0.45);
+            backdrop-filter: blur(6px);
         }
         
         h1 {

@@ -4,6 +4,7 @@ const path = require('path');
 const chalk = require('chalk');
 const http = require('http');
 const { URL } = require('url');
+const { openUrl } = require('./utils/open-url');
 
 class ModernAuth {
   constructor() {
@@ -59,15 +60,7 @@ class ModernAuth {
       console.log(chalk.blue(authUrl));
 
       // Best effort: open the URL in the default browser
-      const { exec } = require('child_process');
-      const openCommands = {
-        win32: `start "" "${authUrl}"`,
-        darwin: `open "${authUrl}"`,
-        linux: `xdg-open "${authUrl}"`
-      };
-      if (openCommands[process.platform]) {
-        exec(openCommands[process.platform], () => {});
-      }
+      openUrl(authUrl);
       console.log(chalk.yellow(`\n⚡ A temporary server is running on port ${redirect.port}`));
       console.log(chalk.yellow('After authorization, you\'ll be redirected automatically.'));
       console.log(chalk.gray('Waiting for authorization...'));
