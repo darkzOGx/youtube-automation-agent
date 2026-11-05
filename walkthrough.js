@@ -68,6 +68,23 @@ const AI_PROVIDER_GUIDE = {
     },
     validationCreds: (apiKey, model) => ({ aiProvider: { provider: 'openrouter', apiKey, model } })
   },
+  atlascloud: {
+    label: 'Atlas Cloud — OpenAI-compatible multi-model API',
+    keyUrl: 'https://www.atlascloud.ai/console/api-keys',
+    keyHint: 'from the Atlas Cloud console',
+    instructions: [
+      'Sign in to Atlas Cloud',
+      'Open the API keys page and create a key',
+      'Copy the key into this setup step'
+    ],
+    models: ['qwen/qwen3.5-flash', 'deepseek-ai/deepseek-v4-pro'],
+    defaultModel: 'qwen/qwen3.5-flash',
+    covers: 'scripts only (add a Gemini or OpenAI key for images/voice)',
+    save(credentials, apiKey, model) {
+      credentials.aiProvider = { provider: 'atlascloud', apiKey, model };
+    },
+    validationCreds: (apiKey, model) => ({ aiProvider: { provider: 'atlascloud', apiKey, model } })
+  },
   kimi: {
     label: 'Kimi (Moonshot AI) — K3 and K2 family text models',
     keyUrl: 'https://platform.kimi.ai',
