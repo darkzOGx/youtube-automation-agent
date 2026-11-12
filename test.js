@@ -113,6 +113,14 @@ class SystemTest {
     // Test basic operations
     const stats = await db.getStats();
     if (!stats) throw new Error('Failed to get database stats');
+
+    const queryPlan = await db.getAllRows(
+      'EXPLAIN QUERY PLAN SELECT id FROM publish_schedule WHERE production_id = ? ORDER BY created_at DESC LIMIT 1',
+      ['performance-test']
+    );
+    if (!queryPlan.some(row => row.detail.includes('idx_publish_schedule_production_created'))) {
+      throw new Error('Latest schedule lookups should use the production/created index');
+    }
     
     // Test settings
     await db.setSetting('test_key', 'test_value', 'Test setting');
