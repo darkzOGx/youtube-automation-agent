@@ -38,6 +38,22 @@ The operator refreshes YouTube trend and configured-competitor signals, checks r
 
 By default, finished videos wait for factual review, media-rights confirmation, and approval. Once approved, the publishing agent schedules and uploads them. Turning on autonomy does not bypass those gates, and simulated videos still cannot publish.
 
+### Optional public sources for operator research
+
+Set `PARALLEL_RESEARCH_TOPIC` in `.env` to an explicit public topic, for example
+`Node.js test runner documentation`, then restart the server. The next Autonomous
+operator run supplements YouTube research with up to five public web sources from
+Parallel. The default is off; remove the setting and restart to disable it.
+See [Parallel MCP setup](https://docs.parallel.ai/integrations/mcp/quickstart).
+
+Only the configured topic is sent to Parallel, without channel history, credentials,
+strategy, or audience data. Anonymous access needs no Parallel key and is rate limited.
+A search failure or a 20-second deadline leaves the existing research and planning
+fallbacks in place. Public sources are evidence for the topic, not popularity signals.
+Their original URLs are available in the research source catalog and can be selected
+by the plan; the template fallback cites them for the configured topic. Sources and
+claims still need review in the Evidence desk before publishing.
+
 ## Resumable generation
 
 Every generation stage writes a local SQLite checkpoint. If a provider times out or the application restarts, the dashboard shows the saved-stage count and the first incomplete stage. Choose **Resume** to continue from there, or select an earlier stage when you intentionally want to regenerate that stage and everything after it. Saved files are validated before reuse; missing artifacts are regenerated automatically.

@@ -26,6 +26,7 @@ class SystemTest {
       { name: 'Anonymous Telemetry Opt-in', test: () => this.testAnonymousTelemetryOptIn() },
       { name: 'Operator Workflow API', test: () => this.testOperatorWorkflowAPI() },
       { name: 'Autonomous Channel Operator', test: () => this.testAutonomousChannelOperator() },
+      { name: 'Optional Public Source Research', test: () => this.testPublicSourceResearch() },
       { name: 'Closed-loop Channel Learning', test: () => this.testChannelLearningLoop() },
       { name: 'Controlled Growth Experiments Studio', test: () => this.testGrowthExperimentsStudio() },
       { name: 'Outcome and ROI Studio', test: () => this.testOutcomeROIStudio() },
@@ -361,6 +362,114 @@ class SystemTest {
     }
 
     this.logger.info('Operator workflow API test completed successfully');
+  }
+
+  async testPublicSourceResearch() {
+    const assert = require('assert/strict');
+    const http = require('http');
+    const { ContentStrategyAgent } = require('./agents/content-strategy-agent');
+    const { ParallelSourceFeed, USER_AGENT } = require('./utils/parallel-source-feed');
+    const previousTopic = process.env.PARALLEL_RESEARCH_TOPIC;
+    const previousCompetitors = process.env.COMPETITOR_CHANNELS;
+    const axios = require('axios');
+    const originalPost = axios.post;
+    const originalUrl = 'https://nodejs.org/api/test.html?view=public%2Fdocs&lang=en#test-runner';
+    const calls = [];
+    let mode = 'sse';
+    const server = http.createServer(async (req, res) => {
+      let raw = '';
+      for await (const chunk of req) raw += chunk;
+      const body = JSON.parse(raw);
+      calls.push({ body, headers: req.headers });
+      if (mode === 'http-error') { res.writeHead(429).end(); return; }
+      if (mode === 'timeout') return;
+      if (body.method === 'notifications/initialized') { res.writeHead(202).end(); return; }
+      const result = body.method === 'initialize'
+        ? { protocolVersion: '2025-03-26' }
+        : mode === 'tool-error' ? { isError: true }
+          : { structuredContent: { results: mode === 'empty' ? [] : [
+              { url: originalUrl, title: 'Official test runner documentation', excerpts: ['Native test runner documentation.'] },
+              { url: originalUrl, title: 'Duplicate' },
+              { url: 'javascript:alert(1)', title: 'Invalid URL' }
+            ] } };
+      const reply = { jsonrpc: '2.0', id: body.id, result };
+      res.setHeader('Mcp-Session-Id', 'test-session');
+      if (mode === 'json') {
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify(reply));
+      } else {
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.end(`: keepalive\r\n\r\nevent: message\r\ndata: ${JSON.stringify(reply)}\r\n\r\n`);
+      }
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    axios.post = (url, data, options) => {
+      assert.equal(url, 'https://mcp.parallel.ai/mcp');
+      return originalPost(`http://127.0.0.1:${server.address().port}`, data, options);
+    };
+    try {
+      process.env.COMPETITOR_CHANNELS = '';
+      delete process.env.PARALLEL_RESEARCH_TOPIC;
+      const agent = new ContentStrategyAgent({ getAllRows: async () => [] }, {
+        getYouTubeClient: () => ({ videos: { list: async () => ({ data: { items: [{
+          id: 'youtube-evidence', snippet: { title: 'Native testing', channelTitle: 'YouTube channel' },
+          statistics: { viewCount: '100' }
+        }] } }) } })
+      });
+      agent.aiTextService = { isAvailable: () => false };
+      const strategy = {
+        videos_per_run: 1, contentPillars: ['Development'], audience: 'Developers',
+        objective: 'Teach native testing', default_format: 'tutorial', default_length: 'short'
+      };
+      const disabled = await agent.researchAndPlanChannel(strategy);
+      assert.equal(calls.length, 0, 'The default must not send a public search');
+      assert.equal(disabled.research.sourceCatalog.length, 1);
+      assert.equal(disabled.research.publicSources, undefined);
+
+      process.env.PARALLEL_RESEARCH_TOPIC = 'Node.js test runner documentation';
+      const planned = await agent.researchAndPlanChannel(strategy);
+      assert.equal(planned.research.publicSources.length, 1);
+      assert.equal(planned.research.publicSources[0].url, originalUrl);
+      assert.equal(planned.research.sourceCatalog.filter(source => source.url === originalUrl).length, 1);
+      assert.equal(planned.research.sourceCatalog.length, 2, 'YouTube evidence must remain available');
+      assert.equal(planned.plan[0].topic, process.env.PARALLEL_RESEARCH_TOPIC);
+      assert.deepEqual(planned.plan[0].sourceUrls, [originalUrl]);
+      assert.ok(planned.research.sources.includes('Parallel public web sources'));
+      assert.ok(planned.research.signals.every(signal => !signal.sources.includes('public_web')));
+      assert.deepEqual(calls.map(call => call.body.method), ['initialize', 'notifications/initialized', 'tools/call']);
+      assert.ok(calls.every(call => call.headers['user-agent'] === USER_AGENT && !call.headers.authorization && !call.headers['x-api-key']));
+      assert.equal(calls[2].headers['mcp-session-id'], 'test-session');
+      assert.equal(calls[2].headers['mcp-protocol-version'], '2025-03-26');
+      assert.deepEqual(calls[2].body.params, { name: 'web_search', arguments: {
+        objective: `Find public documentation and primary sources for a video about: ${process.env.PARALLEL_RESEARCH_TOPIC}`,
+        search_queries: [process.env.PARALLEL_RESEARCH_TOPIC]
+      } });
+      assert.deepEqual(agent.normalizeAutonomousPlan([{ ...planned.plan[0], sourceUrls: [originalUrl, originalUrl, 'https://invented.example'] }], strategy, 1, planned.research)[0].sourceUrls, [originalUrl]);
+
+      mode = 'json';
+      assert.equal((await agent.researchAndPlanChannel(strategy)).plan[0].sourceUrls[0], originalUrl);
+      for (mode of ['empty', 'http-error', 'tool-error']) {
+        const fallback = await agent.researchAndPlanChannel(strategy);
+        assert.equal(fallback.research.publicSources.length, 0);
+        assert.equal(fallback.research.sourceCatalog.length, 1);
+        assert.equal(fallback.plan.length, 1);
+        assert.ok(!fallback.research.sources.includes('Parallel public web sources'));
+      }
+      mode = 'timeout';
+      await assert.rejects(new ParallelSourceFeed({ timeoutMs: 30 }).search('Node.js test runner documentation'), { code: 'ERR_CANCELED' });
+      delete process.env.PARALLEL_RESEARCH_TOPIC;
+      const beforeDisabled = calls.length;
+      await agent.researchAndPlanChannel(strategy);
+      assert.equal(calls.length, beforeDisabled, 'Removing the setting must disable the feed');
+    } finally {
+      axios.post = originalPost;
+      if (previousTopic === undefined) delete process.env.PARALLEL_RESEARCH_TOPIC;
+      else process.env.PARALLEL_RESEARCH_TOPIC = previousTopic;
+      if (previousCompetitors === undefined) delete process.env.COMPETITOR_CHANNELS;
+      else process.env.COMPETITOR_CHANNELS = previousCompetitors;
+      server.closeAllConnections();
+      await new Promise(resolve => server.close(resolve));
+    }
   }
 
   async testAutonomousChannelOperator() {
