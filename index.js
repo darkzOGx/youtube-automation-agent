@@ -1,5 +1,6 @@
 require('dotenv').config();
 
+const crypto = require('crypto');
 const express = require('express');
 const path = require('path');
 const fs = require('fs').promises;
@@ -56,6 +57,11 @@ class YouTubeAutomationAgent {
     this.experiments = null;
     this.discoverability = null;
     this.setupRequired = false;
+    // Determined once so the same-origin middleware (registered during
+    // setupAPI, before start() calls listen()) and the actual listen() call
+    // always agree on what the server considers "itself".
+    this.boundPort = process.env.PORT || 3456;
+    this.boundHost = process.env.HOST || '127.0.0.1';
   }
 
   async initialize() {
@@ -222,8 +228,63 @@ class YouTubeAutomationAgent {
         return next();
       }
 
-      if (req.get('x-api-key') !== process.env.API_KEY) {
+      const provided = Buffer.from(String(req.get('x-api-key') || ''));
+      const expected = Buffer.from(String(process.env.API_KEY));
+      const matches = provided.length === expected.length && crypto.timingSafeEqual(provided, expected);
+      if (!matches) {
         return res.status(401).json({ success: false, error: 'Unauthorized' });
+      }
+
+      return next();
+    };
+  }
+
+  /**
+   * Blocks cross-origin browser requests from reaching the dashboard's API.
+   *
+   * Without API_KEY set, every mutating route is open to anyone who can make
+   * your browser send a request — e.g. a malicious page relying on DNS
+   * rebinding or simply knowing the app listens on 127.0.0.1:PORT. This
+   * rejects any request whose Host or Origin header doesn't match the
+   * address the server is actually bound to, which a same-origin page can't
+   * spoof but a cross-origin page can't produce either.
+   */
+  requireSameOrigin() {
+    // A wildcard bind (0.0.0.0 / ::) means clients connect using whatever
+    // address actually reaches this machine, which we can't predict — so
+    // hostname can't be validated against a fixed value here. API_KEY (and
+    // the startup warning telling you to set it) is the control that
+    // matters once you've opted into network exposure.
+    const wildcard = ['0.0.0.0', '::', '::0'].includes(String(this.boundHost).toLowerCase());
+
+    // Checked by hostname only, not port: the port we're listening on can
+    // legitimately vary (e.g. tests binding to an OS-assigned port), and
+    // port alone was never the thing standing between a page and the
+    // dashboard. What has to match is the hostname, because that's what
+    // DNS rebinding forges — an attacker-controlled page whose domain is
+    // briefly repointed at 127.0.0.1 makes same-origin requests (so no
+    // Origin header is sent) carrying a Host header of the attacker's own
+    // domain, not "127.0.0.1" or "localhost".
+    const allowedHostnames = new Set(['127.0.0.1', '::1', 'localhost', String(this.boundHost).toLowerCase()]);
+
+    const hostnameOf = (hostHeader) => String(hostHeader || '').toLowerCase().replace(/:\d+$/, '').replace(/^\[|\]$/g, '');
+
+    return (req, res, next) => {
+      if (wildcard) return next();
+
+      if (!allowedHostnames.has(hostnameOf(req.headers.host))) {
+        return res.status(403).json({ success: false, error: 'Request Host header does not match this server' });
+      }
+
+      const origin = req.headers.origin;
+      if (origin !== undefined) {
+        try {
+          if (!allowedHostnames.has(new URL(origin).hostname.toLowerCase())) {
+            return res.status(403).json({ success: false, error: 'Cross-origin request blocked' });
+          }
+        } catch (_error) {
+          return res.status(403).json({ success: false, error: 'Invalid Origin header' });
+        }
       }
 
       return next();
@@ -377,11 +438,15 @@ class YouTubeAutomationAgent {
     };
   }
   setupAPI() {
+    // Blocks cross-origin browser requests (e.g. via DNS rebinding, or any
+    // page knowing the dashboard listens on 127.0.0.1:PORT) before anything
+    // else runs — this is the primary defense when API_KEY is unset.
+    this.app.use(this.requireSameOrigin());
     this.app.use(express.json({ limit: '1mb' }));
     this.app.use(express.static(path.join(__dirname, 'dashboard')));
 
     if (!process.env.API_KEY) {
-      this.logger.warn('API_KEY is not set; mutating API routes are unprotected');
+      this.logger.warn('API_KEY is not set; mutating API routes are unprotected from any request matching this Host. Set API_KEY in .env for defense in depth.');
     }
     
     // Main dashboard route
@@ -1853,6 +1918,11 @@ class YouTubeAutomationAgent {
     // Loopback by default: mutating routes are open whenever API_KEY is unset,
     // so the dashboard must not be reachable from the network unless asked.
     const HOST = process.env.HOST || '127.0.0.1';
+    // Keep in sync with what requireSameOrigin() checked against at setup
+    // time, in case HOST/PORT were read differently (e.g. tests that set
+    // env vars between construction and start()).
+    this.boundPort = PORT;
+    this.boundHost = HOST;
     this.app.listen(PORT, HOST, () => {
       console.log(chalk.green(`\n✅ YouTube Automation Agent running on ${HOST}:${PORT}`));
       if (!isLoopbackHost(HOST) && !process.env.API_KEY) {

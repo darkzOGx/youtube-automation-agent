@@ -4,7 +4,7 @@ const inquirer = require('inquirer');
 const chalk = require('chalk');
 const fs = require('fs').promises;
 const path = require('path');
-const { exec } = require('child_process');
+const { openUrl } = require('./utils/open-url');
 const { CredentialManager } = require('./utils/credential-manager');
 const {
   AITextService,
@@ -185,15 +185,7 @@ class SetupWalkthrough {
   }
 
   openBrowser(url) {
-    const commands = {
-      win32: `start "" "${url}"`,
-      darwin: `open "${url}"`,
-      linux: `xdg-open "${url}"`
-    };
-    const command = commands[process.platform];
-    if (command) {
-      exec(command, () => {}); // best effort — the URL is printed either way
-    }
+    openUrl(url);
   }
 
   async run() {
