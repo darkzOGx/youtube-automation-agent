@@ -131,6 +131,8 @@ class Database {
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (production_id) REFERENCES productions(id)
       )`,
+      `CREATE INDEX IF NOT EXISTS idx_publish_schedule_production_created
+       ON publish_schedule(production_id, created_at DESC)`,
       
       // Analytics Reports
       `CREATE TABLE IF NOT EXISTS analytics_reports (
