@@ -703,10 +703,10 @@ class CredentialManager {
         name: 'service',
         message: 'Select your preferred AI service:',
         choices: [
-          { name: 'OpenAI (GPT-6.1 Sol)', value: 'openai' },
-          { name: 'Google Gemini (Gemini 3.8 Flash)', value: 'gemini' },
+          { name: 'OpenAI (GPT-6.2 Sol)', value: 'openai' },
+          { name: 'Google Gemini (Gemini 4 Hydrogen)', value: 'gemini' },
           { name: 'OpenRouter (400+ models, one API key)', value: 'openrouter' },
-          { name: 'Kimi (Moonshot AI — K3)', value: 'kimi' },
+          { name: 'Kimi (Moonshot AI — K3.1 Pro)', value: 'kimi' },
           { name: 'MiMo (Xiaomi — V2.6 Pro)', value: 'mimo' },
           { name: 'GLM (Zhipu AI — GLM-5.3)', value: 'glm' },
           { name: 'DeepSeek (V4.1 Flash)', value: 'deepseek' },

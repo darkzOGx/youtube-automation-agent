@@ -8,7 +8,7 @@ const { Logger } = require('./logger');
 const { runFFmpeg, getMediaDuration, checkFFmpeg, ffmpegInstallHint } = require('./ffmpeg');
 const { MediaGenerationService } = require('./media-generation-service');
 
-const OPENAI_IMAGE_MODEL = 'gpt-image-2';
+const DEFAULT_OPENAI_IMAGE_MODEL = 'gpt-image-2.6-flare';
 
 // Turns an image provider SDK error into one readable line that leads with the
 // fix when the cause is recognisable. @google/genai puts the raw JSON error
@@ -103,7 +103,7 @@ class AIVideoGenerator {
     // ElevenLabs configuration
     this.elevenLabsApiKey = resolvedCredentials.elevenLabs?.apiKey || process.env.ELEVENLABS_API_KEY;
     this.elevenLabsVoiceId = resolvedCredentials.elevenLabs?.voiceId || process.env.ELEVENLABS_VOICE_ID;
-    this.elevenLabsModel = process.env.ELEVENLABS_TTS_MODEL || 'eleven_v3';
+    this.elevenLabsModel = process.env.ELEVENLABS_TTS_MODEL || 'eleven_v4';
     
     // Azure Speech configuration
     this.azureSpeechKey = resolvedCredentials.azure?.speechKey || process.env.AZURE_SPEECH_KEY;
@@ -275,7 +275,7 @@ class AIVideoGenerator {
 
     const providers = [];
     if (this.openai) {
-      providers.push({ name: 'OpenAI', model: OPENAI_IMAGE_MODEL, run: () => this.generateOpenAIImage(prompt, imagePath) });
+      providers.push({ name: 'OpenAI', model: this.openaiImageModel(), run: () => this.generateOpenAIImage(prompt, imagePath) });
     }
     if (this.gemini) {
       providers.push({ name: 'Gemini', model: this.geminiImageModel(), run: () => this.generateGeminiImage(prompt, imagePath) });
@@ -304,13 +304,17 @@ class AIVideoGenerator {
     throw error;
   }
 
+  openaiImageModel() {
+    return process.env.OPENAI_IMAGE_MODEL || DEFAULT_OPENAI_IMAGE_MODEL;
+  }
+
   geminiImageModel() {
     return process.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image';
   }
 
   async generateOpenAIImage(prompt, imagePath) {
     const response = await this.openai.images.generate({
-      model: OPENAI_IMAGE_MODEL,
+      model: this.openaiImageModel(),
       prompt: prompt,
       n: 1,
       size: "1536x1024",

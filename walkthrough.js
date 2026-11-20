@@ -61,7 +61,7 @@ const AI_PROVIDER_GUIDE = {
       'Create a key and copy it'
     ],
     models: [...PROVIDERS.openrouter.models],
-    defaultModel: 'google/gemini-3.8-flash',
+    defaultModel: PROVIDERS.openrouter.defaultModel,
     covers: 'scripts only (add a Gemini or OpenAI key for images/voice)',
     save(credentials, apiKey, model) {
       credentials.aiProvider = { provider: 'openrouter', apiKey, model };
@@ -69,7 +69,7 @@ const AI_PROVIDER_GUIDE = {
     validationCreds: (apiKey, model) => ({ aiProvider: { provider: 'openrouter', apiKey, model } })
   },
   kimi: {
-    label: 'Kimi (Moonshot AI) — K3 and K2 family text models',
+    label: 'Kimi (Moonshot AI) — K3.1 Pro and K3 family text models',
     keyUrl: 'https://platform.kimi.ai',
     keyHint: 'from the Moonshot platform console',
     instructions: ['Create an account', 'Open the API keys page and create a key'],
@@ -154,20 +154,20 @@ const VIDEO_PROVIDER_GUIDE = {
     save(credentials, value) { credentials.minimax = { apiKey: value }; }
   },
   google_omni: {
-    label: 'Google Gemini Omni Flash — fast conversational video generation',
+    label: 'Google Gemini Omni 1.2 Flash — fast conversational video up to 15s',
     keyUrl: 'https://aistudio.google.com/apikey',
     credentialName: 'Gemini API key',
     save(credentials, value) { credentials.gemini = { ...(credentials.gemini || {}), apiKey: value }; }
   },
   kling: {
-    label: 'Kuaishou Kling 3.0 Omni — storyboards and character performance',
+    label: 'Kuaishou Kling 4.0 — cinematic 30s storyboards and character performance',
     keyUrl: 'https://kling.ai/global/dev',
     credentialName: 'Kling access key',
     secretName: 'Kling secret key',
     save(credentials, value, secret) { credentials.kling = { accessKey: value, secretKey: secret }; }
   },
   wan: {
-    label: 'Alibaba Wan 2.7 — efficient multimodal and continuation workflows',
+    label: 'Alibaba Wan 3.0 — unified multimodal and continuation workflows up to 30s',
     keyUrl: 'https://modelstudio.console.alibabacloud.com/',
     credentialName: 'DashScope API key',
     save(credentials, value) { credentials.wan = { apiKey: value }; }

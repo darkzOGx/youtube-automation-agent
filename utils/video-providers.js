@@ -207,9 +207,9 @@ class GoogleOmniProvider extends VideoProvider {
   constructor(credentials, options = {}) {
     const creds = normalizeCredentials(credentials);
     super('google_omni', {
-      model: options.model || process.env.GEMINI_VIDEO_MODEL || 'gemini-omni-1.1-flash',
+      model: options.model || process.env.GEMINI_VIDEO_MODEL || 'gemini-omni-1.2-flash',
       capabilities: {
-        minDuration: 3, maxDuration: 10, defaultResolution: '720p', maxPromptLength: 7000,
+        minDuration: 3, maxDuration: 15, defaultResolution: '720p', maxPromptLength: 7000,
         text: true, firstFrame: true, referenceImages: 8, referenceVideos: 1,
         nativeAudio: true, conversationalEditing: true
       }
@@ -289,10 +289,10 @@ class KlingProvider extends VideoProvider {
   constructor(credentials, options = {}) {
     const creds = normalizeCredentials(credentials);
     super('kling', {
-      model: options.model || process.env.KLING_VIDEO_MODEL || 'kling-v3-omni',
+      model: options.model || process.env.KLING_VIDEO_MODEL || 'kling-v4-0',
       capabilities: {
-        minDuration: 3, maxDuration: 15, defaultResolution: '1080p', maxPromptLength: 2500,
-        text: true, firstFrame: true, lastFrame: true, referenceImages: 4,
+        minDuration: 3, maxDuration: 30, defaultResolution: '1080p', maxPromptLength: 2500,
+        text: true, firstFrame: true, lastFrame: true, referenceImages: 10,
         referenceVideos: 1, nativeAudio: true, storyboard: true
       }
     });
@@ -352,11 +352,11 @@ class WanProvider extends VideoProvider {
   constructor(credentials, options = {}) {
     const creds = normalizeCredentials(credentials);
     super('wan', {
-      model: options.model || process.env.WAN_VIDEO_MODEL || 'wan2.7-t2v-2026-06-12',
+      model: options.model || process.env.WAN_VIDEO_MODEL || 'wan3.0-video',
       capabilities: {
-        minDuration: 2, maxDuration: 15, defaultResolution: '720P', maxPromptLength: 2000,
-        text: true, firstFrame: true, lastFrame: true, referenceImages: 4,
-        referenceVideos: 3, referenceAudios: 3, nativeAudio: true, continuation: true
+        minDuration: 2, maxDuration: 30, defaultResolution: '720P', maxPromptLength: 2000,
+        text: true, firstFrame: true, lastFrame: true, referenceImages: 10,
+        referenceVideos: 5, referenceAudios: 5, nativeAudio: true, continuation: true
       }
     });
     this.apiKey = options.apiKey || creds.wan?.apiKey || process.env.DASHSCOPE_API_KEY;
@@ -371,9 +371,14 @@ class WanProvider extends VideoProvider {
   async createTask(input) {
     const request = this.normalizeRequest(input);
     const references = [...request.referenceImages, ...request.referenceVideos, ...request.referenceAudios];
-    let model = 'wan2.7-t2v-2026-06-12';
-    if (references.length) model = 'wan2.7-r2v-2026-06-12';
-    else if (request.firstFrame || request.lastFrame) model = 'wan2.7-i2v-2026-04-25';
+    let model = this.model;
+    // Legacy Wan 2.7 separates T2V, I2V, and R2V into distinct model IDs;
+    // Wan 3.0 handles all modes through a single unified model handle.
+    if (/^wan2\.7/i.test(model)) {
+      model = 'wan2.7-t2v-2026-06-12';
+      if (references.length) model = 'wan2.7-r2v-2026-06-12';
+      else if (request.firstFrame || request.lastFrame) model = 'wan2.7-i2v-2026-04-25';
+    }
     const media = [];
     if (request.firstFrame) media.push({ type: 'first_frame', url: await fileToDataUrl(request.firstFrame) });
     if (request.lastFrame) media.push({ type: 'last_frame', url: await fileToDataUrl(request.lastFrame) });

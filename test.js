@@ -1150,7 +1150,7 @@ class SystemTest {
         post: async (_url, body) => { klingBody = body; return { data: { data: { task_id: 'kling-task' } } }; }
       } });
       const klingTask = await kling.createTask({ prompt: 'Kling scene', duration: 8, aspectRatio: '16:9' });
-      if (klingTask.externalTaskId !== 'kling-task' || klingBody.model_name !== 'kling-v3-omni' || klingBody.sound !== 'off') {
+      if (klingTask.externalTaskId !== 'kling-task' || klingBody.model_name !== 'kling-v4-0' || klingBody.sound !== 'off') {
         throw new Error('Kling adapter did not submit the expected task');
       }
 
@@ -1159,8 +1159,17 @@ class SystemTest {
         post: async (_url, body) => { wanBody = body; return { data: { output: { task_id: 'wan-task' } } }; }
       } });
       const wanTask = await wan.createTask({ prompt: 'Wan scene', duration: 10, resolution: '720p', aspectRatio: '16:9' });
-      if (wanTask.externalTaskId !== 'wan-task' || wanBody.model !== 'wan2.7-t2v-2026-06-12' || wanBody.parameters.resolution !== '720P') {
-        throw new Error('Wan adapter did not submit the expected task-specific model payload');
+      if (wanTask.externalTaskId !== 'wan-task' || wanBody.model !== 'wan3.0-video' || wanBody.parameters.resolution !== '720P') {
+        throw new Error('Wan adapter did not submit the expected Wan 3.0 model payload');
+      }
+
+      let legacyWanBody;
+      const legacyWan = new WanProvider({}, { apiKey: 'test', model: 'wan2.7-t2v-2026-06-12', http: {
+        post: async (_url, body) => { legacyWanBody = body; return { data: { output: { task_id: 'wan-legacy' } } }; }
+      } });
+      await legacyWan.createTask({ prompt: 'Legacy Wan scene', duration: 10, resolution: '720p', aspectRatio: '16:9' });
+      if (legacyWanBody.model !== 'wan2.7-t2v-2026-06-12') {
+        throw new Error('Wan adapter did not preserve legacy wan2.7 model override routing');
       }
     } finally {
       await db.close();
@@ -2701,13 +2710,27 @@ class SystemTest {
   }
 
   async testAITextServiceTokenParams() {
-    const { AITextService } = require('./utils/ai-text-service');
+    const { AITextService, PROVIDERS } = require('./utils/ai-text-service');
 
-    const savedEnv = process.env.OPENAI_API_KEY;
-    delete process.env.OPENAI_API_KEY;
+    const envKeys = [...Object.values(PROVIDERS).map(p => p.envKey), 'GEMINI_API_KEY', 'AI_MODEL', 'OPENAI_MODEL', 'GEMINI_MODEL'];
+    const savedEnv = {};
+    for (const key of envKeys) {
+      savedEnv[key] = process.env[key];
+      delete process.env[key];
+    }
     try {
+      // Regression: walkthrough.js and credential-manager.js save OpenAI under
+      // credentials.openai (not credentials.aiProvider). AITextService must read it
+      // and respect the chosen model.
+      const openaiFromCreds = new AITextService({
+        openai: { apiKey: 'test-key', model: 'gpt-6.2-astra' }
+      });
+      if (!openaiFromCreds.isAvailable() || openaiFromCreds.providerName !== 'OpenAI' || openaiFromCreds.model !== 'gpt-6.2-astra') {
+        throw new Error('AITextService must initialize OpenAI and its chosen model from credentials.openai');
+      }
+
       const service = new AITextService({
-        aiProvider: { provider: 'openai', apiKey: 'test-key', model: 'gpt-6.1-sol' }
+        aiProvider: { provider: 'openai', apiKey: 'test-key', model: 'gpt-6.2-sol' }
       });
 
       // Newer OpenAI models (gpt-5.x) reject max_tokens — the request must use
@@ -2812,7 +2835,7 @@ class SystemTest {
       geminiService.client = null;
       geminiService.providerName = 'Google Gemini';
 
-      for (const model of ['gemini-3.8-flash', 'gemini-4-argon']) {
+      for (const model of ['gemini-4-hydrogen', 'gemini-4-neon', 'gemini-4-carbon', 'gemini-3.8-flash']) {
         geminiCalls.length = 0;
         geminiService.model = model;
         const geminiResult = await geminiService.generateText('gemini prompt', { temperature: 0.2 });
@@ -2828,8 +2851,10 @@ class SystemTest {
         throw new Error('Gemini 3.1 lost its temperature parameter');
       }
     } finally {
-      if (savedEnv === undefined) delete process.env.OPENAI_API_KEY;
-      else process.env.OPENAI_API_KEY = savedEnv;
+      for (const key of envKeys) {
+        if (savedEnv[key] === undefined) delete process.env[key];
+        else process.env[key] = savedEnv[key];
+      }
     }
 
     this.logger.info('AI text service token parameter test completed successfully');
@@ -3240,16 +3265,35 @@ class SystemTest {
     }
 
     const currentOpenRouterModels = [
-      'openai/gpt-6.1-sol',
-      'anthropic/claude-fable-5.1',
-      'google/gemini-3.8-flash',
-      'moonshotai/kimi-k3',
+      'openai/gpt-6.2-sol',
+      'anthropic/claude-fable-5.2',
+      'anthropic/claude-sonnet-5.5',
+      'google/gemini-4-hydrogen',
+      'moonshotai/kimi-k3.1-pro',
       'z-ai/glm-5.3',
       'deepseek/deepseek-v4.1-flash',
-      'minimax/minimax-m3'
+      'minimax/minimax-m3.1-flash'
     ];
     if (JSON.stringify(PROVIDERS.openrouter.models) !== JSON.stringify(currentOpenRouterModels)) {
       throw new Error('OpenRouter curated models are not the verified current catalog');
+    }
+
+    // Keep docs/providers.md in sync with every runtime default model ID.
+    const fs = require('fs').promises;
+    const providersDoc = await fs.readFile(path.join(__dirname, 'docs', 'providers.md'), 'utf8');
+    const { VideoProviderRegistry } = require('./utils/video-providers');
+    const videoDefaults = new VideoProviderRegistry({}).list()
+      .filter(p => p.id !== 'slideshow')
+      .map(p => p.model);
+    const requiredModelDocs = [
+      GEMINI_DEFAULT_MODEL,
+      ...Object.values(PROVIDERS).map(p => p.defaultModel),
+      ...videoDefaults
+    ];
+    for (const modelId of requiredModelDocs) {
+      if (!providersDoc.includes(modelId)) {
+        throw new Error(`docs/providers.md is missing runtime default model "${modelId}"`);
+      }
     }
 
     this.logger.info('Walkthrough module test completed successfully');
@@ -3803,31 +3847,37 @@ class SystemTest {
   }
 
   async testEngagementAIProviderWiring() {
-    const { AITextService } = require('./utils/ai-text-service');
+    const { AITextService, PROVIDERS } = require('./utils/ai-text-service');
 
     // Regression: index.js must hand AITextService the unwrapped credentials object
     // (manager.credentials), the shape the walkthrough writes to credentials.json.
     // Passing the CredentialManager itself leaves the engagement studio permanently
     // in fallback mode on installs with no provider environment variables.
-    const savedEnv = process.env.OPENAI_API_KEY;
-    delete process.env.OPENAI_API_KEY;
+    const envKeys = [...Object.values(PROVIDERS).map(p => p.envKey), 'GEMINI_API_KEY'];
+    const savedEnv = {};
+    for (const key of envKeys) {
+      savedEnv[key] = process.env[key];
+      delete process.env[key];
+    }
     try {
       const configured = new AITextService({
-        aiProvider: { provider: 'openai', apiKey: 'test-key', model: 'gpt-6.1-sol' }
+        aiProvider: { provider: 'openai', apiKey: 'test-key', model: 'gpt-6.2-sol' }
       });
       if (!configured.isAvailable()) {
         throw new Error('AITextService must initialize from a credentials-file aiProvider config');
       }
 
       const wrapped = new AITextService({
-        credentials: { aiProvider: { provider: 'openai', apiKey: 'test-key', model: 'gpt-6.1-sol' } }
+        credentials: { aiProvider: { provider: 'openai', apiKey: 'test-key', model: 'gpt-6.2-sol' } }
       });
       if (wrapped.isAvailable()) {
         throw new Error('A CredentialManager-shaped argument must not look configured; index.js has to unwrap it');
       }
     } finally {
-      if (savedEnv === undefined) delete process.env.OPENAI_API_KEY;
-      else process.env.OPENAI_API_KEY = savedEnv;
+      for (const key of envKeys) {
+        if (savedEnv[key] === undefined) delete process.env[key];
+        else process.env[key] = savedEnv[key];
+      }
     }
   }
 

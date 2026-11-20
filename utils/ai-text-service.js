@@ -2,8 +2,10 @@ const OpenAI = require('openai');
 const { Logger } = require('./logger');
 
 const GEMINI_MODELS = [
+  'gemini-4-hydrogen',
+  'gemini-4-neon',
+  'gemini-4-carbon',
   'gemini-3.8-flash',
-  'gemini-4-argon',
   'gemini-3.5-flash-lite',
 ];
 const GEMINI_DEFAULT_MODEL = GEMINI_MODELS[0];
@@ -14,36 +16,45 @@ const PROVIDERS = {
   openai: {
     name: 'OpenAI',
     baseURL: 'https://api.openai.com/v1',
-    defaultModel: 'gpt-6.1-sol',
-    models: ['gpt-6.1-sol', 'gpt-6-astra', 'gpt-6-luna'],
+    defaultModel: 'gpt-6.2-sol',
+    models: ['gpt-6.2-sol', 'gpt-6.2-astra', 'gpt-6.1-terra', 'gpt-6-luna'],
     envKey: 'OPENAI_API_KEY',
   },
   openrouter: {
     name: 'OpenRouter',
     baseURL: 'https://openrouter.ai/api/v1',
-    defaultModel: 'openai/gpt-6.1-sol',
-    models: ['openai/gpt-6.1-sol', 'anthropic/claude-fable-5.1', 'google/gemini-3.8-flash', 'moonshotai/kimi-k3', 'z-ai/glm-5.3', 'deepseek/deepseek-v4.1-flash', 'minimax/minimax-m3'],
+    defaultModel: 'openai/gpt-6.2-sol',
+    models: [
+      'openai/gpt-6.2-sol',
+      'anthropic/claude-fable-5.2',
+      'anthropic/claude-sonnet-5.5',
+      'google/gemini-4-hydrogen',
+      'moonshotai/kimi-k3.1-pro',
+      'z-ai/glm-5.3',
+      'deepseek/deepseek-v4.1-flash',
+      'minimax/minimax-m3.1-flash',
+    ],
     envKey: 'OPENROUTER_API_KEY',
   },
   kimi: {
     name: 'Kimi (Moonshot AI)',
     baseURL: 'https://api.moonshot.ai/v1',
-    defaultModel: 'kimi-k3',
-    models: ['kimi-k3', 'kimi-k2.7-code', 'kimi-k2.6'],
+    defaultModel: 'kimi-k3.1-pro',
+    models: ['kimi-k3.1-pro', 'kimi-k3.1-pro-highspeed', 'kimi-k3'],
     envKey: 'MOONSHOT_API_KEY',
   },
   mimo: {
     name: 'MiMo (Xiaomi)',
     baseURL: 'https://api.xiaomimimo.com/v1',
     defaultModel: 'mimo-v2.6-pro',
-    models: ['mimo-v2.6-pro', 'mimo-v2.6-flash'],
+    models: ['mimo-v2.6-pro', 'mimo-v2.6-flash', 'mimo-v2.6-pro-ultraspeed'],
     envKey: 'MIMO_API_KEY',
   },
   glm: {
     name: 'GLM (Zhipu AI)',
     baseURL: 'https://api.z.ai/api/paas/v4/',
     defaultModel: 'glm-5.3',
-    models: ['glm-5.3', 'glm-5.3-flash', 'glm-5.2'],
+    models: ['glm-5.3', 'glm-5.3-flash', 'glm-5.3-prime'],
     envKey: 'GLM_API_KEY',
   },
   deepseek: {
@@ -81,19 +92,28 @@ class AITextService {
     const model = credentials.aiProvider?.model;
 
     if (provider && PROVIDERS[provider] && apiKey) {
-      return this._initOpenAICompatible(PROVIDERS[provider], apiKey, model);
+      return this._initOpenAICompatible(PROVIDERS[provider], apiKey, model || process.env.AI_MODEL);
     }
 
-    for (const [, preset] of Object.entries(PROVIDERS)) {
+    if (credentials.openai?.apiKey) {
+      return this._initOpenAICompatible(
+        PROVIDERS.openai,
+        credentials.openai.apiKey,
+        credentials.openai.model || process.env.OPENAI_MODEL || process.env.AI_MODEL
+      );
+    }
+
+    for (const [id, preset] of Object.entries(PROVIDERS)) {
       const key = process.env[preset.envKey];
       if (key) {
-        return this._initOpenAICompatible(preset, key);
+        const envModel = (id === 'openai' ? process.env.OPENAI_MODEL : null) || process.env.AI_MODEL;
+        return this._initOpenAICompatible(preset, key, envModel);
       }
     }
 
     const geminiKey = credentials.gemini?.apiKey || process.env.GEMINI_API_KEY;
     if (geminiKey) {
-      return this._initGemini(geminiKey, credentials.gemini?.model);
+      return this._initGemini(geminiKey, credentials.gemini?.model || process.env.GEMINI_MODEL || process.env.AI_MODEL);
     }
 
     this.logger.warn('No AI text provider configured — text generation unavailable');
