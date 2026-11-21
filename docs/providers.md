@@ -11,13 +11,14 @@ Pick one in the walkthrough, or set its key in `.env`. The SDK base URL is confi
 | **Google Gemini** | `gemini-4-hydrogen` (default, free tier), `gemini-4-neon` (paid), `gemini-4-carbon` (paid), `gemini-3.8-flash`, `gemini-3.5-flash-lite` | [AI Studio](https://aistudio.google.com/apikey) | `GEMINI_API_KEY` |
 | **OpenAI** | `gpt-6.2-sol` (default), `gpt-6.2-astra`, `gpt-6.1-terra`, `gpt-6-luna` | [platform.openai.com](https://platform.openai.com/api-keys) | `OPENAI_API_KEY` |
 | **OpenRouter** | `openai/gpt-6.2-sol` (default) plus 400+ models; curated defaults verified against OpenRouter's live catalog (`anthropic/claude-fable-5.2`, `anthropic/claude-sonnet-5.5`, `google/gemini-4-hydrogen`, `moonshotai/kimi-k3.1-pro`, `z-ai/glm-5.3`, `deepseek/deepseek-v4.1-flash`, `minimax/minimax-m3.1-flash`) | [openrouter.ai](https://openrouter.ai/keys) | `OPENROUTER_API_KEY` |
+| **Atlas Cloud** | `qwen/qwen3.5-flash` (default), `deepseek-ai/deepseek-v4-pro` (OpenAI-compatible gateway) | [console.atlascloud.ai](https://www.atlascloud.ai/console/api-keys) | `ATLASCLOUD_API_KEY` |
 | **Kimi (Moonshot AI)** | `kimi-k3.1-pro` (default), `kimi-k3.1-pro-highspeed`, `kimi-k3` | [platform.kimi.ai](https://platform.kimi.ai) | `MOONSHOT_API_KEY` |
 | **MiMo (Xiaomi)** | `mimo-v2.6-pro` (default), `mimo-v2.6-flash`, `mimo-v2.6-pro-ultraspeed` | [mimo.mi.com](https://mimo.mi.com) | `MIMO_API_KEY` |
 | **GLM (Zhipu AI)** | `glm-5.3` (default), `glm-5.3-flash`, `glm-5.3-prime` | [z.ai](https://z.ai) | `GLM_API_KEY` |
 | **DeepSeek** | `deepseek-flash` (default, DeepSeek-V4.1-Flash), `deepseek-v4-pro` | [platform.deepseek.com](https://platform.deepseek.com/api_keys) | `DEEPSEEK_API_KEY` |
 | **MiniMax** | `MiniMax-M3.1-Flash` (default), `MiniMax-M3` | [platform.minimax.io](https://platform.minimax.io/user-center/basic-information/interface-key) | `MINIMAX_TEXT_API_KEY` |
 
-Anthropic Claude is available through OpenRouter (`anthropic/claude-fable-5.2`, `anthropic/claude-sonnet-5.5`, `anthropic/claude-opus-5.5`). OpenRouter, Kimi, MiMo, GLM, DeepSeek, and MiniMax cover scripts only. Add a Gemini or OpenAI key for images and narration, or ElevenLabs for narration.
+Anthropic Claude is available through OpenRouter (`anthropic/claude-fable-5.2`, `anthropic/claude-sonnet-5.5`, `anthropic/claude-opus-5.5`). OpenRouter, Atlas Cloud, Kimi, MiMo, GLM, DeepSeek, and MiniMax cover scripts only. Add a Gemini or OpenAI key for images and narration, or ElevenLabs for narration.
 
 > **MiniMax keys:** Text generation uses `MINIMAX_TEXT_API_KEY`; video generation uses `MINIMAX_API_KEY`. They are separate on purpose so existing Gemini users with a MiniMax H3 video key aren't silently switched to MiniMax text.
 

@@ -36,6 +36,13 @@ const PROVIDERS = {
     ],
     envKey: 'OPENROUTER_API_KEY',
   },
+  atlascloud: {
+    name: 'Atlas Cloud',
+    baseURL: 'https://api.atlascloud.ai/v1',
+    defaultModel: 'qwen/qwen3.5-flash',
+    models: ['qwen/qwen3.5-flash', 'deepseek-ai/deepseek-v4-pro'],
+    envKey: 'ATLASCLOUD_API_KEY',
+  },
   kimi: {
     name: 'Kimi (Moonshot AI)',
     baseURL: 'https://api.moonshot.ai/v1',
