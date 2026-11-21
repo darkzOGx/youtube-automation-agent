@@ -9,6 +9,14 @@ It researches topics, writes scripts, generates narration and visuals, assembles
 [![Node.js 18.17+](https://img.shields.io/badge/node-18.17%2B-43853d.svg)](package.json)
 [![Releases](https://img.shields.io/github/v/release/darkzOGx/youtube-automation-agent?label=release)](https://github.com/darkzOGx/youtube-automation-agent/releases)
 
+## New in v2.12.0
+
+- **Latest models across every provider:** Upgraded defaults and selectors to **Gemini 4 Hydrogen** (free tier) / 4 Neon / 4 Carbon, **GPT-6.2 Sol** / 6.2 Astra / 6.1 Terra, **Claude Fable 5.2** & **Sonnet 5.5** (via OpenRouter), **Kimi K3.1 Pro**, **MiMo V2.6**, **GLM-5.3**, **Eleven v4** TTS, **GPT Image 2.6** Flare/Sunburst, **Gemini Omni 1.2 Flash** (up to 15s), **Kling 4.0** (up to 30s), and **Alibaba Wan 3.0** (up to 30s).
+- **Two new text providers & model overrides:** Added **DeepSeek** (`DEEPSEEK_API_KEY`) and **MiniMax M3** text (`MINIMAX_TEXT_API_KEY`, kept separate from `MINIMAX_API_KEY` for H3 video), plus `.env` model overrides (`AI_MODEL`, `GEMINI_MODEL`, `OPENAI_MODEL`, `OPENAI_IMAGE_MODEL`, `WAN_VIDEO_MODEL`) and a fix so OpenAI credentials saved by the walkthrough load properly at runtime.
+- **Cleaner slideshow & thumbnail rendering:** Removed hard-coded placeholder text from chapter slides and end cards, improved generated image visibility, and kept the designer's real thumbnail whenever AI thumbnail generation falls back.
+- **Dashboard & platform polish:** Removed ambient dashboard motion, fixed doubled mobile/rail nav labels, read the live app version from the server, and upgraded `sharp` to 0.34 for WebAssembly support on Android/Termux.
+- **Full details:** See the [changelog](CHANGELOG.md) and [AI providers guide](docs/providers.md).
+
 ![The operator console: videos waiting for your decision, a generation job in progress, and the publishing calendar](assets/screenshots/overview.png)
 
 | ![Content review: quality checks, metadata, and the approve, save, reject, and regenerate actions for one video](assets/screenshots/review.png) | ![Autonomous operator: the channel mandate, the current run, and the editorial plan the agent decided to make](assets/screenshots/operator.png) |
@@ -23,7 +31,7 @@ It researches topics, writes scripts, generates narration and visuals, assembles
 - **Real output only.** Simulated or placeholder media is clearly marked and can never be approved or uploaded.
 - **Self-hosted.** Your keys, media, and channel data stay on your machine.
 - **Learns from evidence, with your sign-off.** Lessons from analytics, retention curves, and comments shape future videos only after you approve them.
-- **Your choice of providers.** Eight text providers or OpenRouter, five AI video providers, or free local slideshow rendering.
+- **Your choice of providers.** Seven direct text providers or OpenRouter (400+ models), five AI video providers, or free local slideshow rendering.
 
 ## Quick start
 
@@ -79,7 +87,7 @@ Each item links to its walkthrough in the [feature guide](docs/features.md).
 **Produce**
 - [Production readiness](docs/features.md#production-readiness): a verified check of every provider, your channel, and video assembly before anything runs on its own. Paid image and video probes are separate opt-ins.
 - [Resumable generation](docs/features.md#resumable-generation): every stage is checkpointed, so a crash or timeout resumes where it stopped instead of starting over.
-- [AI video generation](docs/features.md#ai-video-generation): local slideshow by default; Seedance, MiniMax H3, Gemini Omni, Kling, or Wan for real clips, with a cap on paid seconds.
+- [AI video generation](docs/features.md#ai-video-generation): local slideshow by default; Seedance 2.5, MiniMax H3, Gemini Omni 1.2 Flash, Kling 4.0, or Wan 3.0 for real clips, with a cap on paid seconds.
 - [Shorts Repurposing Studio](docs/features.md#shorts-repurposing-studio): turn an approved video into three 9:16 Short drafts with burned-in captions, reusing existing media so no new generation credits are spent.
 
 **Review**
@@ -98,13 +106,20 @@ Each item links to its walkthrough in the [feature guide](docs/features.md).
 
 ## AI providers
 
-One key gets you started. Pick a text provider in the walkthrough: Gemini, OpenAI, OpenRouter (400+ models, including Claude), Kimi, MiMo, GLM, DeepSeek, or MiniMax. Gemini has free tiers for text and narration.
+One key gets you started. Pick a text provider in `npm run walkthrough` or `.env`:
 
-- **Narration** comes from ElevenLabs, OpenAI, or Gemini, in that order of preference. A video without working narration can't be approved.
-- **Images** come from OpenAI or Gemini, each falling back to the other.
-- **Video** is a free local slideshow by default. Choose Seedance, MiniMax H3, Gemini Omni, Kling, or Wan for generated clips and set a cap on paid seconds; if a provider fails, the video falls back to the slideshow.
+- **Text:** Google Gemini (Gemini 4 Hydrogen, 4 Neon, 4 Carbon, 3.8 Flash), OpenAI (GPT-6.2 Sol, 6.2 Astra, 6.1 Terra, 6 Luna), OpenRouter (400+ models, including Anthropic Claude Fable 5.2 and Sonnet 5.5), Kimi (K3.1 Pro, K3), MiMo (V2.6 Pro, V2.6 Flash), GLM (GLM-5.3, 5.3 Flash, 5.3 Prime), DeepSeek (V4.1 Flash, V4 Pro), or MiniMax (M3.1 Flash, M3). Gemini 4 Hydrogen has a free tier for text and Gemini 3.8 Flash TTS has a free tier for narration.
+- **Narration:** ElevenLabs (Eleven v4), OpenAI (`gpt-4o-mini-tts`), or Gemini (`gemini-3.8-flash-tts`), in that order of preference. A video without working narration can't be approved.
+- **Images:** OpenAI (GPT Image 2.6 Flare/Sunburst) and Gemini (Gemini 3.1 Flash Image / Nano Banana 2), each falling back to the other.
+- **Video:** Free local slideshow by default. Choose ByteDance Seedance 2.5, MiniMax H3, Google Gemini Omni 1.2 Flash, Kuaishou Kling 4.0, or Alibaba Wan 3.0 for generated clips with a paid-seconds cap; if a provider fails, the video falls back to the slideshow.
 
-Models, keys, env vars, clip limits, and the `.env` essentials are in the [providers guide](docs/providers.md).
+| Starter stack | Keys needed | Best for |
+| --- | --- | --- |
+| **Free / lowest cost** | `GEMINI_API_KEY` + local slideshow | Testing end-to-end with Gemini 4 Hydrogen scripts, Gemini 3.8 Flash TTS narration, and free local slides |
+| **Balanced polish** | Any text provider + `ELEVENLABS_API_KEY` + `OPENAI_API_KEY` (or billed Gemini) | Studio-grade Eleven v4 narration and GPT Image 2.6 / Gemini 3.1 AI visuals |
+| **Cinematic hybrid** | Above + Seedance 2.5, MiniMax H3, Gemini Omni 1.2 Flash, Kling 4.0, or Wan 3.0 | Generated AI video clips for the hook and key beats with a `VIDEO_MAX_GENERATED_SECONDS` cap |
+
+Exact API model IDs, env vars, clip limits, and `.env` essentials are in the [providers guide](docs/providers.md).
 
 ## Automation
 

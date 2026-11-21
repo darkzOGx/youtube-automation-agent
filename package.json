@@ -1,6 +1,6 @@
 {
   "name": "youtube-automation-agent",
-  "version": "2.11.0",
+  "version": "2.12.0",
   "description": "YouTube Automation Agent is an open-source AI agent that runs a YouTube channel end to end",
   "main": "index.js",
   "scripts": {

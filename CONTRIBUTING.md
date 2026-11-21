@@ -16,7 +16,7 @@ Thanks for contributing! This project moves fast and PRs are reviewed regularly 
 git clone <your-fork>
 cd youtube-automation-agent
 npm install        # also fetches the bundled FFmpeg binary
-npm test           # 12 system tests, no credentials needed
+npm test           # full system test suite, no credentials needed
 npm run lint
 ```
 
@@ -70,7 +70,7 @@ The screenshots in the README are captured by `npm run docs:screenshots`, which 
 
 ## Where help is most wanted
 
-Check the [open issues](https://github.com/darkzOGx/youtube-automation-agent/issues) and the roadmap in the latest [release notes](https://github.com/darkzOGx/youtube-automation-agent/releases). Current priorities: Gemini image/TTS parity, slideshow rendering performance, and template-content quality.
+Check the [open issues](https://github.com/darkzOGx/youtube-automation-agent/issues) and the roadmap in the latest [release notes](https://github.com/darkzOGx/youtube-automation-agent/releases). Current priorities: slideshow rendering performance, template-content quality, and verified community examples.
 
 ## Reporting bugs
 

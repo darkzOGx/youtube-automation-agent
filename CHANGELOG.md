@@ -1,15 +1,18 @@
 # Changelog
 
-## Unreleased
+## v2.12.0 — 2026-11-19
 
-- Refreshed provider defaults and selectors: OpenAI GPT-6.1 Sol (with GPT-6 Astra and Luna), Gemini 3.8 Flash (with Gemini 4 Argon), MiMo V2.6, GLM-5.3 Flash, Claude Fable 5.1, and the current OpenRouter catalog
+- Refreshed provider defaults and selectors to the latest November 2026 models: Google Gemini 4 Hydrogen (default, free tier) plus Gemini 4 Neon and Carbon, OpenAI GPT-6.2 Sol (with GPT-6.2 Astra, GPT-6.1 Terra, and GPT-6 Luna), Anthropic Claude Fable 5.2 and Sonnet 5.5 via OpenRouter, Kimi K3.1 Pro, MiMo V2.6 (with ultraspeed), GLM-5.3 Prime/Flash, DeepSeek V4.1 Flash/V4 Pro, MiniMax M3.1 Flash, ElevenLabs Eleven v4 TTS, OpenAI GPT Image 2.6 Flare/Sunburst, Google Gemini Omni 1.2 Flash (up to 15s), Kling 4.0 (up to 30s), and Alibaba Wan 3.0 (`wan3.0-video`, up to 30s)
+- Fixed `AITextService` ignoring `credentials.openai` saved by `npm run walkthrough` and `npm run credentials:setup`, and added optional `AI_MODEL`, `GEMINI_MODEL`, `OPENAI_MODEL`, and `OPENAI_IMAGE_MODEL` environment overrides
+- Fixed `WanProvider` ignoring `WAN_VIDEO_MODEL` and added a test keeping `docs/providers.md` synced with runtime model defaults
 - Added DeepSeek (`DEEPSEEK_API_KEY`) and MiniMax M3 text (`MINIMAX_TEXT_API_KEY`) as text providers; the existing `MINIMAX_API_KEY` still only enables MiniMax H3 video
-- Moved Gemini Omni video to `gemini-omni-1.1-flash` and Gemini narration to `gemini-3.8-flash-tts` ahead of Google's shutdown of the preview models
+- Moved Gemini narration to `gemini-3.8-flash-tts` ahead of Google's shutdown of the preview models
 - Gemini 4 models no longer receive the ignored `temperature` parameter
 - Fixed slideshow videos showing a hard-coded "Ethereal Dreamscript" subtitle, a "New content daily at 2:00 PM" end card, and "Content coming soon..." on every chapter; chapter slides now show the script's lines, and generated images are shown at full strength under a light scrim instead of 30% opacity
 - When AI thumbnail generation falls back to a placeholder, productions now keep the designer's real thumbnail; a remaining placeholder no longer passes the thumbnail check or appears as a broken image in Review Studio
+- Removed ambient dashboard motion, fixed doubled mobile/icon-rail nav labels, and exposed the live package version from `/health` and `/api/dashboard`
 - Upgraded sharp to 0.34 so its WebAssembly build loads on platforms without a native binary, such as Android/Termux (requires Node.js 18.17+)
-- Corrected the README's provider list: there is no generic OpenAI-compatible endpoint or Ollama setting, and Claude is available through OpenRouter
+- Rewrote the README with dashboard screenshots, moved deep reference guides to `docs/` (`providers.md`, `features.md`, `api.md`, `troubleshooting.md`), and corrected the provider list
 
 ## v2.11.0 — 2026-10-13
 
